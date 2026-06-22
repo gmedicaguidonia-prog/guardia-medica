@@ -5,7 +5,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { Turnista, TurnoSchema, ConfigVersione, Turno, Livello, Ricorrenza } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoTurnista { nome: string; email: string; livello: Livello }
@@ -21,7 +21,7 @@ function meseRange(anno: number, mese: number): { first: string; last: string } 
 
 /** Versione che copre il mese (valido_da ≤ mese ≤ valido_fino|∞), preferendo
  *  quella con valido_da più recente. `mese` = 'YYYY-MM'. */
-function pickVersione(versioni: ConfigVersione[], mese: string): ConfigVersione | null {
+function pickVersione<T extends { valido_da: string; valido_fino: string | null }>(versioni: T[], mese: string): T | null {
   const cov = versioni.filter(v => v.valido_da <= mese && (v.valido_fino == null || mese <= v.valido_fino))
   if (!cov.length) return null
   return cov.slice().sort((a, b) => b.valido_da.localeCompare(a.valido_da))[0]
@@ -133,16 +133,48 @@ const supaStore = {
       if (error) throw error
     }
   },
+
+  // ── Regole turni fisse (settimanali, versionate) ──
+  async getRegoleVersioneMese(mese: string): Promise<RegolaVersione | null> {
+    const { data, error } = await supabase.from('regole_versioni').select('*')
+    if (error) throw error
+    return pickVersione((data ?? []) as RegolaVersione[], mese)
+  },
+  async creaRegoleVersione(mese: string): Promise<RegolaVersione> {
+    const { data, error } = await supabase.from('regole_versioni').insert({ valido_da: mese, valido_fino: null }).select().single()
+    if (error) throw error
+    return data as RegolaVersione
+  },
+  async setValiditaRegoleVersione(id: string, validoFino: string | null): Promise<void> {
+    const { error } = await supabase.from('regole_versioni').update({ valido_fino: validoFino }).eq('id', id)
+    if (error) throw error
+  },
+  async getRegole(regoleVersioneId: string): Promise<RegolaTurno[]> {
+    const { data, error } = await supabase.from('regole_turni').select('*').eq('regola_versione_id', regoleVersioneId)
+    if (error) throw error
+    return (data ?? []) as RegolaTurno[]
+  },
+  async setRegola(regoleVersioneId: string, giorno: number, turnoSchemaId: string, slot: number, turnistaId: string | null): Promise<void> {
+    if (turnistaId === null) {
+      const { error } = await supabase.from('regole_turni').delete().match({ regola_versione_id: regoleVersioneId, giorno_settimana: giorno, turno_schema_id: turnoSchemaId, slot })
+      if (error) throw error
+    } else {
+      const { error } = await supabase.from('regole_turni').upsert({ regola_versione_id: regoleVersioneId, giorno_settimana: giorno, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId }, { onConflict: 'regola_versione_id,giorno_settimana,turno_schema_id,slot' })
+      if (error) throw error
+    }
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
 // LOCALE (DEV)
 // ════════════════════════════════════════════════════════════════
-const LS_TURNISTI = 'gm_turnisti'
-const LS_SCHEMA   = 'gm_schema'
-const LS_VERSIONI = 'gm_versioni'
-const LS_TURNI    = 'gm_turni'
-const LS_SEEDED   = 'gm_seeded_v2'
+const LS_TURNISTI         = 'gm_turnisti'
+const LS_SCHEMA           = 'gm_schema'
+const LS_VERSIONI         = 'gm_versioni'
+const LS_REGOLE_VERSIONI  = 'gm_regole_versioni'
+const LS_REGOLE           = 'gm_regole'
+const LS_TURNI            = 'gm_turni'
+const LS_SEEDED           = 'gm_seeded_v2'
 
 function uid(): string { try { return crypto.randomUUID() } catch { return 'id-' + Math.random().toString(36).slice(2) } }
 function read<T>(key: string, fallback: T): T { try { const raw = localStorage.getItem(key); return raw ? (JSON.parse(raw) as T) : fallback } catch { return fallback } }
@@ -231,6 +263,28 @@ const localStore = {
     const list = read<Turno[]>(LS_TURNI, []).filter(t => !(t.data === data && t.turno_schema_id === turnoSchemaId && t.slot === slot))
     if (turnistaId !== null) list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, created_at: new Date().toISOString() })
     writeLs(LS_TURNI, list)
+  },
+
+  async getRegoleVersioneMese(mese: string): Promise<RegolaVersione | null> {
+    ensureSeed()
+    return pickVersione(read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []), mese)
+  },
+  async creaRegoleVersione(mese: string): Promise<RegolaVersione> {
+    const v: RegolaVersione = { id: uid(), valido_da: mese, valido_fino: null, created_at: new Date().toISOString() }
+    writeLs(LS_REGOLE_VERSIONI, [...read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []), v])
+    return v
+  },
+  async setValiditaRegoleVersione(id: string, validoFino: string | null): Promise<void> {
+    writeLs(LS_REGOLE_VERSIONI, read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
+  },
+  async getRegole(regoleVersioneId: string): Promise<RegolaTurno[]> {
+    ensureSeed()
+    return read<RegolaTurno[]>(LS_REGOLE, []).filter(r => r.regola_versione_id === regoleVersioneId)
+  },
+  async setRegola(regoleVersioneId: string, giorno: number, turnoSchemaId: string, slot: number, turnistaId: string | null): Promise<void> {
+    const list = read<RegolaTurno[]>(LS_REGOLE, []).filter(r => !(r.regola_versione_id === regoleVersioneId && r.giorno_settimana === giorno && r.turno_schema_id === turnoSchemaId && r.slot === slot))
+    if (turnistaId !== null) list.push({ id: uid(), regola_versione_id: regoleVersioneId, giorno_settimana: giorno, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, created_at: new Date().toISOString() })
+    writeLs(LS_REGOLE, list)
   },
 }
 

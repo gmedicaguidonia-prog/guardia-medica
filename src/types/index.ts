@@ -73,6 +73,23 @@ export interface Turno {
   created_at: string
 }
 
+// ─── Regole turni fisse (settimanali, versionate) ───────────────────
+export interface RegolaVersione {
+  id: string
+  valido_da: string
+  valido_fino: string | null
+  created_at: string
+}
+export interface RegolaTurno {
+  id: string
+  regola_versione_id: string
+  giorno_settimana: number   // 1=Lun … 7=Dom
+  turno_schema_id: string
+  slot: number
+  turnista_id: string | null
+  created_at: string
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────
 export interface AuthUser {
   id: string

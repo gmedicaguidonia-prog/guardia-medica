@@ -15,6 +15,18 @@ export function turnoSiApplica(t: TurnoSchema, d: Date): boolean {
   }
 }
 
+/** Un turno PUÒ applicarsi in un certo giorno della settimana (1=Lun..7=Dom)?
+ *  Usato dalla griglia settimanale delle Regole Turni. festivi/prefestivi
+ *  possono cadere in qualsiasi giorno → consentiti ovunque. */
+export function turnoApplicabileGiorno(t: TurnoSchema, giorno: number): boolean {
+  switch (t.ricorrenza) {
+    case 'feriali': return giorno >= 1 && giorno <= 5
+    case 'weekend': return giorno === 6 || giorno === 7
+    case 'custom':  return t.giorni_custom.includes(giorno)
+    default:        return true
+  }
+}
+
 /** Elenco delle date (Date) di un mese (mese 1..12). */
 export function giorniDelMese(anno: number, mese: number): Date[] {
   const n = new Date(anno, mese, 0).getDate()

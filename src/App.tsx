@@ -9,6 +9,7 @@ import { AdminLayout } from './pages/admin/AdminLayout'
 import { TurnistiPage } from './pages/admin/TurnistiPage'
 import { SchemaTurniPage } from './pages/admin/SchemaTurniPage'
 import { GestioneTurniPage } from './pages/admin/GestioneTurniPage'
+import { RegoleTurniPage } from './pages/admin/RegoleTurniPage'
 import { AdminHomePage } from './pages/admin/AdminHomePage'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import { UpdateToast } from './components/UpdateToast'
@@ -53,6 +54,7 @@ function AppRoutes() {
         <Route path="/admin"
           element={<ProtectedRoute user={user} loading={loading} requireAdmin><AdminLayout user={user} /></ProtectedRoute>}>
           <Route index element={<AdminHomePage />} />
+          <Route path="regole"   element={<RegoleTurniPage />} />
           <Route path="turni"    element={<GestioneTurniPage />} />
           <Route path="turnisti" element={<TurnistiPage />} />
           <Route path="schema"   element={<SchemaTurniPage />} />
