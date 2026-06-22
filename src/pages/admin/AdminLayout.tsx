@@ -1,6 +1,7 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { Users, CalendarClock, CalendarDays } from 'lucide-react'
 import type { AuthUser } from '../../types'
+import { useUnsaved } from '../../contexts/UnsavedContext'
 
 const links = [
   { to: '/admin/turni',    label: 'Turni del Mese',        Icon: CalendarDays },
@@ -11,6 +12,13 @@ const links = [
 export function AdminLayout({ user }: { user: AuthUser | null }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { hasUnsaved } = useUnsaved()
+
+  function handleNav(to: string) {
+    if (location.pathname === to) return
+    if (hasUnsaved && !window.confirm('Hai modifiche non salvate. Vuoi uscire senza salvarle?')) return
+    navigate(to)
+  }
 
   return (
     <div className="flex h-[calc(100vh-48px)]">
@@ -21,11 +29,11 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
           Pannello Admin
         </p>
         {links.map(({ to, label, Icon }) => {
-          const isActive = location.pathname.startsWith(to)
+          const isActive = location.pathname === to || location.pathname.startsWith(to + '/')
           return (
             <button
               key={to}
-              onClick={() => navigate(to)}
+              onClick={() => handleNav(to)}
               className="flex items-center gap-2 px-4 py-2.5 text-sm transition-colors text-left w-full"
               style={isActive ? { background: '#456b3a', color: '#fff' } : { color: '#9ab488' }}
               onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#fff' }}

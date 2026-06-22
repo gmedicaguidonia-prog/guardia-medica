@@ -11,6 +11,7 @@ import { SchemaTurniPage } from './pages/admin/SchemaTurniPage'
 import { GestioneTurniPage } from './pages/admin/GestioneTurniPage'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import { UpdateToast } from './components/UpdateToast'
+import { UnsavedProvider } from './contexts/UnsavedContext'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,7 +79,9 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <AppRoutes />
+        <UnsavedProvider>
+          <AppRoutes />
+        </UnsavedProvider>
       </BrowserRouter>
     </QueryClientProvider>
   )

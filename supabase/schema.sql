@@ -57,8 +57,11 @@ drop policy if exists turnisti_select on turnisti;
 drop policy if exists turnisti_insert on turnisti;
 drop policy if exists turnisti_update on turnisti;
 drop policy if exists turnisti_delete on turnisti;
+-- NB: nelle policy NON usare (select email from auth.users ...): il ruolo
+-- 'authenticated' non ha accesso ad auth.users → la query va in errore.
+-- Usare l'email dal JWT: (auth.jwt() ->> 'email').
 create policy turnisti_select on turnisti for select
-  using (email = (select email from auth.users where id = auth.uid()) or is_admin());
+  using (email = (auth.jwt() ->> 'email') or is_admin());
 create policy turnisti_insert on turnisti for insert with check (is_admin());
 create policy turnisti_update on turnisti for update using (is_admin());
 create policy turnisti_delete on turnisti for delete using (is_admin());
@@ -69,16 +72,26 @@ create policy schema_select on schema_turni for select using (is_utente_attivo()
 create policy schema_modify on schema_turni for all using (is_admin()) with check (is_admin());
 
 -- ─── Protezione admin permanente ────────────────────────────
+-- NB: NON leggere auth.users qui (il ruolo authenticated non vi ha accesso):
+-- l'email dell'utente corrente si prende dal JWT con auth.jwt() ->> 'email'.
 create or replace function proteggi_admin() returns trigger as $$
+declare
+  current_email text;
 begin
-  if (tg_op = 'DELETE') then
+  if tg_op = 'DELETE' then
     if old.email = 'marabelli.s@gmail.com' then
-      raise exception 'Admin permanente: non eliminabile';
+      raise exception 'Admin perpetuo: non eliminabile';
     end if;
     return old;
   end if;
-  if old.email = 'marabelli.s@gmail.com' and (new.livello <> 'admin' or new.email <> old.email) then
-    raise exception 'Admin permanente: email e livello non modificabili';
+  if old.email = 'marabelli.s@gmail.com' then
+    current_email := auth.jwt() ->> 'email';
+    if current_email is distinct from 'marabelli.s@gmail.com' then
+      raise exception 'Admin perpetuo: modificabile solo da te stesso';
+    end if;
+    if new.email <> old.email or new.livello <> old.livello then
+      raise exception 'Admin perpetuo: email e livello non modificabili';
+    end if;
   end if;
   return new;
 end;
