@@ -125,7 +125,7 @@ export function TurnistiPage() {
           <div>
             <label className="label text-xs">Livello</label>
             <select value={livello} onChange={e => setLivello(e.target.value as Livello)} className="input text-sm w-56">
-              {LIVELLI.map(l => <option key={l.value} value={l.value}>{l.label} — {l.descr}</option>)}
+              {LIVELLI.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </div>
           <button onClick={aggiungi} disabled={saving} className="btn-primary text-sm">

@@ -124,9 +124,7 @@ function ensureSeed(): void {
   if (read<boolean>(LS_SEEDED, false)) return
   const now = new Date().toISOString()
   writeLs<Turnista[]>(LS_TURNISTI, [
-    { id: uid(), nome: 'Stefano Marabelli', email: ADMIN_EMAIL,             livello: 'admin',    created_at: now },
-    { id: uid(), nome: 'Mario Rossi',       email: 'mario.rossi@gmail.com',  livello: 'turnista', created_at: now },
-    { id: uid(), nome: 'Anna Bianchi',      email: 'anna.bianchi@gmail.com', livello: 'turnista', created_at: now },
+    { id: uid(), nome: 'Stefano Marabelli', email: ADMIN_EMAIL, livello: 'admin', created_at: now },
   ])
   writeLs<TurnoSchema[]>(LS_SCHEMA, [
     { id: uid(), nome: 'Notte',  ora_inizio: '20:00', ora_fine: '08:00', n_turnisti: 1, ricorrenza: 'tutti',   giorni_custom: [], ordine: 10, created_at: now },

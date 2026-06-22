@@ -4,10 +4,10 @@
 //  - 'esterno'  → ospite/sostituto: vede i turni, accesso limitato
 export type Livello = 'admin' | 'turnista' | 'esterno'
 
-export const LIVELLI: { value: Livello; label: string; descr: string }[] = [
-  { value: 'admin',    label: 'Admin',    descr: 'Gestione completa' },
-  { value: 'turnista', label: 'Turnista', descr: 'Vede i propri turni' },
-  { value: 'esterno',  label: 'Esterno',  descr: 'Ospite / sostituto' },
+export const LIVELLI: { value: Livello; label: string }[] = [
+  { value: 'admin',    label: 'Admin' },
+  { value: 'turnista', label: 'Turnista' },
+  { value: 'esterno',  label: 'Esterno' },
 ]
 
 // ─── Turnista (anagrafica + autorizzazione all'accesso) ─────────────
