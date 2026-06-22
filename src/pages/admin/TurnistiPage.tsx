@@ -1,0 +1,203 @@
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus, Trash2, Pencil, Save, X, Users, Shield, User, UserCog, Lock } from 'lucide-react'
+import { store } from '../../lib/store'
+import { ADMIN_EMAIL } from '../../lib/constants'
+import { LIVELLI } from '../../types'
+import { useConfirm } from '../../hooks/useConfirm'
+import { ConfirmModal } from '../../components/ConfirmModal'
+import type { Turnista, Livello } from '../../types'
+
+const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType }> = {
+  admin:    { bg: '#fef3c7', fg: '#92400e', Icon: UserCog },
+  turnista: { bg: '#dbeafe', fg: '#1e40af', Icon: User },
+  esterno:  { bg: '#e0e7ff', fg: '#3730a3', Icon: Shield },
+}
+
+function LivelloBadge({ livello }: { livello: Livello }) {
+  const { bg, fg, Icon } = BADGE[livello]
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-medium"
+      style={{ background: bg, color: fg }}>
+      <Icon size={10} /> {livello}
+    </span>
+  )
+}
+
+export function TurnistiPage() {
+  const qc = useQueryClient()
+  const { confirm, confirmState } = useConfirm()
+
+  const { data: turnisti = [], isLoading } = useQuery<Turnista[]>({
+    queryKey: ['turnisti'],
+    queryFn: () => store.getTurnisti(),
+  })
+
+  // Form "aggiungi"
+  const [nome, setNome]       = useState('')
+  const [email, setEmail]     = useState('')
+  const [livello, setLivello] = useState<Livello>('turnista')
+  const [errore, setErrore]   = useState('')
+  const [saving, setSaving]   = useState(false)
+
+  // Editing inline
+  const [editId, setEditId]       = useState<string | null>(null)
+  const [editNome, setEditNome]   = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editLiv, setEditLiv]     = useState<Livello>('turnista')
+
+  async function refetch() { await qc.invalidateQueries({ queryKey: ['turnisti'] }) }
+
+  async function aggiungi() {
+    if (!nome.trim())  { setErrore('Inserisci il nome.'); return }
+    if (!email.trim()) { setErrore("Inserisci l'email."); return }
+    setSaving(true); setErrore('')
+    try {
+      await store.addTurnista({ nome, email, livello })
+      setNome(''); setEmail(''); setLivello('turnista')
+      await refetch()
+    } catch (e) { setErrore((e as Error).message) }
+    finally { setSaving(false) }
+  }
+
+  function startEdit(t: Turnista) {
+    setEditId(t.id); setEditNome(t.nome); setEditEmail(t.email); setEditLiv(t.livello); setErrore('')
+  }
+  async function saveEdit() {
+    if (!editNome.trim() || !editEmail.trim()) { setErrore('Nome ed email obbligatori.'); return }
+    setSaving(true); setErrore('')
+    try {
+      await store.updateTurnista(editId!, { nome: editNome, email: editEmail, livello: editLiv })
+      setEditId(null); await refetch()
+    } catch (e) { setErrore((e as Error).message) }
+    finally { setSaving(false) }
+  }
+
+  async function elimina(t: Turnista) {
+    if (t.email.toLowerCase() === ADMIN_EMAIL) return
+    const ok = await confirm({
+      title:        `Rimuovi ${t.nome}`,
+      message:      `${t.nome} non potrà più accedere all'app. Sei sicuro?`,
+      confirmLabel: 'Rimuovi',
+      danger:       true,
+    })
+    if (!ok) return
+    await store.deleteTurnista(t.id)
+    await refetch()
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto p-6 space-y-6">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open}
+        onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>
+          <Users size={22} style={{ color: '#476540' }} /> Turnisti
+        </h1>
+        <p className="text-sm text-stone-600 mt-0.5">
+          Solo le persone in questo elenco possono accedere con il proprio account Google.
+        </p>
+      </div>
+
+      {errore && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errore}</div>
+      )}
+
+      {/* ── Aggiungi ── */}
+      <div className="card p-4 space-y-3">
+        <h2 className="font-semibold text-stone-700 text-sm">Aggiungi turnista</h2>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label text-xs">Nome e cognome *</label>
+            <input value={nome} onChange={e => setNome(e.target.value)}
+              placeholder="Mario Rossi" className="input text-sm"
+              onKeyDown={e => e.key === 'Enter' && aggiungi()} />
+          </div>
+          <div>
+            <label className="label text-xs">Email Google *</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} type="email"
+              placeholder="mario.rossi@gmail.com" className="input text-sm"
+              onKeyDown={e => e.key === 'Enter' && aggiungi()} />
+          </div>
+        </div>
+        <div className="flex items-end gap-3">
+          <div>
+            <label className="label text-xs">Livello</label>
+            <select value={livello} onChange={e => setLivello(e.target.value as Livello)} className="input text-sm w-56">
+              {LIVELLI.map(l => <option key={l.value} value={l.value}>{l.label} — {l.descr}</option>)}
+            </select>
+          </div>
+          <button onClick={aggiungi} disabled={saving} className="btn-primary text-sm">
+            <Plus size={15} /> Aggiungi
+          </button>
+        </div>
+      </div>
+
+      {/* ── Elenco ── */}
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-stone-50 border-b border-stone-200">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-stone-600">Nome</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-stone-600">Email</th>
+              <th className="px-3 py-2 text-center text-xs font-semibold text-stone-600 w-28">Livello</th>
+              <th className="px-3 py-2 w-20" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {isLoading && <tr><td colSpan={4} className="px-3 py-4 text-center text-stone-500">Caricamento…</td></tr>}
+
+            {turnisti.map(t => {
+              const isPerm = t.email.toLowerCase() === ADMIN_EMAIL
+
+              if (editId === t.id) return (
+                <tr key={t.id} className="bg-blue-50/40">
+                  <td className="px-2 py-1.5">
+                    <input value={editNome} onChange={e => setEditNome(e.target.value)} className="input py-0.5 text-xs w-full" autoFocus />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input value={editEmail} onChange={e => setEditEmail(e.target.value)} type="email" className="input py-0.5 text-xs w-full" disabled={isPerm} />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <select value={editLiv} onChange={e => setEditLiv(e.target.value as Livello)} className="input py-0.5 text-xs w-full" disabled={isPerm}>
+                      {LIVELLI.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="flex gap-1 justify-end">
+                      <button onClick={saveEdit} disabled={saving} className="btn-primary py-0.5 px-2 text-xs gap-1"><Save size={11} /> Salva</button>
+                      <button onClick={() => setEditId(null)} className="btn-secondary py-0.5 px-1.5 text-xs"><X size={11} /></button>
+                    </div>
+                  </td>
+                </tr>
+              )
+
+              return (
+                <tr key={t.id} className="hover:bg-stone-50 group">
+                  <td className="px-3 py-2 font-medium text-stone-800">{t.nome}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-gray-600">{t.email}</td>
+                  <td className="px-3 py-2 text-center"><LivelloBadge livello={t.livello} /></td>
+                  <td className="px-3 py-2">
+                    {isPerm ? (
+                      <span className="text-xs text-blue-300 flex items-center gap-1 justify-end"><Lock size={11} /> permanente</span>
+                    ) : (
+                      <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => startEdit(t)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica"><Pencil size={13} /></button>
+                        <button onClick={() => elimina(t)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Rimuovi"><Trash2 size={13} /></button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+
+            {turnisti.length === 0 && !isLoading && (
+              <tr><td colSpan={4} className="px-3 py-4 text-center text-stone-500 text-sm">Nessun turnista. Aggiungine uno qui sopra.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}

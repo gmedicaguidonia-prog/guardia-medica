@@ -1,0 +1,97 @@
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical } from 'lucide-react'
+import type { AuthUser, Livello } from '../types'
+
+interface Props {
+  user:        AuthUser
+  onSignOut:   () => void
+  isDev:       boolean
+  onDevSwitch: (livello: Livello) => void
+}
+
+export function NavBar({ user, onSignOut, isDev, onDevSwitch }: Props) {
+  const loc = useLocation()
+  const navigate = useNavigate()
+
+  const link = (to: string, label: string, Icon: React.ElementType) => {
+    const active = loc.pathname === to || loc.pathname.startsWith(to + '/')
+    return (
+      <button
+        onClick={() => navigate(to)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+        style={active ? { background: 'rgba(255,255,255,0.15)', color: '#fff' } : { color: '#9ab488' }}
+        onMouseEnter={e => { if (!active) e.currentTarget.style.color = '#fff' }}
+        onMouseLeave={e => { if (!active) e.currentTarget.style.color = '#9ab488' }}
+      >
+        <Icon size={16} />
+        <span className="hidden sm:inline">{label}</span>
+      </button>
+    )
+  }
+
+  return (
+    <nav className="text-white shadow-md" style={{ background: '#2b3c24' }}>
+      <div className="max-w-screen-xl mx-auto px-4 flex items-center gap-3 h-12">
+        {/* Brand */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Stethoscope size={18} style={{ color: '#9ab488' }} />
+          <span className="font-bold text-sm tracking-tight" style={{ color: '#e0e8d8' }}>
+            Guardia Medica
+          </span>
+        </div>
+
+        {/* Link */}
+        <div className="flex items-center gap-1 ml-1">
+          {link('/turni', 'I miei turni', CalendarDays)}
+          {user.livello === 'admin' && link('/admin', 'Admin', Settings)}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* DEV: switch rapido del ruolo per provare le viste */}
+        {isDev && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded"
+              style={{ background: '#fbbf24', color: '#1c2818' }}>
+              <FlaskConical size={11} /> DEV
+            </span>
+            <select
+              value={user.livello}
+              onChange={e => onDevSwitch(e.target.value as Livello)}
+              title="Modalità DEV: cambia ruolo per provare le viste"
+              className="text-xs rounded px-1.5 py-1 border-0 outline-none cursor-pointer"
+              style={{ background: '#456b3a', color: '#fff' }}
+            >
+              <option value="admin">admin</option>
+              <option value="turnista">turnista</option>
+              <option value="esterno">esterno</option>
+            </select>
+          </div>
+        )}
+
+        {/* Utente + logout */}
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="hidden lg:flex items-center gap-1.5 text-xs" style={{ color: '#9ab488' }}>
+            {user.nome || user.email}
+            {user.livello === 'admin' && (
+              <span className="text-[10px] font-bold px-1 rounded" style={{ background: '#9ab488', color: '#1c2818' }}>
+                ADMIN
+              </span>
+            )}
+          </span>
+          <button
+            onClick={onSignOut}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
+            style={{ color: '#9ab488' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#9ab488')}
+            title="Esci"
+          >
+            <LogOut size={18} />
+            <span className="hidden lg:inline">Esci</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+  )
+}

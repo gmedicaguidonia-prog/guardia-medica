@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+*.log
+
+# Credenziali OAuth (NON committare mai questi file)
+client_secret*.json
+credentials*.json
+*service-account*.json
+*.xlsm
+*.xlsx
+*.xls
+
+# MCP project-level config — può contenere PAT, va escluso
+.mcp.json
