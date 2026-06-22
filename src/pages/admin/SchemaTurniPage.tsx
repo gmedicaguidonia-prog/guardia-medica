@@ -133,7 +133,7 @@ export function SchemaTurniPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>
-            <CalendarClock size={22} style={{ color: '#476540' }} /> Progetta Schema Turni
+            <CalendarClock size={22} style={{ color: '#476540' }} /> Configurazione Turni
           </h1>
           <p className="text-sm text-stone-600 mt-0.5 max-w-xl">
             Definisci i turni della guardia medica: nome, orari, quanti turnisti servono e in quali

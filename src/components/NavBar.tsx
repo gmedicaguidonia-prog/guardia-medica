@@ -1,15 +1,17 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical } from 'lucide-react'
+import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw } from 'lucide-react'
 import type { AuthUser, Livello } from '../types'
 
 interface Props {
-  user:        AuthUser
-  onSignOut:   () => void
-  isDev:       boolean
-  onDevSwitch: (livello: Livello) => void
+  user:             AuthUser
+  onSignOut:        () => void
+  isDev:            boolean
+  onDevSwitch:      (livello: Livello) => void
+  updateAvailable?: boolean
+  onReload?:        () => void
 }
 
-export function NavBar({ user, onSignOut, isDev, onDevSwitch }: Props) {
+export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, onReload }: Props) {
   const loc = useLocation()
   const navigate = useNavigate()
 
@@ -45,6 +47,17 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch }: Props) {
           {link('/turni', 'I miei turni', CalendarDays)}
           {user.livello === 'admin' && link('/admin', 'Admin', Settings)}
         </div>
+
+        {/* Badge arancione "Aggiornamento disponibile" */}
+        {updateAvailable && onReload && (
+          <button onClick={onReload}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors shrink-0 animate-pulse"
+            style={{ background: '#d97706', color: '#fff' }}
+            title="È disponibile una nuova versione — clicca per ricaricare">
+            <RefreshCw size={12} className="animate-spin" style={{ animationDuration: '2.5s' }} />
+            <span className="hidden sm:inline">Aggiorna</span>
+          </button>
+        )}
 
         <div className="flex-1" />
 

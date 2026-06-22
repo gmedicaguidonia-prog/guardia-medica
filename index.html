@@ -30,6 +30,15 @@
         }
       }(window.location))
     </script>
+
+    <!-- Pulisce il parametro _r=… usato per il refresh "duro" dopo un aggiornamento -->
+    <script>
+      if (window.location.search.indexOf('_r=') !== -1 && window.history && window.history.replaceState) {
+        var _u = new URL(window.location.href);
+        _u.searchParams.delete('_r');
+        window.history.replaceState(null, '', _u.pathname + (_u.search || '') + _u.hash);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

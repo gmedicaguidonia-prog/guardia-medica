@@ -3,7 +3,7 @@ import { Users, CalendarClock } from 'lucide-react'
 
 const links = [
   { to: '/admin/turnisti', label: 'Turnisti',              Icon: Users },
-  { to: '/admin/schema',   label: 'Progetta Schema Turni', Icon: CalendarClock },
+  { to: '/admin/schema',   label: 'Configurazione Turni', Icon: CalendarClock },
 ]
 
 export function AdminLayout() {

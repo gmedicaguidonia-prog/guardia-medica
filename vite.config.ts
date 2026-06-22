@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { writeFileSync } from 'fs'
 
 // Nome del repo GitHub → diventa il path su GitHub Pages.
 // In dev serviamo da '/', in produzione (build) da '/<REPO>/'.
@@ -21,7 +22,17 @@ export default defineConfig(({ command }) => {
       __BUILD_DATE__:  JSON.stringify(buildDate),
     },
 
-    plugins: [react()],
+    plugins: [
+      react(),
+      // Scrive dist/version.json con il commit SHA del build: il client lo
+      // controlla ogni 30s (useVersionCheck) e mostra il badge/toast se cambia.
+      {
+        name: 'version-json',
+        writeBundle() {
+          writeFileSync('dist/version.json', JSON.stringify({ v: buildSha }))
+        },
+      },
+    ],
 
     build: {
       outDir: 'dist',

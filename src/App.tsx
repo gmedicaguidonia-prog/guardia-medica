@@ -8,6 +8,8 @@ import { PublicTurniPage } from './pages/PublicTurniPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { TurnistiPage } from './pages/admin/TurnistiPage'
 import { SchemaTurniPage } from './pages/admin/SchemaTurniPage'
+import { useVersionCheck } from './hooks/useVersionCheck'
+import { UpdateToast } from './components/UpdateToast'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,10 +31,12 @@ function Spinner() {
 
 function AppRoutes() {
   const { user, loading, signInWithGoogle, signOut, devLogin, isDev } = useAuth()
+  const { updateAvailable, applyUpdate } = useVersionCheck()
 
   return (
     <div className="min-h-screen flex flex-col">
-      {user && <NavBar user={user} onSignOut={signOut} isDev={isDev} onDevSwitch={devLogin} />}
+      {user && <NavBar user={user} onSignOut={signOut} isDev={isDev} onDevSwitch={devLogin}
+        updateAvailable={updateAvailable} onReload={applyUpdate} />}
 
       <Routes>
         <Route path="/login"
@@ -61,6 +65,9 @@ function AppRoutes() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* Toast centrato: nuova versione disponibile (badge anche nella navbar) */}
+      {updateAvailable && <UpdateToast onReload={applyUpdate} />}
     </div>
   )
 }
