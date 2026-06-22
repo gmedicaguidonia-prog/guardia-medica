@@ -74,6 +74,7 @@ export function RegoleTurniPage() {
   const touchActive = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
   const [warn, setWarn] = useState<string | null>(null)
   const warnTimer = useRef<number | null>(null)
   function showWarn(msg: string) { setWarn(msg); if (warnTimer.current) clearTimeout(warnTimer.current); warnTimer.current = window.setTimeout(() => setWarn(null), 3500) }
@@ -157,11 +158,12 @@ export function RegoleTurniPage() {
 
   // Badge della palette
   const PaletteBadge = (t: Turnista) => (
-    <div key={t.id} draggable
-      onDragStart={e => { e.dataTransfer.effectAllowed = 'copy'; dragSource.current = t.id }}
-      onTouchStart={() => { dragSource.current = t.id; touchActive.current = true }}
-      className="rounded-md px-2 py-1 text-xs font-medium cursor-grab active:cursor-grabbing select-none shadow-sm border border-white/60 truncate"
-      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg }}
+    <div key={t.id} draggable={true}
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
+      onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
+      onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
+      className="rounded-md px-2 py-1 text-xs font-medium select-none shadow-sm border border-white/60 truncate transition-opacity"
+      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
       title={`Trascina ${t.nome} in una cella`}>
       {t.nome}
     </div>
@@ -178,7 +180,7 @@ export function RegoleTurniPage() {
       <div ref={containerRef} className="flex gap-3 items-start"
         onTouchEnd={e => {
           if (!touchActive.current) return
-          touchActive.current = false; setOverKey(null)
+          touchActive.current = false; setOverKey(null); setDraggingId(null)
           const t = e.changedTouches[0]
           const td = (document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null)?.closest('[data-giorno][data-turno]') as HTMLElement | null
           if (td?.dataset.giorno && td.dataset.turno) { const turno = schema.find(s => s.id === td!.dataset.turno); if (turno) handleDrop(+td.dataset.giorno, turno) }
@@ -229,7 +231,11 @@ export function RegoleTurniPage() {
                         onDragOver={e => { e.preventDefault(); setOverKey(key) }}
                         onDragLeave={() => setOverKey(k => (k === key ? null : k))}
                         onDrop={e => { e.preventDefault(); handleDrop(g.num, c) }}
-                        style={{ border: '1px solid #e5e7eb', padding: '8px 8px', verticalAlign: 'top', minWidth: 110, background: overKey === key ? '#e8f0e0' : '#fff', outline: overKey === key ? '2px solid #9ab488' : undefined, outlineOffset: '-2px' }}>
+                        style={{ padding: '8px', verticalAlign: 'top', minWidth: 110,
+                          border: overKey === key ? '2px dashed #2e7d32' : '1px solid #e5e7eb',
+                          background: overKey === key ? '#eaf6ea' : '#fff',
+                          boxShadow: overKey === key ? 'inset 0 0 0 2px rgba(46,125,50,0.25)' : undefined,
+                          transition: 'background 0.1s' }}>
                         <div className="flex flex-col gap-2 items-start">
                           {slots.map((tid, slot) => tid ? (
                             <span key={slot} className="relative rounded px-2 py-0.5 text-[11px] font-medium shadow-sm" style={{ background: coloreTurnista(tid).bg, color: coloreTurnista(tid).fg }}>
