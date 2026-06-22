@@ -110,6 +110,7 @@ export function GestioneTurniPage() {
   function cambiaMese(delta: number) {
     if (dirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
     if (dirty) discard()
+    setMostraReperibile(false)   // il reperibile è per-mese: va riattivato ogni mese
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
     setMese(m); setAnno(a)
