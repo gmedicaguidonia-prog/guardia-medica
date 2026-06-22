@@ -1,5 +1,6 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { Users, CalendarClock, CalendarDays } from 'lucide-react'
+import type { AuthUser } from '../../types'
 
 const links = [
   { to: '/admin/turni',    label: 'Turni del Mese',        Icon: CalendarDays },
@@ -7,7 +8,7 @@ const links = [
   { to: '/admin/turnisti', label: 'Turnisti',              Icon: Users },
 ]
 
-export function AdminLayout() {
+export function AdminLayout({ user }: { user: AuthUser | null }) {
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -39,7 +40,7 @@ export function AdminLayout() {
 
       {/* Contenuto */}
       <main className="flex-1 overflow-auto" style={{ background: '#f4f1ea' }}>
-        <Outlet />
+        <Outlet context={{ user }} />
       </main>
     </div>
   )

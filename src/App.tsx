@@ -49,7 +49,7 @@ function AppRoutes() {
 
         {/* Sezione admin */}
         <Route path="/admin"
-          element={<ProtectedRoute user={user} loading={loading} requireAdmin><AdminLayout /></ProtectedRoute>}>
+          element={<ProtectedRoute user={user} loading={loading} requireAdmin><AdminLayout user={user} /></ProtectedRoute>}>
           <Route index element={<Navigate to="/admin/turni" replace />} />
           <Route path="turni"    element={<GestioneTurniPage />} />
           <Route path="turnisti" element={<TurnistiPage />} />

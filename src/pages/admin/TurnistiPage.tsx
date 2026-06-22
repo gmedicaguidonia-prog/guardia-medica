@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Pencil, Save, X, Users, Shield, User, UserCog, Lock } from 'lucide-react'
 import { store } from '../../lib/store'
@@ -6,7 +7,10 @@ import { ADMIN_EMAIL } from '../../lib/constants'
 import { LIVELLI } from '../../types'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { Turnista, Livello } from '../../types'
+import type { Turnista, Livello, AuthUser } from '../../types'
+
+// Potere decrescente: admin → turnista → esterno
+const RANK: Record<Livello, number> = { admin: 0, turnista: 1, esterno: 2 }
 
 const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType }> = {
   admin:    { bg: '#fef3c7', fg: '#92400e', Icon: UserCog },
@@ -27,11 +31,23 @@ function LivelloBadge({ livello }: { livello: Livello }) {
 export function TurnistiPage() {
   const qc = useQueryClient()
   const { confirm, confirmState } = useConfirm()
+  const { user } = useOutletContext<{ user: AuthUser | null }>()
+  const ioSonoPerpetuo = (user?.email ?? '').toLowerCase() === ADMIN_EMAIL
 
   const { data: turnisti = [], isLoading } = useQuery<Turnista[]>({
     queryKey: ['turnisti'],
     queryFn: () => store.getTurnisti(),
   })
+
+  // Ordine: admin perpetuo per primo, poi per livello (admin→turnista→esterno),
+  // infine alfabetico per nome.
+  const turnistiOrdinati = useMemo(() => [...turnisti].sort((a, b) => {
+    const ap = a.email.toLowerCase() === ADMIN_EMAIL
+    const bp = b.email.toLowerCase() === ADMIN_EMAIL
+    if (ap !== bp) return ap ? -1 : 1
+    if (a.livello !== b.livello) return RANK[a.livello] - RANK[b.livello]
+    return a.nome.localeCompare(b.nome, 'it')
+  }), [turnisti])
 
   // Form "aggiungi"
   const [nome, setNome]       = useState('')
@@ -148,7 +164,7 @@ export function TurnistiPage() {
           <tbody className="divide-y divide-gray-100">
             {isLoading && <tr><td colSpan={4} className="px-3 py-4 text-center text-stone-500">Caricamento…</td></tr>}
 
-            {turnisti.map(t => {
+            {turnistiOrdinati.map(t => {
               const isPerm = t.email.toLowerCase() === ADMIN_EMAIL
 
               if (editId === t.id) return (
@@ -180,7 +196,13 @@ export function TurnistiPage() {
                   <td className="px-3 py-2 text-center"><LivelloBadge livello={t.livello} /></td>
                   <td className="px-3 py-2">
                     {isPerm ? (
-                      <span className="text-xs text-blue-300 flex items-center gap-1 justify-end"><Lock size={11} /> permanente</span>
+                      <div className="flex gap-2 items-center justify-end">
+                        <span className="text-xs flex items-center gap-1" style={{ color: '#2563eb' }}
+                          title="Admin perpetuo: non eliminabile, modificabile solo da te"><Lock size={11} /> perpetuo</span>
+                        {ioSonoPerpetuo && (
+                          <button onClick={() => startEdit(t)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica il tuo nominativo"><Pencil size={13} /></button>
+                        )}
+                      </div>
                     ) : (
                       <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => startEdit(t)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica"><Pencil size={13} /></button>
