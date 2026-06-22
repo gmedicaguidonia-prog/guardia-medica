@@ -15,7 +15,7 @@ const RANK: Record<Livello, number> = { admin: 0, turnista: 1, esterno: 2 }
 const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType }> = {
   admin:    { bg: '#fef3c7', fg: '#92400e', Icon: UserCog },
   turnista: { bg: '#dbeafe', fg: '#1e40af', Icon: User },
-  esterno:  { bg: '#e0e7ff', fg: '#3730a3', Icon: Shield },
+  esterno:  { bg: '#dcfce7', fg: '#166534', Icon: Shield },
 }
 
 function LivelloBadge({ livello }: { livello: Livello }) {
