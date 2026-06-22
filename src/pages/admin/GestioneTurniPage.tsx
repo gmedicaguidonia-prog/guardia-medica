@@ -29,7 +29,7 @@ export function GestioneTurniPage() {
   const oggi = new Date()
   const [anno, setAnno] = useState(oggi.getFullYear())
   const [mese, setMese] = useState(oggi.getMonth() + 1)
-  const [mostraReperibile, setMostraReperibile] = useState(false)
+  const [mostraRepMesi, setMostraRepMesi] = useState<Set<string>>(new Set())
   const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
 
   const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', meseKey], queryFn: () => store.getVersioneMese(meseKey) })
@@ -67,7 +67,7 @@ export function GestioneTurniPage() {
   }, [giorni, schema])
 
   const hasRep = useMemo(() => [...local.keys()].some(k => k.endsWith(`|${REP_SLOT}`)), [local])
-  const showRep = mostraReperibile || hasRep
+  const showRep = mostraRepMesi.has(meseKey) || hasRep
 
   // ── drag&drop ──
   const dragSource = useRef<string | null>(null)
@@ -110,14 +110,13 @@ export function GestioneTurniPage() {
   function cambiaMese(delta: number) {
     if (dirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
     if (dirty) discard()
-    setMostraReperibile(false)   // il reperibile è per-mese: va riattivato ogni mese
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
     setMese(m); setAnno(a)
   }
   async function aggiungiReperibile() {
     const ok = await confirm({ title: 'Aggiungi reperibile', message: 'Aggiungere la colonna “Reperibile” per assegnare un reperibile a ogni turno?', confirmLabel: 'Aggiungi' })
-    if (ok) setMostraReperibile(true)
+    if (ok) setMostraRepMesi(prev => { const n = new Set(prev); n.add(meseKey); return n })
   }
   async function salva() {
     setSaving(true)
