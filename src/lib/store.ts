@@ -176,6 +176,10 @@ const supaStore = {
     const { error } = await supabase.from('regole_versioni').delete().eq('id', id)
     if (error) throw error
   },
+  async setOreMinSettimana(id: string, ore: number | null): Promise<void> {
+    const { error } = await supabase.from('regole_versioni').update({ ore_min_settimana: ore }).eq('id', id)
+    if (error) throw error
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -283,7 +287,7 @@ const localStore = {
     return pickVersione(read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []), mese)
   },
   async creaRegoleVersione(mese: string): Promise<RegolaVersione> {
-    const v: RegolaVersione = { id: uid(), valido_da: mese, valido_fino: null, created_at: new Date().toISOString() }
+    const v: RegolaVersione = { id: uid(), valido_da: mese, valido_fino: null, ore_min_settimana: null, created_at: new Date().toISOString() }
     writeLs(LS_REGOLE_VERSIONI, [...read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []), v])
     return v
   },
@@ -310,6 +314,9 @@ const localStore = {
   async deleteRegoleVersione(id: string): Promise<void> {
     writeLs(LS_REGOLE_VERSIONI, read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).filter(v => v.id !== id))
     writeLs(LS_REGOLE, read<RegolaTurno[]>(LS_REGOLE, []).filter(r => r.regola_versione_id !== id))
+  },
+  async setOreMinSettimana(id: string, ore: number | null): Promise<void> {
+    writeLs(LS_REGOLE_VERSIONI, read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, ore_min_settimana: ore } : v))
   },
 }
 

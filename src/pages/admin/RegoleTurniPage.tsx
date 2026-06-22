@@ -71,6 +71,7 @@ export function RegoleTurniPage() {
     window.addEventListener('beforeunload', h)
     return () => window.removeEventListener('beforeunload', h)
   }, [dirty])
+  useEffect(() => { setOreMin(regoleVer?.ore_min_settimana != null ? String(regoleVer.ore_min_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_min_settimana])
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti])
@@ -84,6 +85,7 @@ export function RegoleTurniPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [oreMin, setOreMin] = useState('')
   const [warn, setWarn] = useState<string | null>(null)
   const warnTimer = useRef<number | null>(null)
   function showWarn(msg: string) { setWarn(msg); if (warnTimer.current) clearTimeout(warnTimer.current); warnTimer.current = window.setTimeout(() => setWarn(null), 3500) }
@@ -129,6 +131,13 @@ export function RegoleTurniPage() {
     if (!regoleVer) return
     if (!window.confirm(`Cancellare le regole valide da ${meseLabel(regoleVer.valido_da)}? Non è reversibile.`)) return
     await store.deleteRegoleVersione(regoleVer.id)
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+  }
+  async function salvaOreMin() {
+    if (!regoleVer) return
+    const n = oreMin.trim() === '' ? null : Math.max(0, parseInt(oreMin) || 0)
+    if (n === (regoleVer.ore_min_settimana ?? null)) return
+    await store.setOreMinSettimana(regoleVer.id, n)
     await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
   }
   async function salva() {
@@ -272,6 +281,15 @@ export function RegoleTurniPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Impostazione: ore minime settimanali per turnista */}
+      <div className="card p-3 flex flex-wrap items-center gap-2">
+        <label className="text-sm font-medium" htmlFor="ore-min" style={{ color: '#3a3d30' }}>Numero di ore minimo a settimana per un turnista:</label>
+        <input id="ore-min" type="number" min={0} value={oreMin} onChange={e => setOreMin(e.target.value)} onBlur={salvaOreMin}
+          className="input text-sm w-24" placeholder="es. 36" />
+        <span className="text-sm text-stone-500">ore</span>
+        <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
       </div>
 
       {warn && (

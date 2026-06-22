@@ -78,6 +78,7 @@ export interface RegolaVersione {
   id: string
   valido_da: string
   valido_fino: string | null
+  ore_min_settimana: number | null
   created_at: string
 }
 export interface RegolaTurno {
