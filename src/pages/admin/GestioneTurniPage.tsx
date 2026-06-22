@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle } from 'lucide-rea
 import { store } from '../../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
-import type { TurnoSchema, Turnista, Turno } from '../../types'
+import type { TurnoSchema, Turnista, Turno, ConfigVersione } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']  // indice = getDay()
@@ -39,7 +39,9 @@ export function GestioneTurniPage() {
   const [anno, setAnno] = useState(oggi.getFullYear())
   const [mese, setMese] = useState(oggi.getMonth() + 1)
 
-  const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema'],    queryFn: () => store.getSchema() })
+  const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
+  const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', meseKey], queryFn: () => store.getVersioneMese(meseKey) })
+  const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: turnisti = [] } = useQuery<Turnista[]>({   queryKey: ['turnisti'],  queryFn: () => store.getTurnisti() })
   const { data: turni = [] }    = useQuery<Turno[]>({      queryKey: ['turni', anno, mese], queryFn: () => store.getTurniMese(anno, mese) })
 
@@ -68,14 +70,22 @@ export function GestioneTurniPage() {
   const prev = () => cambiaMese(-1)
   const next = () => cambiaMese(1)
 
-  if (schema.length === 0) {
+  if (loadingVer) {
+    return (
+      <div className="max-w-3xl mx-auto p-6">
+        <Intestazione anno={anno} mese={mese} onPrev={prev} onNext={next} />
+        <p className="text-sm text-stone-500 mt-4">Caricamento…</p>
+      </div>
+    )
+  }
+  if (!versione || schema.length === 0) {
     return (
       <div className="max-w-3xl mx-auto p-6">
         <Intestazione anno={anno} mese={mese} onPrev={prev} onNext={next} />
         <div className="card p-5 flex items-start gap-3 mt-4">
           <AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
           <p className="text-sm text-stone-600">
-            Nessun turno definito. Vai in <strong>Configurazione Turni</strong> e aggiungi almeno un turno.
+            Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>. Impostala prima in <strong>Configurazione Turni</strong> (passo ①).
           </p>
         </div>
       </div>

@@ -3,11 +3,11 @@ import { Home, Users, CalendarClock, CalendarDays } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 
-const links = [
-  { to: '/admin',          label: 'Home',                  Icon: Home },
-  { to: '/admin/turni',    label: 'Turni del Mese',        Icon: CalendarDays },
-  { to: '/admin/schema',   label: 'Configurazione Turni',  Icon: CalendarClock },
-  { to: '/admin/turnisti', label: 'Turnisti',              Icon: Users },
+const links: { to: string; label: string; Icon: typeof Home; num: number | null }[] = [
+  { to: '/admin',          label: 'Home',                  Icon: Home,          num: null },
+  { to: '/admin/turnisti', label: 'Turnisti',              Icon: Users,         num: null },
+  { to: '/admin/schema',   label: 'Configurazione Turni',  Icon: CalendarClock, num: 1 },
+  { to: '/admin/turni',    label: 'Turni del Mese',        Icon: CalendarDays,  num: 2 },
 ]
 
 export function AdminLayout({ user }: { user: AuthUser | null }) {
@@ -29,7 +29,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
         <p className="px-4 text-[10px] uppercase tracking-widest mb-3 font-semibold" style={{ color: '#577a45' }}>
           Pannello Admin
         </p>
-        {links.map(({ to, label, Icon }) => {
+        {links.map(({ to, label, Icon, num }) => {
           const isActive = location.pathname === to || (to !== '/admin' && location.pathname.startsWith(to + '/'))
           return (
             <button
@@ -40,6 +40,10 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
               onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#fff' }}
               onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#9ab488' }}
             >
+              {num != null
+                ? <span className="shrink-0 inline-flex items-center justify-center"
+                    style={{ width: 18, height: 18, borderRadius: '50%', border: '1.5px solid currentColor', fontSize: 10, fontWeight: 700 }}>{num}</span>
+                : <span className="shrink-0" style={{ width: 18 }} />}
               <Icon size={15} />
               {label}
             </button>

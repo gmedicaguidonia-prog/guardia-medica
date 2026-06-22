@@ -14,9 +14,12 @@ function ricorrenzaLabel(t: TurnoSchema): string {
 }
 
 export function PublicTurniPage() {
+  const meseKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  const { data: versione } = useQuery({ queryKey: ['versione', meseKey], queryFn: () => store.getVersioneMese(meseKey) })
   const { data: schema = [] } = useQuery<TurnoSchema[]>({
-    queryKey: ['schema'],
-    queryFn: () => store.getSchema(),
+    queryKey: ['schema', versione?.id],
+    queryFn: () => store.getSchemaVersione(versione!.id),
+    enabled: !!versione,
   })
 
   return (

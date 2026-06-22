@@ -42,8 +42,17 @@ export const RICORRENZE: { value: Ricorrenza; label: string }[] = [
 /** Un tipo di turno nello schema: es. "Notte" 20:00–08:00, 1 turnista,
  *  tutti i giorni. ora_fine ≤ ora_inizio ⇒ il turno attraversa la
  *  mezzanotte (termina il giorno successivo). */
+/** Versione di configurazione turni, valida per un intervallo di mesi. */
+export interface ConfigVersione {
+  id: string
+  valido_da: string          // primo mese valido 'YYYY-MM'
+  valido_fino: string | null // ultimo mese valido 'YYYY-MM', null = per sempre
+  created_at: string
+}
+
 export interface TurnoSchema {
   id: string
+  versione_id: string     // versione di configurazione a cui appartiene
   nome: string            // "Giorno", "Notte", …
   ora_inizio: string      // "HH:MM"
   ora_fine: string        // "HH:MM"
