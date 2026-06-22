@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus } from 'lucide-react'
 import { store } from '../../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
@@ -22,6 +22,15 @@ const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
 const thStyle: CSSProperties = { background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: 2 }
 const tdBase: CSSProperties = { padding: '6px 10px', border: '1px solid #e5e7eb', verticalAlign: 'top' }
 
+/** Durata in ore di un turno (gestisce l'attraversamento della mezzanotte). */
+function oreTurno(inizio: string, fine: string): number {
+  const [h1, m1] = inizio.split(':').map(Number)
+  const [h2, m2] = fine.split(':').map(Number)
+  let min = (h2 * 60 + m2) - (h1 * 60 + m1)
+  if (min <= 0) min += 24 * 60
+  return min / 60
+}
+
 export function GestioneTurniPage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
@@ -36,6 +45,7 @@ export function GestioneTurniPage() {
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti'], queryFn: () => store.getTurnisti() })
   const { data: turni = [] }    = useQuery<Turno[]>({ queryKey: ['turni', anno, mese], queryFn: () => store.getTurniMese(anno, mese) })
+  const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', meseKey], queryFn: () => store.getTurnistiMese(meseKey) })
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -44,6 +54,7 @@ export function GestioneTurniPage() {
   }, [turni])
   const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap)
   const [saving, setSaving] = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
   useEffect(() => {
@@ -53,10 +64,23 @@ export function GestioneTurniPage() {
   }, [dirty])
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
-  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti])
-  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti])
+  const importati = useMemo(() => new Set(turnistiMese), [turnistiMese])
+  // palette = solo i turnisti importati per questo mese
+  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno' && importati.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti, importati])
+  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno' && importati.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti, importati])
+  // candidati da importare (non ancora nella palette)
+  const importTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno' && !importati.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti, importati])
+  const importEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno' && !importati.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti, importati])
   const nomeTurnista = (id: string) => tById.get(id)?.nome ?? '—'
   const coloreTurnista = (id: string) => ROLE_COLOR[tById.get(id)?.livello ?? 'turnista']
+  // Ore assegnate per turnista nel mese (esclude il reperibile = slot -1)
+  const durataById = useMemo(() => { const m = new Map<string, number>(); schema.forEach(c => m.set(c.id, oreTurno(c.ora_inizio, c.ora_fine))); return m }, [schema])
+  const oreByTurnista = useMemo(() => {
+    const m = new Map<string, number>()
+    local.forEach((tid, key) => { const p = key.split('|'); if (+p[2] >= 0) m.set(tid, (m.get(tid) ?? 0) + (durataById.get(p[1]) ?? 0)) })
+    return m
+  }, [local, durataById])
+  const fmtOre = (x: number) => (Number.isInteger(x) ? `${x}` : x.toFixed(1))
 
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
   // Righe = ogni (giorno, turno applicabile)
@@ -118,6 +142,8 @@ export function GestioneTurniPage() {
     const ok = await confirm({ title: 'Aggiungi reperibile', message: 'Aggiungere la colonna “Reperibile” per assegnare un reperibile a ogni turno?', confirmLabel: 'Aggiungi' })
     if (ok) setMostraRepMesi(prev => { const n = new Set(prev); n.add(meseKey); return n })
   }
+  async function importaTurnista(id: string) { await store.addTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', meseKey] }) }
+  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', meseKey] }) }
   async function salva() {
     setSaving(true)
     try {
@@ -150,15 +176,26 @@ export function GestioneTurniPage() {
     )
   }
 
-  const PaletteBadge = (t: Turnista) => (
-    <div key={t.id} draggable={true}
-      onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
-      onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
-      onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
-      className="rounded-md px-2 py-1 text-xs font-medium select-none shadow-sm border border-white/60 truncate transition-opacity"
-      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
-      title={`Trascina ${t.nome}`}>{t.nome}</div>
-  )
+  const PaletteBadge = (t: Turnista) => {
+    const ore = oreByTurnista.get(t.id) ?? 0
+    return (
+      <div key={t.id} className="relative">
+        <div draggable={true}
+          onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
+          onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
+          onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
+          className="rounded-md px-2 py-1 pr-6 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity flex items-center gap-1"
+          style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
+          title={`Trascina ${t.nome} — ${fmtOre(ore)} ore assegnate`}>
+          <span className="truncate flex-1">{t.nome}</span>
+          <span className="shrink-0 font-bold text-[10px] rounded px-1" style={{ background: 'rgba(0,0,0,0.10)' }}>{fmtOre(ore)}h</span>
+        </div>
+        <button onClick={() => rimuoviDalMese(t.id)} title="Togli dal mese"
+          className="absolute top-1/2 -translate-y-1/2 right-1 opacity-60 hover:opacity-100 transition-opacity"
+          style={{ color: ROLE_COLOR[t.livello].fg }}><X size={11} strokeWidth={3} /></button>
+      </div>
+    )
+  }
   const Chip = (tid: string, onX: () => void) => (
     <span className="relative rounded px-2 py-0.5 text-[11px] font-medium shadow-sm" style={{ background: coloreTurnista(tid).bg, color: coloreTurnista(tid).fg }}>
       {nomeTurnista(tid)}
@@ -175,10 +212,36 @@ export function GestioneTurniPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+
+      {/* Modal: importa turnisti per il mese */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowImport(false)}>
+          <div className="card w-full max-w-md p-5 max-h-[80vh] overflow-auto" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Importa turnisti · {MESI[mese - 1]} {anno}</h3>
+              <button onClick={() => setShowImport(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-stone-500 mb-3">Clicca un turnista per aggiungerlo alla palette del mese (chi farà le rotazioni).</p>
+            {[{ titolo: 'Turnisti', col: '#476540', lista: importTurnisti }, { titolo: 'Esterni', col: '#166534', lista: importEsterni }].map(g => (
+              <div key={g.titolo} className="mb-3">
+                <h4 className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: g.col }}>{g.titolo}</h4>
+                <div className="flex flex-wrap gap-2">
+                  {g.lista.length ? g.lista.map(t => (
+                    <button key={t.id} onClick={() => importaTurnista(t.id)} className="rounded-md px-2 py-1 text-xs font-medium shadow-sm border border-white/60 hover:scale-105 transition-transform"
+                      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg }}>{t.nome} <span className="font-bold opacity-60">＋</span></button>
+                  )) : <span className="text-xs text-stone-400">tutti già nella palette</span>}
+                </div>
+              </div>
+            ))}
+            <div className="flex justify-end mt-2"><button onClick={() => setShowImport(false)} className="btn-primary text-sm py-1.5 px-3">Fatto</button></div>
+          </div>
+        </div>
+      )}
       {Header}
 
       {/* Barra azioni / salvataggio */}
       <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setShowImport(true)} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">

@@ -180,6 +180,19 @@ const supaStore = {
     const { error } = await supabase.from('regole_versioni').update({ ore_min_settimana: ore }).eq('id', id)
     if (error) throw error
   },
+  async getTurnistiMese(mese: string): Promise<string[]> {
+    const { data, error } = await supabase.from('turnisti_mese').select('turnista_id').eq('mese', mese)
+    if (error) throw error
+    return (data ?? []).map(r => r.turnista_id as string)
+  },
+  async addTurnistaMese(mese: string, turnistaId: string): Promise<void> {
+    const { error } = await supabase.from('turnisti_mese').upsert({ mese, turnista_id: turnistaId }, { onConflict: 'mese,turnista_id' })
+    if (error) throw error
+  },
+  async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
+    const { error } = await supabase.from('turnisti_mese').delete().match({ mese, turnista_id: turnistaId })
+    if (error) throw error
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -191,6 +204,7 @@ const LS_VERSIONI         = 'gm_versioni'
 const LS_REGOLE_VERSIONI  = 'gm_regole_versioni'
 const LS_REGOLE           = 'gm_regole'
 const LS_TURNI            = 'gm_turni'
+const LS_TURNISTI_MESE    = 'gm_turnisti_mese'
 const LS_SEEDED           = 'gm_seeded_v2'
 
 function uid(): string { try { return crypto.randomUUID() } catch { return 'id-' + Math.random().toString(36).slice(2) } }
@@ -317,6 +331,16 @@ const localStore = {
   },
   async setOreMinSettimana(id: string, ore: number | null): Promise<void> {
     writeLs(LS_REGOLE_VERSIONI, read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, ore_min_settimana: ore } : v))
+  },
+  async getTurnistiMese(mese: string): Promise<string[]> {
+    return read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => x.mese === mese).map(x => x.turnista_id)
+  },
+  async addTurnistaMese(mese: string, turnistaId: string): Promise<void> {
+    const l = read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, [])
+    if (!l.some(x => x.mese === mese && x.turnista_id === turnistaId)) { l.push({ mese, turnista_id: turnistaId }); writeLs(LS_TURNISTI_MESE, l) }
+  },
+  async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
+    writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.mese === mese && x.turnista_id === turnistaId)))
   },
 }
 
