@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, Check, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, AlertTriangle } from 'lucide-react'
 import { store } from '../../lib/store'
 import { RICORRENZE } from '../../types'
 import { GIORNI_SETTIMANA } from '../../lib/constants'
@@ -70,10 +70,12 @@ function TurnoCard({ turno, onDelete, onDirty }: {
         <input value={form.nome} onChange={e => patch({ nome: e.target.value })}
           placeholder="Nome del turno (es. Notte)" className="input text-sm font-semibold flex-1" />
         <button onClick={salva} disabled={saving || !dirty}
-          className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:cursor-default"
-          style={dirty ? { background: '#d97706', color: '#fff' } : { background: '#e7efe1', color: '#5a7a4a' }}
-          title={dirty ? 'Salva le modifiche' : 'Tutto salvato'}>
-          {saving ? <>Salvo…</> : dirty ? <><Save size={13} /> Salva</> : <><Check size={13} /> Salvato</>}
+          className="shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border transition-colors disabled:cursor-default"
+          style={dirty
+            ? { background: '#2e7d32', color: '#fff', borderColor: '#27692b' }
+            : { background: '#f3f4f6', color: '#9ca3af', borderColor: '#e5e7eb' }}
+          title={dirty ? 'Salva le modifiche' : 'Niente da salvare'}>
+          {saving ? <span className="text-[11px] font-bold">…</span> : <Save size={16} />}
         </button>
         <button onClick={onDelete}
           className="p-2 rounded text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"

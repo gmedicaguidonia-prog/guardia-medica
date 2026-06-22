@@ -1,9 +1,10 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Users, CalendarClock, CalendarDays } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 
 const links = [
+  { to: '/admin',          label: 'Home',                  Icon: Home },
   { to: '/admin/turni',    label: 'Turni del Mese',        Icon: CalendarDays },
   { to: '/admin/schema',   label: 'Configurazione Turni',  Icon: CalendarClock },
   { to: '/admin/turnisti', label: 'Turnisti',              Icon: Users },
@@ -29,7 +30,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
           Pannello Admin
         </p>
         {links.map(({ to, label, Icon }) => {
-          const isActive = location.pathname === to || location.pathname.startsWith(to + '/')
+          const isActive = location.pathname === to || (to !== '/admin' && location.pathname.startsWith(to + '/'))
           return (
             <button
               key={to}
