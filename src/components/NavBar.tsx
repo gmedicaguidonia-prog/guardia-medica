@@ -103,6 +103,13 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
             <LogOut size={18} />
             <span className="hidden lg:inline">Esci</span>
           </button>
+
+          {/* Versione build (commit SHA + data) */}
+          <span className="hidden lg:block text-[10px] font-mono shrink-0"
+            style={{ color: '#c0d0b0' }}
+            title={`Commit ${__APP_VERSION__} — build del ${__BUILD_DATE__}`}>
+            v{__APP_VERSION__} · {__BUILD_DATE__}
+          </span>
         </div>
       </div>
     </nav>
