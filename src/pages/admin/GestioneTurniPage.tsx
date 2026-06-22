@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check } from 'lucide-react'
 import { store } from '../../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
@@ -296,12 +296,20 @@ export function GestioneTurniPage() {
                 const kT = `${ds}|${turno.id}|turnisti`, kR = `${ds}|${turno.id}|reperibile`
                 const slots = turnistiSlots(ds, turno)
                 const rep = local.get(`${ds}|${turno.id}|${REP_SLOT}`) ?? null
+                const assegnati = slots.filter(Boolean).length
+                const pieno = turno.n_turnisti > 0 && assegnati >= turno.n_turnisti
                 return (
                   <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
                     <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
-                      <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
-                      <span style={{ color: '#475569' }}> · {turno.nome || 'Turno'}</span>
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
+                        <span style={{ color: '#475569' }}>· {turno.nome || 'Turno'}</span>
+                        <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={pieno ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{assegnati}/{turno.n_turnisti}</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: '#94a3b8' }} className="flex items-center gap-1.5">
+                        <span>{turno.ora_inizio}–{turno.ora_fine}</span>
+                        {pieno && <span className="inline-flex items-center gap-0.5 font-bold" style={{ color: '#166534' }}><Check size={10} strokeWidth={3} /> Turno riempito</span>}
+                      </div>
                     </td>
                     <td data-data={ds} data-turno={turno.id} data-tipo="turnisti"
                       onDragOver={e => { e.preventDefault(); setOverKey(kT) }} onDragLeave={() => setOverKey(k => k === kT ? null : k)} onDrop={e => { e.preventDefault(); handleDrop(ds, turno, 'turnisti') }}
