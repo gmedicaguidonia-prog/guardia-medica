@@ -163,6 +163,19 @@ const supaStore = {
       if (error) throw error
     }
   },
+  async deleteVersione(id: string): Promise<void> {
+    const { error } = await supabase.from('schema_versioni').delete().eq('id', id)
+    if (error) throw error
+  },
+  async getRegoleVersioni(): Promise<RegolaVersione[]> {
+    const { data, error } = await supabase.from('regole_versioni').select('*').order('valido_da')
+    if (error) throw error
+    return (data ?? []) as RegolaVersione[]
+  },
+  async deleteRegoleVersione(id: string): Promise<void> {
+    const { error } = await supabase.from('regole_versioni').delete().eq('id', id)
+    if (error) throw error
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -285,6 +298,18 @@ const localStore = {
     const list = read<RegolaTurno[]>(LS_REGOLE, []).filter(r => !(r.regola_versione_id === regoleVersioneId && r.giorno_settimana === giorno && r.turno_schema_id === turnoSchemaId && r.slot === slot))
     if (turnistaId !== null) list.push({ id: uid(), regola_versione_id: regoleVersioneId, giorno_settimana: giorno, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, created_at: new Date().toISOString() })
     writeLs(LS_REGOLE, list)
+  },
+  async deleteVersione(id: string): Promise<void> {
+    writeLs(LS_VERSIONI, read<ConfigVersione[]>(LS_VERSIONI, []).filter(v => v.id !== id))
+    writeLs(LS_SCHEMA, read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => s.versione_id !== id))
+  },
+  async getRegoleVersioni(): Promise<RegolaVersione[]> {
+    ensureSeed()
+    return read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).slice().sort((a, b) => a.valido_da.localeCompare(b.valido_da))
+  },
+  async deleteRegoleVersione(id: string): Promise<void> {
+    writeLs(LS_REGOLE_VERSIONI, read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).filter(v => v.id !== id))
+    writeLs(LS_REGOLE, read<RegolaTurno[]>(LS_REGOLE, []).filter(r => r.regola_versione_id !== id))
   },
 }
 

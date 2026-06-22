@@ -27,6 +27,26 @@ export function turnoApplicabileGiorno(t: TurnoSchema, giorno: number): boolean 
   }
 }
 
+/** Mese precedente in formato 'YYYY-MM'. */
+export function mesePrecedente(key: string): string {
+  const [a, m] = key.split('-').map(Number)
+  const d = new Date(a, m - 2, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+/** Inizio della versione successiva (la più vicina con valido_da > cur), o null. */
+export function prossimoInizio(cur: { valido_da: string }, tutte: { valido_da: string }[]): string | null {
+  const later = tutte.map(v => v.valido_da).filter(d => d > cur.valido_da).sort()
+  return later.length ? later[0] : null
+}
+/** Ultimo mese EFFETTIVAMENTE valido: considera che una versione successiva
+ *  subentra dal suo valido_da. null = per sempre. */
+export function fineEffettiva(cur: { valido_da: string; valido_fino: string | null }, tutte: { valido_da: string }[]): string | null {
+  let eff = cur.valido_fino
+  const nxt = prossimoInizio(cur, tutte)
+  if (nxt) { const cap = mesePrecedente(nxt); if (eff === null || cap < eff) eff = cap }
+  return eff
+}
+
 /** Elenco delle date (Date) di un mese (mese 1..12). */
 export function giorniDelMese(anno: number, mese: number): Date[] {
   const n = new Date(anno, mese, 0).getDate()

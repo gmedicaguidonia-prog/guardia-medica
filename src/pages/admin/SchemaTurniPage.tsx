@@ -7,6 +7,7 @@ import { GIORNI_SETTIMANA } from '../../lib/constants'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useUnsaved } from '../../contexts/UnsavedContext'
+import { prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
 import type { TurnoSchema, Ricorrenza, ConfigVersione } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -160,6 +161,7 @@ export function SchemaTurniPage() {
     queryFn: () => store.getSchemaVersione(versione!.id),
     enabled: !!versione,
   })
+  const { data: tutteVer = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all'], queryFn: () => store.getVersioni() })
 
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
   const handleDirty = useCallback((id: string, dirty: boolean) => {
@@ -194,6 +196,15 @@ export function SchemaTurniPage() {
     if (!versione) return
     await store.setValiditaVersione(versione.id, validoFino)
     await qc.invalidateQueries({ queryKey: ['versione'] })
+    await qc.invalidateQueries({ queryKey: ['versioni-all'] })
+  }
+  async function cancellaConfig() {
+    if (!versione) return
+    const ok = await confirm({ title: 'Cancella configurazione', message: `Cancellare la configurazione valida da ${meseLabel(versione.valido_da)} e i suoi turni? Non è reversibile.`, confirmLabel: 'Cancella', danger: true })
+    if (!ok) return
+    await store.deleteVersione(versione.id)
+    await qc.invalidateQueries({ queryKey: ['versione'] })
+    await qc.invalidateQueries({ queryKey: ['versioni-all'] })
   }
   async function aggiungiTurno() {
     if (!versione) return
@@ -245,10 +256,20 @@ export function SchemaTurniPage() {
       ) : (
         <>
           <ValiditaControls versione={versione} onChange={cambiaValidita} />
-          <p className="text-xs text-stone-500">
-            Configurazione valida da <strong>{meseLabel(versione.valido_da)}</strong>
-            {versione.valido_fino ? <> a <strong>{meseLabel(versione.valido_fino)}</strong></> : <> in poi (per sempre)</>}.
-          </p>
+          {(() => {
+            const eff = fineEffettiva(versione, tutteVer)
+            const nxt = prossimoInizio(versione, tutteVer)
+            return (
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-xs text-stone-500 flex-1">
+                  Valida da <strong>{meseLabel(versione.valido_da)}</strong>
+                  {eff ? <> a <strong>{meseLabel(eff)}</strong></> : <> in poi (per sempre)</>}
+                  {nxt && <span className="text-amber-700"> · dal {meseLabel(nxt)} subentra un periodo più recente</span>}.
+                </p>
+                <button onClick={cancellaConfig} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella configurazione</button>
+              </div>
+            )
+          })()}
 
           <div className="flex justify-end">
             <button onClick={aggiungiTurno} className="btn-primary text-sm"><Plus size={16} /> Aggiungi turno</button>
