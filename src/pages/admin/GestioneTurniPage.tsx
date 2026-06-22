@@ -283,7 +283,7 @@ export function GestioneTurniPage() {
           <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
               <tr>
-                <th style={{ ...thStyle, left: 0, zIndex: 3 }}>Turno</th>
+                <th style={{ ...thStyle, left: 0, zIndex: 3, width: 1, whiteSpace: 'nowrap' }}>Turno</th>
                 <th style={thStyle}>Turnisti</th>
                 {showRep && <th style={thStyle}>Reperibile</th>}
               </tr>
@@ -300,8 +300,8 @@ export function GestioneTurniPage() {
                 const pieno = turno.n_turnisti > 0 && assegnati >= turno.n_turnisti
                 return (
                   <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
-                    <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                    <td style={{ ...tdBase, whiteSpace: 'nowrap', width: 1, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
+                      <div className="flex items-center gap-1.5">
                         <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
                         <span style={{ color: '#475569' }}>· {turno.nome || 'Turno'}</span>
                         <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={pieno ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{assegnati}/{turno.n_turnisti}</span>
