@@ -8,6 +8,7 @@ import { PublicTurniPage } from './pages/PublicTurniPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { TurnistiPage } from './pages/admin/TurnistiPage'
 import { SchemaTurniPage } from './pages/admin/SchemaTurniPage'
+import { GestioneTurniPage } from './pages/admin/GestioneTurniPage'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import { UpdateToast } from './components/UpdateToast'
 
@@ -49,7 +50,8 @@ function AppRoutes() {
         {/* Sezione admin */}
         <Route path="/admin"
           element={<ProtectedRoute user={user} loading={loading} requireAdmin><AdminLayout /></ProtectedRoute>}>
-          <Route index element={<Navigate to="/admin/schema" replace />} />
+          <Route index element={<Navigate to="/admin/turni" replace />} />
+          <Route path="turni"    element={<GestioneTurniPage />} />
           <Route path="turnisti" element={<TurnistiPage />} />
           <Route path="schema"   element={<SchemaTurniPage />} />
         </Route>

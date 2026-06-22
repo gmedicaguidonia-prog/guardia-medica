@@ -100,3 +100,21 @@ grant execute on function is_utente_attivo() to authenticated, anon;
 insert into turnisti (nome, email, livello)
 values ('Stefano Marabelli', 'marabelli.s@gmail.com', 'admin')
 on conflict (email) do nothing;
+
+-- ─── TURNI ASSEGNATI (giorno + tipo turno + slot → turnista) ────────
+create table if not exists turni (
+  id uuid primary key default gen_random_uuid(),
+  data date not null,
+  turno_schema_id uuid not null references schema_turni(id) on delete cascade,
+  slot int not null default 0,
+  turnista_id uuid references turnisti(id) on delete set null,
+  created_at timestamptz default now(),
+  unique (data, turno_schema_id, slot)
+);
+alter table turni enable row level security;
+drop policy if exists turni_select on turni;
+drop policy if exists turni_modify on turni;
+create policy turni_select on turni for select using (is_utente_attivo());
+create policy turni_modify on turni for all using (is_admin()) with check (is_admin());
+grant select, insert, update, delete on turni to authenticated;
+create index if not exists idx_turni_data on turni(data);

@@ -1,9 +1,10 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Users, CalendarClock } from 'lucide-react'
+import { Users, CalendarClock, CalendarDays } from 'lucide-react'
 
 const links = [
+  { to: '/admin/turni',    label: 'Turni del Mese',        Icon: CalendarDays },
+  { to: '/admin/schema',   label: 'Configurazione Turni',  Icon: CalendarClock },
   { to: '/admin/turnisti', label: 'Turnisti',              Icon: Users },
-  { to: '/admin/schema',   label: 'Configurazione Turni', Icon: CalendarClock },
 ]
 
 export function AdminLayout() {

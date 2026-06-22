@@ -8,7 +8,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { Turnista, TurnoSchema, Livello, Ricorrenza } from '../types'
+import type { Turnista, TurnoSchema, Turno, Livello, Ricorrenza } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoTurnista {
@@ -19,6 +19,13 @@ export interface NuovoTurnista {
 
 function pgCode(e: unknown): string | undefined {
   return (e as { code?: string })?.code
+}
+
+/** Primo e ultimo giorno (ISO) di un mese (mese 1..12). */
+function meseRange(anno: number, mese: number): { first: string; last: string } {
+  const mm = String(mese).padStart(2, '0')
+  const lastDay = new Date(anno, mese, 0).getDate()
+  return { first: `${anno}-${mm}-01`, last: `${anno}-${mm}-${String(lastDay).padStart(2, '0')}` }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -102,6 +109,27 @@ const supaStore = {
     const { error } = await supabase.from('schema_turni').delete().eq('id', id)
     if (error) throw error
   },
+
+  async getTurniMese(anno: number, mese: number): Promise<Turno[]> {
+    const { first, last } = meseRange(anno, mese)
+    const { data, error } = await supabase.from('turni').select('*').gte('data', first).lte('data', last)
+    if (error) throw error
+    return (data ?? []) as Turno[]
+  },
+
+  /** Assegna (o libera, se turnistaId === null) una casella turno. */
+  async setAssegnazione(data: string, turnoSchemaId: string, slot: number, turnistaId: string | null): Promise<void> {
+    if (turnistaId === null) {
+      const { error } = await supabase.from('turni').delete()
+        .match({ data, turno_schema_id: turnoSchemaId, slot })
+      if (error) throw error
+    } else {
+      const { error } = await supabase.from('turni')
+        .upsert({ data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId },
+                { onConflict: 'data,turno_schema_id,slot' })
+      if (error) throw error
+    }
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -109,6 +137,7 @@ const supaStore = {
 // ════════════════════════════════════════════════════════════════
 const LS_TURNISTI = 'gm_turnisti'
 const LS_SCHEMA   = 'gm_schema'
+const LS_TURNI    = 'gm_turni'
 const LS_SEEDED   = 'gm_seeded_v1'
 
 function uid(): string {
@@ -174,6 +203,17 @@ const localStore = {
   },
   async deleteTurnoSchema(id: string): Promise<void> {
     writeLs(LS_SCHEMA, read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => s.id !== id))
+  },
+  async getTurniMese(anno: number, mese: number): Promise<Turno[]> {
+    const { first, last } = meseRange(anno, mese)
+    return read<Turno[]>(LS_TURNI, []).filter(t => t.data >= first && t.data <= last)
+  },
+  async setAssegnazione(data: string, turnoSchemaId: string, slot: number, turnistaId: string | null): Promise<void> {
+    const list = read<Turno[]>(LS_TURNI, []).filter(t => !(t.data === data && t.turno_schema_id === turnoSchemaId && t.slot === slot))
+    if (turnistaId !== null) {
+      list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, created_at: new Date().toISOString() })
+    }
+    writeLs(LS_TURNI, list)
   },
 }
 

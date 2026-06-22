@@ -54,6 +54,16 @@ export interface TurnoSchema {
   created_at: string
 }
 
+// ─── Turno assegnato (una casella: giorno + tipo turno + slot → turnista) ─
+export interface Turno {
+  id: string
+  data: string              // "YYYY-MM-DD"
+  turno_schema_id: string   // FK → schema_turni
+  slot: number              // 0..n_turnisti-1
+  turnista_id: string | null
+  created_at: string
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────
 export interface AuthUser {
   id: string
