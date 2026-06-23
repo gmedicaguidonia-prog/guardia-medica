@@ -12,10 +12,11 @@ import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, StatoCalendario } from '../../types'
+import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, StatoCalendario, RichiestaTurno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
+const itDate = (iso: string) => { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
 const REP_SLOT = -1   // slot speciale per il reperibile
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
   admin:        { bg: '#fee2e2', fg: '#b91c1c' },
@@ -57,6 +58,7 @@ export function GestioneTurniPage() {
   const { data: finestraDes } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: desiderataMese = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId })
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -224,6 +226,25 @@ export function GestioneTurniPage() {
     finally { setSavingStato(false) }
   }
 
+  // ── Richieste di candidatura (Modalità Pianificazione) ──
+  async function rifiutaRichiesta(r: RichiestaTurno) {
+    await store.removeRichiesta(r.id)
+    qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
+  }
+  async function approvaRichiesta(r: RichiestaTurno) {
+    const turno = schema.find(s => s.id === r.turno_schema_id)
+    if (!turno) return
+    const conf = conflittoOrario(r.turnista_id, turno, r.data, '')
+    if (conf) { showWarn(`Impossibile approvare: ${nomeTurnista(r.turnista_id)} è già impegnato in “${conf.nome || 'un turno'}” (${conf.ora_inizio}–${conf.ora_fine}) in sovrapposizione di orario.`); return }
+    const slots = turnistiSlots(r.data, turno)
+    if (slots.includes(r.turnista_id)) { await rifiutaRichiesta(r); showWarn(`${nomeTurnista(r.turnista_id)} è già in questo turno: richiesta rimossa.`); return }
+    const free = slots.findIndex(s => s === null)
+    if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” del ${itDate(r.data)} non ci sono posti liberi.`); return }
+    set(`${r.data}|${turno.id}|${free}`, r.turnista_id)   // inserisce (in sospeso): premi Salva per confermare
+    await store.removeRichiesta(r.id)
+    qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
+  }
+
   // Pulsante di stato (accanto al selettore mese) + descrittori
   const statoStile = STATO_CALENDARIO_STILE[statoCal]
   const StatoIcon = statoCal === 'pubblicato' ? Eye : statoCal === 'pianificazione' ? Users : EyeOff
@@ -381,6 +402,30 @@ export function GestioneTurniPage() {
       </div>
 
       {turnisti.length === 0 && <div className="card p-3 text-sm" style={{ color: '#92400e', background: '#fef3c7' }}>Aggiungi prima dei turnisti nella pagina <strong>Turnisti</strong>.</div>}
+
+      {/* Richieste di candidatura (arrivano dalla Modalità Pianificazione) */}
+      {richieste.length > 0 && (
+        <div className="card p-3 space-y-2" style={{ border: '1px solid #fecaca', background: '#fffafa' }}>
+          <div className="flex items-center gap-2">
+            <UserPlus size={16} style={{ color: '#b91c1c' }} />
+            <h3 className="text-sm font-bold" style={{ color: '#7f1d1d' }}>Richieste di candidatura ({richieste.length})</h3>
+          </div>
+          <div className="space-y-1.5">
+            {richieste.map(r => {
+              const turno = schema.find(s => s.id === r.turno_schema_id)
+              return (
+                <div key={r.id} className="flex items-center gap-2 flex-wrap rounded-lg px-3 py-2" style={{ background: '#fff', border: '1px solid #fee2e2' }}>
+                  <span className="text-sm flex-1" style={{ color: '#3a3d30', minWidth: 180 }}>
+                    <strong style={{ color: coloreTurnista(r.turnista_id).fg }}>{nomeTurnista(r.turnista_id)}</strong> si propone per <strong>{turno?.nome || 'turno'}</strong> del <strong>{itDate(r.data)}</strong>{turno && <span className="text-xs text-stone-500"> ({turno.ora_inizio}–{turno.ora_fine})</span>}
+                  </span>
+                  <button onClick={() => approvaRichiesta(r)} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors hover:brightness-110" style={{ background: '#16a34a', color: '#fff' }}><Check size={13} /> Approva</button>
+                  <button onClick={() => rifiutaRichiesta(r)} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors hover:brightness-95" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}><X size={13} /> Rifiuta</button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div ref={containerRef} className="flex gap-3 items-start"
         onTouchEnd={e => {

@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoMembro { nome: string; cognome: string; email: string; livello: Livello; utenteId?: string }
@@ -321,6 +321,22 @@ const supaStore = {
     const { error } = await supabase.from('turni_stato').upsert({ postazione_id: postazioneId, mese, stato, updated_at: new Date().toISOString() }, { onConflict: 'postazione_id,mese' })
     if (error) throw error
   },
+
+  // ── Richieste di turno (candidature in Modalità Pianificazione) ──
+  async getRichiesteMese(postazioneId: string, anno: number, mese: number): Promise<RichiestaTurno[]> {
+    const { first, last } = meseRange(anno, mese)
+    const { data, error } = await supabase.from('richieste_turno').select('*').eq('postazione_id', postazioneId).gte('data', first).lte('data', last).order('created_at')
+    if (error) throw error
+    return (data ?? []) as RichiestaTurno[]
+  },
+  async addRichiesta(postazioneId: string, data: string, turnoSchemaId: string, turnistaId: string): Promise<void> {
+    const { error } = await supabase.from('richieste_turno').upsert({ postazione_id: postazioneId, data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId }, { onConflict: 'data,turno_schema_id,turnista_id', ignoreDuplicates: true })
+    if (error) throw error
+  },
+  async removeRichiesta(id: string): Promise<void> {
+    const { error } = await supabase.from('richieste_turno').delete().eq('id', id)
+    if (error) throw error
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -336,6 +352,7 @@ const LS_TURNISTI_MESE    = 'gm_turnisti_mese'
 const LS_DESIDERATA       = 'gm_desiderata'
 const LS_DESIDERATA_FIN   = 'gm_desiderata_finestra'
 const LS_TURNI_STATO      = 'gm_turni_stato'
+const LS_RICHIESTE        = 'gm_richieste'
 const LS_POSTAZIONI       = 'gm_postazioni'
 const LS_SEEDED           = 'gm_seeded_v5'
 const DEV_POSTAZIONE      = 'dev-postazione-1'
@@ -560,6 +577,21 @@ const localStore = {
     const list = read<{ postazione_id: string; mese: string; stato: StatoCalendario }[]>(LS_TURNI_STATO, []).filter(s => !(s.mese === mese && (s.postazione_id ?? DEV_POSTAZIONE) === postazioneId))
     list.push({ postazione_id: postazioneId, mese, stato })
     writeLs(LS_TURNI_STATO, list)
+  },
+
+  async getRichiesteMese(postazioneId: string, anno: number, mese: number): Promise<RichiestaTurno[]> {
+    const { first, last } = meseRange(anno, mese)
+    return read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => (r.postazione_id ?? DEV_POSTAZIONE) === postazioneId && r.data >= first && r.data <= last)
+  },
+  async addRichiesta(postazioneId: string, data: string, turnoSchemaId: string, turnistaId: string): Promise<void> {
+    const list = read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, [])
+    if (!list.some(r => r.data === data && r.turno_schema_id === turnoSchemaId && r.turnista_id === turnistaId)) {
+      list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, created_at: new Date().toISOString(), postazione_id: postazioneId })
+      writeLs(LS_RICHIESTE, list)
+    }
+  },
+  async removeRichiesta(id: string): Promise<void> {
+    writeLs(LS_RICHIESTE, read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => r.id !== id))
   },
 }
 

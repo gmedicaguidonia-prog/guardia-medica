@@ -169,14 +169,14 @@ export interface DesiderataFinestra {
 //  Controlla cosa vede il turnista nella pagina pubblica "I miei turni":
 //   - 'non_pubblicato' → niente, solo un avviso "non ancora pubblicato"
 //   - 'pubblicato'     → il calendario con i turni pianificati
-//   - 'pianificazione' → modalità collaborativa: non i turni, ma le
-//                        disponibilità/indisponibilità di tutti i turnisti
+//   - 'pianificazione' → calendario pubblicato ma incompleto: i posti scoperti
+//                        mostrano un badge «???» su cui i turnisti si candidano
 export type StatoCalendario = 'non_pubblicato' | 'pubblicato' | 'pianificazione'
 
 export const STATI_CALENDARIO: { value: StatoCalendario; label: string; descr: string }[] = [
   { value: 'non_pubblicato', label: 'Non Pubblicato',          descr: 'I turnisti non vedono il calendario: compare solo un avviso che non è ancora stato pubblicato.' },
   { value: 'pubblicato',     label: 'Pubblicato',              descr: 'I turnisti vedono il calendario con i turni pianificati.' },
-  { value: 'pianificazione', label: 'Modalità Pianificazione', descr: 'I turnisti non vedono i turni pianificati, ma le disponibilità e indisponibilità di tutti: una modalità collaborativa per aiutare il responsabile a comporre i turni.' },
+  { value: 'pianificazione', label: 'Modalità Pianificazione', descr: 'Il calendario viene pubblicato anche se incompleto: dove manca un turnista compare un badge rosso «???». I turnisti possono cliccarci per candidarsi al turno e il responsabile approva o rifiuta le richieste.' },
 ]
 
 /** Stile del badge/pulsante che riflette lo stato del calendario. */
@@ -184,6 +184,17 @@ export const STATO_CALENDARIO_STILE: Record<StatoCalendario, { bg: string; fg: s
   non_pubblicato: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' },
   pubblicato:     { bg: '#dcfce7', fg: '#166534', border: '#86efac' },
   pianificazione: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' },
+}
+
+// ─── Richieste di turno (candidature in "Modalità Pianificazione") ──
+//  Un turnista si propone per un turno scoperto. Il responsabile poi approva
+//  (lo inserisce nel turno) o rifiuta (cancella la richiesta).
+export interface RichiestaTurno {
+  id: string
+  data: string             // 'YYYY-MM-DD'
+  turno_schema_id: string
+  turnista_id: string      // appartenenza (turnisti.id) di chi si propone
+  created_at: string
 }
 
 // ─── Postazioni (multi-tenancy) ─────────────────────────────────────
