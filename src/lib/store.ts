@@ -300,10 +300,14 @@ const supaStore = {
   async getDesiderataFinestra(postazioneId: string, mese: string): Promise<DesiderataFinestra | null> {
     const { data, error } = await supabase.from('desiderata_finestra').select('*').eq('postazione_id', postazioneId).eq('mese', mese).maybeSingle()
     if (error) throw error
-    return data ? { mese: data.mese as string, aperta_da: data.aperta_da as string | null, aperta_a: data.aperta_a as string | null } : null
+    return data ? { mese: data.mese as string, aperta_da: data.aperta_da as string | null, aperta_a: data.aperta_a as string | null, pubbliche: !!data.pubbliche } : null
   },
   async setDesiderataFinestra(postazioneId: string, mese: string, da: string | null, a: string | null): Promise<void> {
     const { error } = await supabase.from('desiderata_finestra').upsert({ mese, aperta_da: da, aperta_a: a, postazione_id: postazioneId }, { onConflict: 'postazione_id,mese' })
+    if (error) throw error
+  },
+  async setDesiderataPubbliche(postazioneId: string, mese: string, pubbliche: boolean): Promise<void> {
+    const { error } = await supabase.from('desiderata_finestra').upsert({ mese, pubbliche, postazione_id: postazioneId }, { onConflict: 'postazione_id,mese' })
     if (error) throw error
   },
   async attivaDesiderata(postazioneId: string, mese: string): Promise<void> {
@@ -558,16 +562,26 @@ const localStore = {
     writeLs(LS_DESIDERATA, list)
   },
   async getDesiderataFinestra(postazioneId: string, mese: string): Promise<DesiderataFinestra | null> {
-    return read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId) ?? null
+    const f = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
+    return f ? { mese: f.mese, aperta_da: f.aperta_da, aperta_a: f.aperta_a, pubbliche: !!f.pubbliche } : null
   },
   async setDesiderataFinestra(postazioneId: string, mese: string, da: string | null, a: string | null): Promise<void> {
-    const list = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).filter(f => !(f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId))
-    list.push({ mese, aperta_da: da, aperta_a: a, postazione_id: postazioneId })
+    const all = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, [])
+    const prev = all.find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
+    const list = all.filter(f => !(f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId))
+    list.push({ mese, aperta_da: da, aperta_a: a, pubbliche: prev?.pubbliche ?? false, postazione_id: postazioneId })
+    writeLs(LS_DESIDERATA_FIN, list)
+  },
+  async setDesiderataPubbliche(postazioneId: string, mese: string, pubbliche: boolean): Promise<void> {
+    const all = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, [])
+    const prev = all.find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
+    const list = all.filter(f => !(f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId))
+    list.push({ mese, aperta_da: prev?.aperta_da ?? null, aperta_a: prev?.aperta_a ?? null, pubbliche, postazione_id: postazioneId })
     writeLs(LS_DESIDERATA_FIN, list)
   },
   async attivaDesiderata(postazioneId: string, mese: string): Promise<void> {
     const list = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, [])
-    if (!list.some(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)) { list.push({ mese, aperta_da: null, aperta_a: null, postazione_id: postazioneId }); writeLs(LS_DESIDERATA_FIN, list) }
+    if (!list.some(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)) { list.push({ mese, aperta_da: null, aperta_a: null, pubbliche: false, postazione_id: postazioneId }); writeLs(LS_DESIDERATA_FIN, list) }
   },
 
   async getStatoCalendario(postazioneId: string, mese: string): Promise<StatoCalendario> {

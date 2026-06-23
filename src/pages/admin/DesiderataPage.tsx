@@ -148,6 +148,15 @@ export function DesiderataPage() {
     } catch (e) { console.error(e); alert('Errore nella pubblicazione del periodo.') }
   }
 
+  // ── switch "desiderata pubbliche" (visibili a tutti i turnisti) ──
+  const pubbliche = !!finestra?.pubbliche
+  async function togglePubbliche() {
+    try {
+      await store.setDesiderataPubbliche(postazioneId!, meseKey, !pubbliche)
+      await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
+    } catch (e) { console.error(e); alert('Errore nel cambio modalità desiderata pubbliche.') }
+  }
+
   // ── stato della raccolta per il mese selezionato ──
   const meseCorrenteKey = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`
   const oggiStr = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
@@ -295,7 +304,15 @@ export function DesiderataPage() {
             {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
           </div>
         )}
-        <span className="text-[11px] text-stone-400 block">La pagina di compilazione lato-turnista userà questo periodo (in arrivo).</span>
+        <div className="flex items-center gap-2 flex-wrap pt-2 mt-1" style={{ borderTop: '1px solid #f0ede6' }}>
+          <button onClick={togglePubbliche} role="switch" aria-checked={pubbliche} type="button"
+            className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0"
+            style={{ background: pubbliche ? '#16a34a' : '#cbd5e1' }} title="Desiderata pubbliche">
+            <span className="inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform" style={{ transform: pubbliche ? 'translateX(18px)' : 'translateX(2px)' }} />
+          </button>
+          <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Desiderata pubbliche</span>
+          <span className="text-xs text-stone-500 flex-1" style={{ minWidth: 200 }}>{pubbliche ? 'I turnisti vedono le scelte di tutti (vista a colonne) e modificano la propria. Adatta a postazioni con pochi turnisti.' : 'Ogni turnista vede e modifica solo le proprie scelte (default).'}</span>
+        </div>
       </div>
 
       {/* Barra azioni / salvataggio */}

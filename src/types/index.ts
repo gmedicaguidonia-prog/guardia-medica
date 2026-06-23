@@ -163,6 +163,7 @@ export interface DesiderataFinestra {
   mese: string             // 'YYYY-MM'
   aperta_da: string | null // 'YYYY-MM-DD'
   aperta_a: string | null  // 'YYYY-MM-DD'
+  pubbliche: boolean        // true = desiderata visibili a tutti i turnisti (vista a colonne)
 }
 
 // ─── Stato del calendario turni (per postazione × mese) ─────────────

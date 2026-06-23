@@ -5,7 +5,7 @@ import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapP
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
-import { nomeCompleto } from '../types'
+import { nomeCompleto, cmpTurnisti } from '../types'
 import type { AuthUser, TurnoSchema, Turno, Turnista, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -79,6 +79,14 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     return s
   }, [richieste, mia])
 
+  // desiderata pubbliche: scelta di OGNI turnista per (giorno|turno|turnista) + colonne ordinate
+  const desByKey = useMemo(() => {
+    const m = new Map<string, TipoDesiderata>()
+    desiderata.forEach(d => m.set(`${d.data}|${d.turno_schema_id}|${d.turnista_id}`, d.tipo))
+    return m
+  }, [desiderata])
+  const colonne = useMemo(() => personale.slice().sort(cmpTurnisti), [personale])
+
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
     await store.setDesiderata(postazioneId!, ds, turnoId, mia.membershipId, tipo)
@@ -112,6 +120,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     : fin.aperta_da && oggiStr < fin.aperta_da ? 'programmata'
     : fin.aperta_a < oggiStr ? 'chiusa'
     : 'aperta'
+  const pubblicheMode = !!fin?.pubbliche            // desiderata visibili a tutti (vista a colonne)
+  const desEditabile = desStato === 'aperta'        // si modifica solo a raccolta aperta
 
   const turniConfigurati = !!versione && schema.length > 0
 
@@ -230,10 +240,73 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               <Avviso>La raccolta <strong>desiderata / indisponibilità</strong> di {MESI[mese - 1]} {anno} non è ancora stata pubblicata.</Avviso>
             ) : desStato === 'programmata' ? (
               <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} aprirà il <strong>{itDate(fin!.aperta_da!)}</strong>.</Avviso>
-            ) : desStato === 'chiusa' ? (
-              <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} si è chiusa il <strong>{itDate(fin!.aperta_a!)}</strong>.</Avviso>
             ) : !versione || schema.length === 0 ? (
               <Avviso>Non ci sono turni configurati per {MESI[mese - 1]} {anno}.</Avviso>
+            ) : pubblicheMode ? (
+              /* ── DESIDERATA PUBBLICHE: una colonna per turnista, modifichi la tua ── */
+              <>
+                <p className="text-xs text-stone-500">
+                  {desEditabile
+                    ? <>Scegli nella <strong>tua</strong> colonna; vedi anche le scelte degli altri. Raccolta aperta fino al {itDate(fin!.aperta_a!)}.</>
+                    : <>Raccolta chiusa{fin?.aperta_a ? ` il ${itDate(fin.aperta_a)}` : ''} — sola lettura.</>}
+                </p>
+                <div className="card overflow-auto">
+                  <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 3, whiteSpace: 'nowrap' }}>Giorno · Turno</th>
+                        {colonne.map(t => {
+                          const io = t.id === mia?.membershipId
+                          return <th key={t.id} style={{ ...thStyle, textAlign: 'center', minWidth: 92, background: io ? '#15803d' : '#2b3c24' }}>{nomeCompleto(t)}{io ? ' (tu)' : ''}</th>
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {righe.map(({ ds, d, turno }) => {
+                        const fest = isFestivo(d), pref = isPrefestivo(d)
+                        const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
+                        const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
+                        const overnight = turno.ora_fine <= turno.ora_inizio
+                        return (
+                          <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
+                            <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
+                              <div className="flex items-center gap-1.5">
+                                <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
+                                <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
+                              </div>
+                              <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
+                            </td>
+                            {colonne.map(t => {
+                              const io = t.id === mia?.membershipId
+                              const scelta = desByKey.get(`${ds}|${turno.id}|${t.id}`)
+                              return (
+                                <td key={t.id} style={{ ...tdBase, textAlign: 'center', background: io ? 'rgba(22,163,74,0.06)' : undefined }}>
+                                  {io && desEditabile ? (
+                                    <div className="inline-flex gap-1">
+                                      <button onClick={() => setPref(ds, turno.id, scelta === 'desiderata' ? null : 'desiderata')} title="Vorrei"
+                                        className="inline-flex items-center justify-center rounded-md w-7 h-7 border transition-colors"
+                                        style={scelta === 'desiderata' ? { background: '#16a34a', color: '#fff', borderColor: '#15803d' } : { background: '#fff', color: '#166534', borderColor: '#bbf7d0' }}><Check size={13} /></button>
+                                      <button onClick={() => setPref(ds, turno.id, scelta === 'indisponibilita' ? null : 'indisponibilita')} title="Non posso"
+                                        className="inline-flex items-center justify-center rounded-md w-7 h-7 border transition-colors"
+                                        style={scelta === 'indisponibilita' ? { background: '#dc2626', color: '#fff', borderColor: '#b91c1c' } : { background: '#fff', color: '#b91c1c', borderColor: '#fecaca' }}><Ban size={13} /></button>
+                                    </div>
+                                  ) : scelta === 'desiderata' ? (
+                                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full" style={{ background: '#dcfce7', color: '#166534' }} title="Vorrei"><Check size={13} /></span>
+                                  ) : scelta === 'indisponibilita' ? (
+                                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full" style={{ background: '#fee2e2', color: '#b91c1c' }} title="Non posso"><Ban size={13} /></span>
+                                  ) : <span className="text-stone-300">·</span>}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : desStato === 'chiusa' ? (
+              <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} si è chiusa il <strong>{itDate(fin!.aperta_a!)}</strong>.</Avviso>
             ) : (
               <>
                 <p className="text-xs text-stone-500">Per ogni turno indica se lo <strong style={{ color: '#166534' }}>vorresti</strong> o se <strong style={{ color: '#b91c1c' }}>non puoi</strong>. Raccolta aperta fino al {itDate(fin!.aperta_a!)}.</p>
