@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Pencil, Save, X, Users, Shield, User, UserCog, Lock, Crown } from 'lucide-react'
@@ -16,6 +16,10 @@ const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType }
   turnista:     { bg: '#dbeafe', fg: '#1e40af', Icon: User },
   esterno:      { bg: '#dcfce7', fg: '#166534', Icon: Shield },
 }
+
+// L'elenco è sempre diviso per livello (in quest'ordine) e alfabetico dentro ogni gruppo
+const LIV_ORDER: Livello[] = ['admin', 'responsabile', 'turnista', 'esterno']
+const LIV_GRUPPO: Record<Livello, string> = { admin: 'Admin', responsabile: 'Responsabili', turnista: 'Turnisti', esterno: 'Esterni' }
 
 function LivelloBadge({ livello }: { livello: Livello }) {
   const { bg, fg, Icon } = BADGE[livello]
@@ -41,8 +45,10 @@ export function TurnistiPage() {
     enabled: !!postazioneId,
   })
 
-  // Elenco in ordine alfabetico per "Cognome Nome"
-  const turnistiOrdinati = useMemo(() => [...turnisti].sort(cmpTurnisti), [turnisti])
+  // Elenco diviso per livello, alfabetico ("Cognome Nome") dentro ogni gruppo
+  const gruppi = useMemo(() => LIV_ORDER
+    .map(liv => ({ liv, label: LIV_GRUPPO[liv], lista: turnisti.filter(t => t.livello === liv).slice().sort(cmpTurnisti) }))
+    .filter(g => g.lista.length), [turnisti])
 
   // Un utente non può assegnare un livello più alto del proprio:
   // solo l'Admin può creare/assegnare il livello Admin.
@@ -175,7 +181,10 @@ export function TurnistiPage() {
           <tbody className="divide-y divide-gray-100">
             {isLoading && <tr><td colSpan={4} className="px-3 py-4 text-center text-stone-500">Caricamento…</td></tr>}
 
-            {turnistiOrdinati.map(t => {
+            {gruppi.map(g => (
+              <Fragment key={g.liv}>
+                <tr><td colSpan={4} className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ background: '#f1efe7', color: BADGE[g.liv].fg }}>{g.label} · {g.lista.length}</td></tr>
+                {g.lista.map(t => {
               const isPerm = t.email.toLowerCase() === ADMIN_EMAIL
               const canModify = isAdminUser || t.livello !== 'admin'
 
@@ -229,7 +238,9 @@ export function TurnistiPage() {
                   </td>
                 </tr>
               )
-            })}
+                })}
+              </Fragment>
+            ))}
 
             {turnisti.length === 0 && !isLoading && (
               <tr><td colSpan={4} className="px-3 py-4 text-center text-stone-500 text-sm">Nessun turnista. Aggiungine uno qui sopra.</td></tr>

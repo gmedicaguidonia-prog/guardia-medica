@@ -172,3 +172,59 @@ drop policy if exists df_modify on desiderata_finestra;
 create policy df_select on desiderata_finestra for select using (is_utente_attivo());
 create policy df_modify on desiderata_finestra for all using (is_admin()) with check (is_admin());
 grant select, insert, update, delete on desiderata_finestra to authenticated;
+
+-- ════════════════════════════════════════════════════════════════════
+-- MULTI-POSTAZIONE + RLS PER-POSTAZIONE (23/06/2026)
+-- Le policy qui sotto SOSTITUISCONO quelle larghe definite sopra: ogni
+-- tabella dati è isolata per postazione. Admin = tutte; Responsabile = solo
+-- le postazioni che gestisce (può gestirne PIÙ d'una); turnista/esterno = la
+-- propria (in sola lettura, per la pagina pubblica).
+-- ════════════════════════════════════════════════════════════════════
+create table if not exists postazioni (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null,
+  attiva boolean not null default true,
+  created_at timestamptz default now()
+);
+create table if not exists postazione_responsabili (
+  postazione_id uuid not null references postazioni(id) on delete cascade,
+  turnista_id   uuid not null references turnisti(id)  on delete cascade,
+  primary key (postazione_id, turnista_id)
+);
+-- colonna postazione_id su: turnisti, schema_versioni, regole_versioni,
+-- turni, turnisti_mese, desiderata, desiderata_finestra
+-- (schema_turni / regole_turni: scoping via la rispettiva versione).
+
+-- Solo proprietario (admin) — crea postazioni, vede tutto
+create or replace function is_super_admin() returns boolean as $$
+  select exists (select 1 from turnisti where email = (auth.jwt() ->> 'email') and livello = 'admin')
+$$ language sql security definer stable;
+-- Postazione di una versione (SECURITY DEFINER → bypassa RLS)
+create or replace function postazione_di_versione(vid uuid) returns uuid as $$
+  select postazione_id from schema_versioni where id = vid
+$$ language sql security definer stable;
+create or replace function postazione_di_regola_versione(rvid uuid) returns uuid as $$
+  select postazione_id from regole_versioni where id = rvid
+$$ language sql security definer stable;
+-- Può GESTIRE (modify) i dati di una postazione (admin o responsabile della stessa)
+create or replace function puo_gestire_postazione(pid uuid) returns boolean as $$
+  select is_super_admin() or exists (
+    select 1 from postazione_responsabili pr join turnisti t on t.id = pr.turnista_id
+    where t.email = (auth.jwt() ->> 'email') and pr.postazione_id = pid)
+$$ language sql security definer stable;
+-- Può VEDERE (select) i dati di una postazione (gestori + la propria)
+create or replace function puo_vedere_postazione(pid uuid) returns boolean as $$
+  select is_super_admin()
+    or exists (select 1 from postazione_responsabili pr join turnisti t on t.id = pr.turnista_id
+               where t.email = (auth.jwt() ->> 'email') and pr.postazione_id = pid)
+    or exists (select 1 from turnisti t where t.email = (auth.jwt() ->> 'email') and t.postazione_id = pid)
+$$ language sql security definer stable;
+
+-- Policy effettive (per-postazione). Pattern:
+--   tabelle con postazione_id  → select: puo_vedere_postazione(postazione_id)
+--                                modify: puo_gestire_postazione(postazione_id)
+--   schema_turni / regole_turni → via postazione_di_versione/regola_versione
+--   turnisti select: puo_gestire_postazione(postazione_id) OR riga propria
+--   turnisti insert/update: + anti-escalation (livello<>'admin' OR is_super_admin())
+--   postazioni select: is_super_admin() OR puo_vedere_postazione(id)
+--   postazioni/postazione_responsabili modify: is_super_admin()
