@@ -101,6 +101,7 @@ export function GestioneTurniPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [picker, setPicker] = useState<{ ds: string; turno: TurnoSchema; tipo: string; x: number; y: number } | null>(null)
   const [warn, setWarn] = useState<string | null>(null)
   const warnTimer = useRef<number | null>(null)
   function showWarn(msg: string) { setWarn(msg); if (warnTimer.current) clearTimeout(warnTimer.current); warnTimer.current = window.setTimeout(() => setWarn(null), 3500) }
@@ -231,7 +232,7 @@ export function GestioneTurniPage() {
     )
   }
   const Chip = (tid: string, onX: () => void) => (
-    <span className="relative rounded px-2 py-0.5 text-[11px] font-medium shadow-sm" style={{ background: coloreTurnista(tid).bg, color: coloreTurnista(tid).fg }}>
+    <span data-chip className="relative rounded px-2 py-0.5 text-[11px] font-medium shadow-sm" style={{ background: coloreTurnista(tid).bg, color: coloreTurnista(tid).fg }}>
       {nomeTurnista(tid)}
       <button onClick={onX} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
     </span>
@@ -346,17 +347,19 @@ export function GestioneTurniPage() {
                     </td>
                     <td data-data={ds} data-turno={turno.id} data-tipo="turnisti"
                       onDragOver={e => { e.preventDefault(); setOverKey(kT) }} onDragLeave={() => setOverKey(k => k === kT ? null : k)} onDrop={e => { e.preventDefault(); handleDrop(ds, turno, 'turnisti') }}
-                      style={dropStyle(kT)}>
+                      onClick={e => { if ((e.target as HTMLElement).closest('[data-chip]')) return; setPicker({ ds, turno, tipo: 'turnisti', x: e.clientX, y: e.clientY }) }}
+                      style={{ ...dropStyle(kT), cursor: 'copy' }}>
                       <div className="flex flex-wrap gap-2 items-start">
                         {slots.map((tid, slot) => tid ? <span key={slot}>{Chip(tid, () => set(`${ds}|${turno.id}|${slot}`, null))}</span> : null)}
-                        {slots.every(s => s === null) && <span className="text-[10px] text-stone-300 italic">trascina qui</span>}
+                        {slots.every(s => s === null) && <span className="text-[10px] text-stone-300 italic">trascina o clicca</span>}
                       </div>
                     </td>
                     {showRep && (
                       <td data-data={ds} data-turno={turno.id} data-tipo="reperibile"
                         onDragOver={e => { e.preventDefault(); setOverKey(kR) }} onDragLeave={() => setOverKey(k => k === kR ? null : k)} onDrop={e => { e.preventDefault(); handleDrop(ds, turno, 'reperibile') }}
-                        style={dropStyle(kR)}>
-                        {rep ? Chip(rep, () => set(`${ds}|${turno.id}|${REP_SLOT}`, null)) : <span className="text-[10px] text-stone-300 italic">trascina qui</span>}
+                        onClick={e => { if ((e.target as HTMLElement).closest('[data-chip]')) return; setPicker({ ds, turno, tipo: 'reperibile', x: e.clientX, y: e.clientY }) }}
+                        style={{ ...dropStyle(kR), cursor: 'copy' }}>
+                        {rep ? Chip(rep, () => set(`${ds}|${turno.id}|${REP_SLOT}`, null)) : <span className="text-[10px] text-stone-300 italic">trascina o clicca</span>}
                       </td>
                     )}
                   </tr>
@@ -366,6 +369,29 @@ export function GestioneTurniPage() {
           </table>
         </div>
       </div>
+
+      {/* Mini-elenco vicino al puntatore — stessi gruppi e ordine della palette */}
+      {picker && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setPicker(null)} />
+          <div className="fixed z-50 card p-1.5 shadow-2xl" style={{ left: Math.max(8, Math.min(picker.x, window.innerWidth - 210)), top: Math.max(8, Math.min(picker.y, window.innerHeight - 300)), width: 200, maxHeight: 290, overflow: 'auto', animation: 'fadeSlideIn 120ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1" style={{ color: '#476540' }}>＋ {picker.turno.nome || 'Turno'} · {picker.tipo === 'reperibile' ? 'Reperibile' : 'Turnisti'}</p>
+            {paletteGruppi.length ? paletteGruppi.map(g => (
+              <div key={g.liv}>
+                <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 pt-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</p>
+                {g.items.map(t => (
+                  <button key={t.id} onClick={() => { dragSource.current = t.id; handleDrop(picker.ds, picker.turno, picker.tipo); setPicker(null) }}
+                    className="flex items-center gap-1.5 w-full text-left px-1.5 py-1 rounded hover:bg-stone-100 text-xs">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ROLE_COLOR[t.livello].fg }} />
+                    <span className="truncate flex-1">{nomeCompleto(t)}</span>
+                    <span className="text-[10px] text-stone-400">{fmtOre(oreByTurnista.get(t.id) ?? 0)}h</span>
+                  </button>
+                ))}
+              </div>
+            )) : <p className="text-xs text-stone-400 px-1.5 py-1">Nessun turnista importato per il mese.</p>}
+          </div>
+        </>
+      )}
 
       {warn && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4" role="alert">
