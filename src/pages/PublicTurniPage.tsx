@@ -65,6 +65,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     turni.forEach(t => { if (!t.turnista_id) return; const k = `${t.data}|${t.turno_schema_id}`; if (t.slot === REP) rep.set(k, t.turnista_id); else { const a = m.get(k) ?? []; a.push(t.turnista_id); m.set(k, a) } })
     return { m, rep }
   }, [turni])
+  const hasRep = assegn.rep.size > 0   // mostra la colonna Reperibile solo se ce n'è almeno uno
 
   // desiderata: la MIA preferenza per turno
   const miaPref = useMemo(() => {
@@ -194,8 +195,14 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   </div>
                 )}
                 <div className="card overflow-auto">
-                  <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
-                    <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={thStyle}>Chi è in turno</th></tr></thead>
+                  <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: 58 }} />
+                      <col style={{ width: 96 }} />
+                      <col />
+                      {hasRep && <col style={{ width: 130 }} />}
+                    </colgroup>
+                    <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={thStyle}>Turnisti</th>{hasRep && <th style={thStyle}>Reperibile</th>}</tr></thead>
                     <tbody>
                       {righe.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d), pref = isPrefestivo(d)
@@ -210,13 +217,13 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         return (
                           <tr key={k} style={{ background: rowBg }}>
                             <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span></td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
-                              <span className="inline-flex items-center gap-1">{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
+                            <td style={tdBase}>
+                              <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
                             </td>
-                            <td style={tdBase}>
+                            <td style={{ ...tdBase, wordBreak: 'break-word' }}>
                               <div className="flex flex-wrap gap-1.5 items-center">
-                                {ids.length === 0 && !rep && !(pianificazione && mancano > 0) && <span className="text-[11px] text-stone-300 italic">—</span>}
+                                {ids.length === 0 && !(pianificazione && mancano > 0) && <span className="text-[11px] text-stone-300 italic">—</span>}
                                 {ids.map(id => {
                                   const io = id === mia?.membershipId
                                   return <span key={id} className="rounded px-2 py-0.5 text-[11px] font-medium" style={io ? { background: '#2e7d32', color: '#fff' } : { background: '#eef1ea', color: '#3a3d30' }}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</span>
@@ -230,9 +237,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                                       style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', cursor: 'pointer' }}>???</button>
                                   ))
                                 ))}
-                                {rep && <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium" style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff' } : { background: '#fff5e6', color: '#92400e' }} title="Reperibile"><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</span>}
                               </div>
                             </td>
+                            {hasRep && (
+                              <td style={{ ...tdBase, wordBreak: 'break-word' }}>
+                                {rep
+                                  ? <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium" style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff' } : { background: '#fff5e6', color: '#92400e' }} title="Reperibile"><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</span>
+                                  : <span className="text-[11px] text-stone-300 italic">—</span>}
+                              </td>
+                            )}
                           </tr>
                         )
                       })}

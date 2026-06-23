@@ -163,6 +163,7 @@ export function DesiderataPage() {
   const isPast = meseKey < meseCorrenteKey
   const attiva = !!finestra
   const chiusa = attiva && (isPast || (!!finestra?.aperta_a && finestra.aperta_a < oggiStr))
+  const readonly = chiusa   // raccolta chiusa → griglia statica (sola lettura)
   const aperta = attiva && !chiusa && !!finestra?.aperta_da && !!finestra?.aperta_a && finestra.aperta_da <= oggiStr && oggiStr <= finestra.aperta_a
   const programmata = attiva && !chiusa && !aperta && !!finestra?.aperta_da && oggiStr < finestra.aperta_da
   const stato = chiusa
@@ -253,7 +254,7 @@ export function DesiderataPage() {
   const Badge = (ds: string, turnoId: string, tid: string, tipo: TipoDesiderata) => (
     <span data-badge key={tid} className="relative rounded px-2 py-0.5 text-[11px] font-semibold shadow-sm" style={{ background: COL[tipo].badge, color: '#fff' }}>
       {nomeTurnista(tid)}
-      <button onClick={() => set(`${ds}|${turnoId}|${tid}`, null)} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#fff', color: COL[tipo].badge, lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
+      {!readonly && <button onClick={() => set(`${ds}|${turnoId}|${tid}`, null)} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#fff', color: COL[tipo].badge, lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>}
     </span>
   )
   const dropStyle = (key: string): CSSProperties => ({
@@ -265,6 +266,16 @@ export function DesiderataPage() {
   const Cella = (ds: string, turno: TurnoSchema, tipo: TipoDesiderata) => {
     const k = `${ds}|${turno.id}|${tipo}`
     const ids = byCell.get(k) ?? []
+    if (readonly) {
+      return (
+        <td style={{ ...tdBase, width: '50%', minWidth: 170 }}>
+          <div className="flex flex-wrap gap-2 items-start">
+            {ids.map(tid => Badge(ds, turno.id, tid, tipo))}
+            {!ids.length && <span className="text-[10px] text-stone-300 italic">—</span>}
+          </div>
+        </td>
+      )
+    }
     return (
       <td data-data={ds} data-turno={turno.id} data-tipo={tipo}
         onDragOver={e => { e.preventDefault(); setOverKey(k) }} onDragLeave={() => setOverKey(p => p === k ? null : p)} onDrop={e => { e.preventDefault(); handleDrop(ds, turno, tipo) }}
@@ -291,7 +302,7 @@ export function DesiderataPage() {
         </div>
         {chiusa ? (
           <p className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
-            <Lock size={13} /> Raccolta chiusa{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''} — non più riapribile. Puoi comunque modificare le caselle qui sotto.
+            <Lock size={13} /> Raccolta chiusa{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''} — non più riapribile. La griglia è in sola lettura.
             {finestra?.aperta_da && finestra?.aperta_a && <span className="text-stone-400">· periodo {itDate(finestra.aperta_da)} → {itDate(finestra.aperta_a)}</span>}
           </p>
         ) : (
@@ -317,7 +328,8 @@ export function DesiderataPage() {
         )}
       </div>
 
-      {/* Barra azioni / salvataggio */}
+      {/* Barra azioni / salvataggio (nascosta quando la griglia è in sola lettura) */}
+      {!readonly && (
       <div className="flex items-center gap-2 flex-wrap">
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
@@ -329,6 +341,7 @@ export function DesiderataPage() {
           </button>
         </div>
       </div>
+      )}
 
       {turnisti.length === 0 && <div className="card p-3 text-sm" style={{ color: '#92400e', background: '#fef3c7' }}>Aggiungi prima dei turnisti nella pagina <strong>Turnisti</strong>.</div>}
 
@@ -342,7 +355,8 @@ export function DesiderataPage() {
           else dragSource.current = null
         }}>
 
-        {/* Palette = elenco completo */}
+        {/* Palette = elenco completo (nascosta quando la griglia è in sola lettura) */}
+        {!readonly && (
         <aside className="w-40 sm:w-44 shrink-0 space-y-3" style={{ position: 'sticky', top: 8 }}>
           {paletteGruppi.length ? paletteGruppi.map(g => (
             <div key={g.liv} className="card p-2">
@@ -351,6 +365,7 @@ export function DesiderataPage() {
             </div>
           )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista.</span></div>}
         </aside>
+        )}
 
         {/* Griglia turni */}
         <div className="flex-1 min-w-0 overflow-auto card">
