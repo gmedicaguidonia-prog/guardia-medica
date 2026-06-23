@@ -49,6 +49,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
+  const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneId], queryFn: () => store.getMesiConContenuto(postazioneId!), enabled: !!postazioneId })
 
   const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
@@ -107,7 +108,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     finally { setInviando(false) }
   }
 
+  // limita la navigazione all'intervallo di mesi con qualcosa da vedere (calendario o
+  // desiderata pubblicati), includendo sempre il mese corrente
+  const meseCorrente = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`
+  const rangeMin = rangeContenuto?.min && rangeContenuto.min < meseCorrente ? rangeContenuto.min : meseCorrente
+  const rangeMax = rangeContenuto?.max && rangeContenuto.max > meseCorrente ? rangeContenuto.max : meseCorrente
+  const canPrev = meseKey > rangeMin
+  const canNext = meseKey < rangeMax
   function cambiaMese(delta: number) {
+    if (delta < 0 ? !canPrev : !canNext) return
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
     setMese(m); setAnno(a)
@@ -127,9 +136,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
   const MeseNav = (
     <div className="flex items-center gap-2">
-      <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
+      <button onClick={() => cambiaMese(-1)} disabled={!canPrev} className="btn-secondary px-2 py-1" style={{ opacity: canPrev ? 1 : 0.35, cursor: canPrev ? 'pointer' : 'not-allowed' }} title={canPrev ? 'Mese precedente' : 'Niente da vedere prima'}><ChevronLeft size={16} /></button>
       <span className="font-semibold text-sm text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
-      <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
+      <button onClick={() => cambiaMese(1)} disabled={!canNext} className="btn-secondary px-2 py-1" style={{ opacity: canNext ? 1 : 0.35, cursor: canNext ? 'pointer' : 'not-allowed' }} title={canNext ? 'Mese successivo' : 'Niente da vedere dopo'}><ChevronRight size={16} /></button>
     </div>
   )
 

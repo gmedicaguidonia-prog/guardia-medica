@@ -341,6 +341,20 @@ const supaStore = {
     const { error } = await supabase.from('richieste_turno').delete().eq('id', id)
     if (error) throw error
   },
+
+  // ── Intervallo di mesi con "qualcosa da vedere" (per limitare la navigazione pubblica) ──
+  async getMesiConContenuto(postazioneId: string): Promise<{ min: string | null; max: string | null }> {
+    const [ts, df] = await Promise.all([
+      supabase.from('turni_stato').select('mese').eq('postazione_id', postazioneId).neq('stato', 'non_pubblicato'),
+      supabase.from('desiderata_finestra').select('mese').eq('postazione_id', postazioneId).not('aperta_a', 'is', null),
+    ])
+    if (ts.error) throw ts.error
+    if (df.error) throw df.error
+    const mesi = [...(ts.data ?? []), ...(df.data ?? [])].map(r => r.mese as string)
+    if (!mesi.length) return { min: null, max: null }
+    mesi.sort()
+    return { min: mesi[0], max: mesi[mesi.length - 1] }
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -606,6 +620,15 @@ const localStore = {
   },
   async removeRichiesta(id: string): Promise<void> {
     writeLs(LS_RICHIESTE, read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => r.id !== id))
+  },
+
+  async getMesiConContenuto(postazioneId: string): Promise<{ min: string | null; max: string | null }> {
+    const ts = read<{ postazione_id?: string; mese: string; stato: StatoCalendario }[]>(LS_TURNI_STATO, []).filter(s => (s.postazione_id ?? DEV_POSTAZIONE) === postazioneId && s.stato !== 'non_pubblicato').map(s => s.mese)
+    const df = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).filter(f => (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId && !!f.aperta_a).map(f => f.mese)
+    const mesi = [...ts, ...df]
+    if (!mesi.length) return { min: null, max: null }
+    mesi.sort()
+    return { min: mesi[0], max: mesi[mesi.length - 1] }
   },
 }
 

@@ -41,11 +41,13 @@ export function useVersionCheck() {
   }, [])
 
   function applyUpdate() {
-    // Ricarica sempre dalla ROOT dell'app: evita il 404 di GitHub Pages sulle
-    // rotte profonde (es. /admin/desiderata) durante il reload "duro".
-    // Il router riporterà l'utente alla pagina giusta in base al ruolo.
-    const base = import.meta.env.BASE_URL || '/'
-    window.location.replace(`${base}?_r=${Date.now()}`)
+    // Ricarica la PAGINA CORRENTE (non la root) con cache-bust ?_r=… per forzare
+    // il refresh "duro". Le rotte profonde (es. /admin/desiderata) vengono
+    // ripristinate dal fallback SPA: 404.html → redirect → decoder in index.html,
+    // che poi rimuove il parametro _r dall'URL.
+    const url = new URL(window.location.href)
+    url.searchParams.set('_r', Date.now().toString())
+    window.location.replace(url.toString())
   }
 
   return { updateAvailable, applyUpdate }
