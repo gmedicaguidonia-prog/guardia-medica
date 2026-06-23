@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus, X, Trash2, Moon, Sun, Infinity as InfinityIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus, X, Trash2, Moon, Sun, Save, RotateCcw, Infinity as InfinityIcon } from 'lucide-react'
 import { store } from '../../lib/store'
 import { fineEffettiva, prossimoInizio } from '../../lib/turniLogic'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { useUnsaved } from '../../contexts/UnsavedContext'
 import type { TurnoSchema, ConfigVersione, ImpaginazioneVersione, Foglio, FoglioTurno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -18,6 +19,7 @@ const FOGLIO_COLORI = [
   { bg: '#cffafe', fg: '#155e75', br: '#67e8f9' },
 ]
 const coloreFoglio = (i: number) => FOGLIO_COLORI[((i % FOGLIO_COLORI.length) + FOGLIO_COLORI.length) % FOGLIO_COLORI.length]
+type FoglioBozza = { id: string; nome: string; ordine: number }
 
 function ValiditaControls({ versione, onChange }: { versione: ImpaginazioneVersione; onChange: (v: string | null) => void }) {
   const perSempre = versione.valido_fino === null
@@ -41,6 +43,7 @@ function ValiditaControls({ versione, onChange }: { versione: ImpaginazioneVersi
 
 export function ImpaginazionePage() {
   const qc = useQueryClient()
+  const { setHasUnsaved } = useUnsaved()
   const { postazioneId } = usePostazione()
   const oggi = new Date()
   const [anno, setAnno] = useState(oggi.getFullYear())
@@ -55,42 +58,112 @@ export function ImpaginazionePage() {
   const { data: fogli = [] } = useQuery<Foglio[]>({ queryKey: ['fogli', impagVer?.id], queryFn: () => store.getFogli(impagVer!.id), enabled: !!impagVer })
   const { data: foglioTurni = [] } = useQuery<FoglioTurno[]>({ queryKey: ['foglio-turni', impagVer?.id], queryFn: () => store.getFoglioTurni(impagVer!.id), enabled: !!impagVer })
 
-  const foglioByTurno = useMemo(() => { const m = new Map<string, string>(); foglioTurni.forEach(ft => m.set(ft.turno_schema_id, ft.foglio_id)); return m }, [foglioTurni])
-  const indiceFoglio = useMemo(() => { const m = new Map<string, number>(); fogli.forEach((f, i) => m.set(f.id, i)); return m }, [fogli])
-  const contaTurni = useMemo(() => { const m = new Map<string, number>(); foglioTurni.forEach(ft => m.set(ft.foglio_id, (m.get(ft.foglio_id) ?? 0) + 1)); return m }, [foglioTurni])
+  // ── bozza locale (salvataggio ESPLICITO, niente autosave) ──
+  const [draftFogli, setDraftFogli] = useState<FoglioBozza[]>([])
+  const [draftAssegn, setDraftAssegn] = useState<Map<string, string>>(new Map())
+  const [saving, setSaving] = useState(false)
+  const editing = useRef(false)
+  const tmpRef = useRef(0)
+
+  // riallinea la bozza dal server quando non si sta editando
+  useEffect(() => {
+    if (editing.current) return
+    setDraftFogli(fogli.map(f => ({ id: f.id, nome: f.nome, ordine: f.ordine })))
+    setDraftAssegn(new Map(foglioTurni.map(ft => [ft.turno_schema_id, ft.foglio_id])))
+  }, [fogli, foglioTurni])
+
+  const serverNome = useMemo(() => new Map(fogli.map(f => [f.id, f.nome])), [fogli])
+  const serverAssegn = useMemo(() => new Map(foglioTurni.map(ft => [ft.turno_schema_id, ft.foglio_id])), [foglioTurni])
+  const dirty = useMemo(() => {
+    if (draftFogli.length !== fogli.length) return true
+    for (const f of draftFogli) { if (f.id.startsWith('tmp-')) return true; if (serverNome.get(f.id) !== f.nome) return true }
+    if (draftAssegn.size !== serverAssegn.size) return true
+    for (const [k, v] of draftAssegn) { if (serverAssegn.get(k) !== v) return true }
+    return false
+  }, [draftFogli, draftAssegn, fogli.length, serverNome, serverAssegn])
+
+  useEffect(() => { if (!dirty) editing.current = false }, [dirty])
+  useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
+  useEffect(() => {
+    if (!dirty) return
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h)
+  }, [dirty])
+
+  const indiceFoglio = useMemo(() => { const m = new Map<string, number>(); draftFogli.forEach((f, i) => m.set(f.id, i)); return m }, [draftFogli])
+  const contaTurni = useMemo(() => { const m = new Map<string, number>(); draftAssegn.forEach(fid => m.set(fid, (m.get(fid) ?? 0) + 1)); return m }, [draftAssegn])
 
   const [warn, setWarn] = useState<string | null>(null)
   function showWarn(msg: string) { setWarn(msg); window.setTimeout(() => setWarn(null), 3000) }
 
-  function cambiaMese(delta: number) { let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ } setMese(m); setAnno(a); setAttivo(null) }
+  function cambiaMese(delta: number) {
+    if (dirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
+    editing.current = false
+    let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
+    setMese(m); setAnno(a); setAttivo(null)
+  }
+  // operazioni sulla VERSIONE (immediate: creare/cancellare la versione, validità)
   async function configura() { await store.creaImpaginazioneVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] }) }
   async function cambiaValidita(v: string | null) { if (!impagVer) return; await store.setValiditaImpaginazioneVersione(impagVer.id, v); await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] }) }
   async function cancella() {
     if (!impagVer) return
     if (!window.confirm(`Cancellare l'impaginazione valida da ${meseLabel(impagVer.valido_da)}? Non è reversibile.`)) return
+    editing.current = false; setAttivo(null)
     await store.deleteImpaginazioneVersione(impagVer.id)
-    setAttivo(null)
     await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] })
   }
-  async function aggiungiFoglio() {
-    if (!impagVer) return
-    const f = await store.addFoglio(impagVer.id, `Turni ${fogli.length + 1}`)
-    await qc.invalidateQueries({ queryKey: ['fogli', impagVer.id] })
-    setAttivo(f.id)
+
+  // ── operazioni sulla BOZZA (no autosave: si applicano col Salva) ──
+  function aggiungiFoglio() {
+    editing.current = true
+    const id = `tmp-${++tmpRef.current}`
+    const ordine = draftFogli.reduce((mx, f) => Math.max(mx, f.ordine), 0) + 10
+    setDraftFogli(prev => [...prev, { id, nome: `Turni ${prev.length + 1}`, ordine }])
+    setAttivo(id)
   }
-  async function rinomina(id: string, nome: string) { await store.renameFoglio(id, nome.trim() || 'Foglio'); qc.invalidateQueries({ queryKey: ['fogli', impagVer?.id] }) }
-  async function elimina(id: string) {
-    if (!window.confirm('Eliminare questo foglio? I turni torneranno non assegnati.')) return
-    await store.deleteFoglio(id)
+  function rinomina(id: string, nome: string) { editing.current = true; setDraftFogli(prev => prev.map(f => f.id === id ? { ...f, nome } : f)) }
+  function elimina(id: string) {
+    editing.current = true
+    setDraftFogli(prev => prev.filter(f => f.id !== id))
+    setDraftAssegn(prev => { const n = new Map(prev); for (const [k, v] of n) if (v === id) n.delete(k); return n })
     if (attivo === id) setAttivo(null)
-    await qc.invalidateQueries({ queryKey: ['fogli', impagVer?.id] }); await qc.invalidateQueries({ queryKey: ['foglio-turni', impagVer?.id] })
   }
-  async function assegna(turnoId: string) {
-    if (!impagVer) return
+  function assegna(turnoId: string) {
     if (!attivo) { showWarn('Seleziona prima un foglio (o creane uno) a cui assegnare il turno.'); return }
-    const corrente = foglioByTurno.get(turnoId)
-    await store.setFoglioTurno(impagVer.id, turnoId, corrente === attivo ? null : attivo)
-    await qc.invalidateQueries({ queryKey: ['foglio-turni', impagVer.id] })
+    editing.current = true
+    setDraftAssegn(prev => { const n = new Map(prev); if (n.get(turnoId) === attivo) n.delete(turnoId); else n.set(turnoId, attivo); return n })
+  }
+  function annulla() {
+    editing.current = false
+    setDraftFogli(fogli.map(f => ({ id: f.id, nome: f.nome, ordine: f.ordine })))
+    setDraftAssegn(new Map(foglioTurni.map(ft => [ft.turno_schema_id, ft.foglio_id])))
+    setAttivo(null)
+  }
+  async function salva() {
+    if (!impagVer) return
+    setSaving(true)
+    try {
+      const draftIds = new Set(draftFogli.map(f => f.id))
+      for (const f of fogli) if (!draftIds.has(f.id)) await store.deleteFoglio(f.id)
+      const idMap = new Map<string, string>()
+      for (const f of draftFogli) {
+        if (f.id.startsWith('tmp-')) { const nuovo = await store.addFoglio(impagVer.id, f.nome.trim() || 'Foglio'); idMap.set(f.id, nuovo.id) }
+        else if (serverNome.get(f.id) !== f.nome) await store.renameFoglio(f.id, f.nome.trim() || 'Foglio')
+      }
+      const realId = (fid: string) => idMap.get(fid) ?? fid
+      const finale = new Map<string, string>(); draftAssegn.forEach((fid, t) => finale.set(t, realId(fid)))
+      const turni = new Set<string>([...finale.keys(), ...serverAssegn.keys()])
+      for (const t of turni) {
+        const nuovo = finale.get(t) ?? null
+        const vecchio = serverAssegn.get(t) ?? null
+        if (nuovo !== vecchio) await store.setFoglioTurno(impagVer.id, t, nuovo)
+      }
+      if (attivo && idMap.has(attivo)) setAttivo(idMap.get(attivo)!)
+      editing.current = false
+      await qc.invalidateQueries({ queryKey: ['fogli', impagVer.id] })
+      await qc.invalidateQueries({ queryKey: ['foglio-turni', impagVer.id] })
+    } catch (e) { console.error('[Impaginazione] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
+    finally { setSaving(false) }
   }
 
   const Header = (
@@ -123,8 +196,8 @@ export function ImpaginazionePage() {
 
   const eff = fineEffettiva(impagVer, tutteVer)
   const nxt = prossimoInizio(impagVer, tutteVer)
-  const nonAssegnati = schema.filter(s => !foglioByTurno.has(s.id))
-  const foglioAttivo = fogli.find(f => f.id === attivo)
+  const nonAssegnati = schema.filter(s => !draftAssegn.has(s.id))
+  const foglioAttivo = draftFogli.find(f => f.id === attivo)
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
@@ -135,6 +208,19 @@ export function ImpaginazionePage() {
         <button onClick={cancella} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella impaginazione</button>
       </div>
 
+      {/* Barra salvataggio */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
+        <div className="ml-auto flex items-center gap-2">
+          {dirty && <button onClick={annulla} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
+          <button onClick={salva} disabled={!dirty || saving}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:cursor-default"
+            style={dirty ? { background: '#2e7d32', color: '#fff' } : { background: '#f3f4f6', color: '#9ca3af' }}>
+            <Save size={15} /> {saving ? 'Salvo…' : 'Salva'}
+          </button>
+        </div>
+      </div>
+
       <div className="flex gap-3 items-start flex-col sm:flex-row">
         {/* Fogli (dove c'era la palette) */}
         <aside className="w-full sm:w-56 shrink-0 space-y-2">
@@ -142,8 +228,8 @@ export function ImpaginazionePage() {
             <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>Fogli</h3>
             <button onClick={aggiungiFoglio} className="btn-secondary text-xs py-1 px-2"><Plus size={13} /> Aggiungi</button>
           </div>
-          {fogli.length === 0 && <p className="text-xs text-stone-400">Nessun foglio. Aggiungine uno e poi assegna i turni.</p>}
-          {fogli.map((f, i) => {
+          {draftFogli.length === 0 && <p className="text-xs text-stone-400">Nessun foglio. Aggiungine uno e poi assegna i turni.</p>}
+          {draftFogli.map((f, i) => {
             const col = coloreFoglio(i)
             const act = attivo === f.id
             return (
@@ -151,7 +237,7 @@ export function ImpaginazionePage() {
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ background: col.fg }} />
                   <input value={f.nome} onChange={e => rinomina(f.id, e.target.value)} onClick={e => e.stopPropagation()}
-                    className="flex-1 min-w-0 bg-transparent text-sm font-semibold outline-none" style={{ color: '#2b3c24' }} />
+                    placeholder="Nome foglio" className="flex-1 min-w-0 bg-transparent text-sm font-semibold outline-none" style={{ color: '#2b3c24' }} />
                   <button onClick={e => { e.stopPropagation(); elimina(f.id) }} title="Elimina foglio" className="text-stone-400 hover:text-red-600 shrink-0"><Trash2 size={13} /></button>
                 </div>
                 <p className="text-[11px] text-stone-500 mt-0.5" style={{ marginLeft: 18 }}>{meseLabel(meseKey)} · {contaTurni.get(f.id) ?? 0} turni</p>
@@ -163,15 +249,15 @@ export function ImpaginazionePage() {
         {/* Turni del mese: clic per assegnarli al foglio attivo */}
         <div className="flex-1 min-w-0 card p-3">
           <p className="text-sm font-semibold mb-2" style={{ color: '#2b3c24' }}>Turni configurati di {MESI[mese - 1]} {anno}
-            {foglioAttivo ? <span className="text-xs font-normal text-stone-500"> — clicca per metterli/toglierli da «{foglioAttivo.nome}»</span> : <span className="text-xs font-normal text-amber-700"> — seleziona prima un foglio</span>}</p>
+            {foglioAttivo ? <span className="text-xs font-normal text-stone-500"> — clicca per metterli/toglierli da «{foglioAttivo.nome || 'foglio'}»</span> : <span className="text-xs font-normal text-amber-700"> — seleziona prima un foglio</span>}</p>
           <div className="flex flex-wrap gap-2">
             {schema.map(s => {
-              const fid = foglioByTurno.get(s.id)
+              const fid = draftAssegn.get(s.id)
               const idx = fid != null ? (indiceFoglio.get(fid) ?? 0) : -1
               const col = idx >= 0 ? coloreFoglio(idx) : null
               const overnight = s.ora_fine <= s.ora_inizio
               const inAttivo = !!attivo && fid === attivo
-              const nomeFoglio = fid ? fogli.find(f => f.id === fid)?.nome : null
+              const nomeFoglio = fid ? draftFogli.find(f => f.id === fid)?.nome : null
               return (
                 <button key={s.id} onClick={() => assegna(s.id)} title={nomeFoglio ? `In «${nomeFoglio}» — clicca per spostarlo/toglierlo` : 'Non assegnato — clicca per assegnarlo al foglio attivo'}
                   className="rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-all hover:brightness-95 text-left"
