@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, ImpaginazioneVersione, Foglio, FoglioTurno } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoMembro { nome: string; cognome: string; email: string; livello: Livello; utenteId?: string }
@@ -355,6 +355,65 @@ const supaStore = {
     mesi.sort()
     return { min: mesi[0], max: mesi[mesi.length - 1] }
   },
+
+  // ── Impaginazione (versioni + fogli + turni dei fogli) ──
+  async getImpaginazioneVersioneMese(postazioneId: string, mese: string): Promise<ImpaginazioneVersione | null> {
+    const { data, error } = await supabase.from('impaginazione_versioni').select('*').eq('postazione_id', postazioneId)
+    if (error) throw error
+    return pickVersione((data ?? []) as ImpaginazioneVersione[], mese)
+  },
+  async getImpaginazioneVersioni(postazioneId: string): Promise<ImpaginazioneVersione[]> {
+    const { data, error } = await supabase.from('impaginazione_versioni').select('*').eq('postazione_id', postazioneId).order('valido_da')
+    if (error) throw error
+    return (data ?? []) as ImpaginazioneVersione[]
+  },
+  async creaImpaginazioneVersione(postazioneId: string, mese: string): Promise<ImpaginazioneVersione> {
+    const { data, error } = await supabase.from('impaginazione_versioni').insert({ valido_da: mese, valido_fino: null, postazione_id: postazioneId }).select().single()
+    if (error) throw error
+    return data as ImpaginazioneVersione
+  },
+  async setValiditaImpaginazioneVersione(id: string, validoFino: string | null): Promise<void> {
+    const { error } = await supabase.from('impaginazione_versioni').update({ valido_fino: validoFino }).eq('id', id)
+    if (error) throw error
+  },
+  async deleteImpaginazioneVersione(id: string): Promise<void> {
+    const { error } = await supabase.from('impaginazione_versioni').delete().eq('id', id)
+    if (error) throw error
+  },
+  async getFogli(versioneId: string): Promise<Foglio[]> {
+    const { data, error } = await supabase.from('fogli').select('*').eq('versione_id', versioneId).order('ordine')
+    if (error) throw error
+    return (data ?? []) as Foglio[]
+  },
+  async addFoglio(versioneId: string, nome: string): Promise<Foglio> {
+    const { data: maxRows } = await supabase.from('fogli').select('ordine').eq('versione_id', versioneId).order('ordine', { ascending: false }).limit(1)
+    const ordine = (maxRows && maxRows.length) ? (maxRows[0].ordine as number) + 10 : 10
+    const { data, error } = await supabase.from('fogli').insert({ versione_id: versioneId, nome, ordine }).select().single()
+    if (error) throw error
+    return data as Foglio
+  },
+  async renameFoglio(id: string, nome: string): Promise<void> {
+    const { error } = await supabase.from('fogli').update({ nome }).eq('id', id)
+    if (error) throw error
+  },
+  async deleteFoglio(id: string): Promise<void> {
+    const { error } = await supabase.from('fogli').delete().eq('id', id)
+    if (error) throw error
+  },
+  async getFoglioTurni(versioneId: string): Promise<FoglioTurno[]> {
+    const { data, error } = await supabase.from('foglio_turni').select('*').eq('versione_id', versioneId)
+    if (error) throw error
+    return (data ?? []) as FoglioTurno[]
+  },
+  async setFoglioTurno(versioneId: string, turnoSchemaId: string, foglioId: string | null): Promise<void> {
+    if (foglioId === null) {
+      const { error } = await supabase.from('foglio_turni').delete().match({ versione_id: versioneId, turno_schema_id: turnoSchemaId })
+      if (error) throw error
+    } else {
+      const { error } = await supabase.from('foglio_turni').upsert({ versione_id: versioneId, turno_schema_id: turnoSchemaId, foglio_id: foglioId }, { onConflict: 'versione_id,turno_schema_id' })
+      if (error) throw error
+    }
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -371,6 +430,9 @@ const LS_DESIDERATA       = 'gm_desiderata'
 const LS_DESIDERATA_FIN   = 'gm_desiderata_finestra'
 const LS_TURNI_STATO      = 'gm_turni_stato'
 const LS_RICHIESTE        = 'gm_richieste'
+const LS_IMPAG_VERSIONI   = 'gm_impag_versioni'
+const LS_FOGLI            = 'gm_fogli'
+const LS_FOGLIO_TURNI     = 'gm_foglio_turni'
 const LS_POSTAZIONI       = 'gm_postazioni'
 const LS_SEEDED           = 'gm_seeded_v5'
 const DEV_POSTAZIONE      = 'dev-postazione-1'
@@ -629,6 +691,51 @@ const localStore = {
     if (!mesi.length) return { min: null, max: null }
     mesi.sort()
     return { min: mesi[0], max: mesi[mesi.length - 1] }
+  },
+
+  async getImpaginazioneVersioneMese(postazioneId: string, mese: string): Promise<ImpaginazioneVersione | null> {
+    return pickVersione(read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId), mese)
+  },
+  async getImpaginazioneVersioni(postazioneId: string): Promise<ImpaginazioneVersione[]> {
+    return read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId).slice().sort((a, b) => a.valido_da.localeCompare(b.valido_da))
+  },
+  async creaImpaginazioneVersione(postazioneId: string, mese: string): Promise<ImpaginazioneVersione> {
+    const v = { id: uid(), valido_da: mese, valido_fino: null, created_at: new Date().toISOString(), postazione_id: postazioneId }
+    writeLs(LS_IMPAG_VERSIONI, [...read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []), v])
+    return v
+  },
+  async setValiditaImpaginazioneVersione(id: string, validoFino: string | null): Promise<void> {
+    writeLs(LS_IMPAG_VERSIONI, read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
+  },
+  async deleteImpaginazioneVersione(id: string): Promise<void> {
+    writeLs(LS_IMPAG_VERSIONI, read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).filter(v => v.id !== id))
+    writeLs(LS_FOGLI, read<Foglio[]>(LS_FOGLI, []).filter(f => f.versione_id !== id))
+    writeLs(LS_FOGLIO_TURNI, read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => ft.versione_id !== id))
+  },
+  async getFogli(versioneId: string): Promise<Foglio[]> {
+    return read<Foglio[]>(LS_FOGLI, []).filter(f => f.versione_id === versioneId).slice().sort((a, b) => a.ordine - b.ordine)
+  },
+  async addFoglio(versioneId: string, nome: string): Promise<Foglio> {
+    const list = read<Foglio[]>(LS_FOGLI, [])
+    const ordine = list.filter(f => f.versione_id === versioneId).reduce((m, f) => Math.max(m, f.ordine), 0) + 10
+    const f: Foglio = { id: uid(), versione_id: versioneId, nome, ordine, created_at: new Date().toISOString() }
+    writeLs(LS_FOGLI, [...list, f])
+    return f
+  },
+  async renameFoglio(id: string, nome: string): Promise<void> {
+    writeLs(LS_FOGLI, read<Foglio[]>(LS_FOGLI, []).map(f => f.id === id ? { ...f, nome } : f))
+  },
+  async deleteFoglio(id: string): Promise<void> {
+    writeLs(LS_FOGLI, read<Foglio[]>(LS_FOGLI, []).filter(f => f.id !== id))
+    writeLs(LS_FOGLIO_TURNI, read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => ft.foglio_id !== id))
+  },
+  async getFoglioTurni(versioneId: string): Promise<FoglioTurno[]> {
+    return read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => ft.versione_id === versioneId)
+  },
+  async setFoglioTurno(versioneId: string, turnoSchemaId: string, foglioId: string | null): Promise<void> {
+    const list = read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => !(ft.versione_id === versioneId && ft.turno_schema_id === turnoSchemaId))
+    if (foglioId !== null) list.push({ versione_id: versioneId, turno_schema_id: turnoSchemaId, foglio_id: foglioId })
+    writeLs(LS_FOGLIO_TURNI, list)
   },
 }
 

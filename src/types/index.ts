@@ -198,6 +198,29 @@ export interface RichiestaTurno {
   created_at: string
 }
 
+// ─── Impaginazione (fogli = griglie nominate di turni, versionate) ──
+//  Ogni "foglio" raggruppa un sottoinsieme dei turni del mese; Desiderata,
+//  Turni del Mese e la pagina pubblica generano UNA griglia per foglio.
+export interface ImpaginazioneVersione {
+  id: string
+  valido_da: string
+  valido_fino: string | null
+  created_at: string
+}
+export interface Foglio {
+  id: string
+  versione_id: string
+  nome: string
+  ordine: number
+  created_at: string
+}
+/** Assegnazione turno→foglio (un turno in un solo foglio per versione). */
+export interface FoglioTurno {
+  versione_id: string
+  turno_schema_id: string
+  foglio_id: string
+}
+
 // ─── Postazioni (multi-tenancy) ─────────────────────────────────────
 //  Ogni postazione è un "mondo" a sé: turnisti, configurazioni, regole,
 //  desiderata e turni sono filtrati per postazione_id.

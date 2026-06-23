@@ -10,6 +10,7 @@ import { TurnistiPage } from './pages/admin/TurnistiPage'
 import { SchemaTurniPage } from './pages/admin/SchemaTurniPage'
 import { GestioneTurniPage } from './pages/admin/GestioneTurniPage'
 import { RegoleTurniPage } from './pages/admin/RegoleTurniPage'
+import { ImpaginazionePage } from './pages/admin/ImpaginazionePage'
 import { DesiderataPage } from './pages/admin/DesiderataPage'
 import { PostazioniPage } from './pages/admin/PostazioniPage'
 import { AdminHomePage } from './pages/admin/AdminHomePage'
@@ -61,6 +62,7 @@ function AppRoutes() {
           <Route index element={<AdminHomePage />} />
           <Route path="postazioni" element={<PostazioniPage />} />
           <Route path="regole"     element={<RegoleTurniPage />} />
+          <Route path="impaginazione" element={<ImpaginazionePage />} />
           <Route path="desiderata" element={<DesiderataPage />} />
           <Route path="turni"      element={<GestioneTurniPage />} />
           <Route path="turnisti" element={<TurnistiPage />} />
