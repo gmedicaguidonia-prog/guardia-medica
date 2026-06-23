@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Infinity as InfinityIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Infinity as InfinityIcon, Moon, Sun } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
 import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
@@ -253,7 +253,7 @@ export function RegoleTurniPage() {
             <thead>
               <tr>
                 <th style={thStyle(true)}>Giorno</th>
-                {schema.map(c => (<th key={c.id} style={thStyle(false)}><div>{c.nome || 'Turno'}</div><div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85 }}>{c.ora_inizio}–{c.ora_fine} · {c.n_turnisti}</div></th>))}
+                {schema.map(c => (<th key={c.id} style={thStyle(false)}><div className="inline-flex items-center justify-center gap-1">{c.ora_fine <= c.ora_inizio ? <Moon size={12} style={{ color: '#cbd5e1' }} /> : <Sun size={12} style={{ color: '#fbbf24' }} />}{c.nome || 'Turno'}</div><div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85 }}>{c.ora_inizio}–{c.ora_fine} · {c.n_turnisti}</div></th>))}
               </tr>
             </thead>
             <tbody>

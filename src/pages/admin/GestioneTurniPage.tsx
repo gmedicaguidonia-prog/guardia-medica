@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
@@ -324,6 +324,7 @@ export function GestioneTurniPage() {
               {righe.map(({ ds, d, turno }) => {
                 const fest = isFestivo(d), pref = isPrefestivo(d)
                 const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
+                const overnight = turno.ora_fine <= turno.ora_inizio
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                 const kT = `${ds}|${turno.id}|turnisti`, kR = `${ds}|${turno.id}|reperibile`
                 const slots = turnistiSlots(ds, turno)
@@ -335,7 +336,7 @@ export function GestioneTurniPage() {
                     <td style={{ ...tdBase, whiteSpace: 'nowrap', width: 1, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
                       <div className="flex items-center gap-1.5">
                         <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
-                        <span style={{ color: '#475569' }}>· {turno.nome || 'Turno'}</span>
+                        <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                         <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={pieno ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{assegnati}/{turno.n_turnisti}</span>
                       </div>
                       <div style={{ fontSize: 10, color: '#94a3b8' }} className="flex items-center gap-1.5">

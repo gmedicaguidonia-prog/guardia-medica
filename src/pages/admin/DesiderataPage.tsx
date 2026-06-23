@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock, Moon, Sun } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, cmpTurnisti, gruppiPerLivello } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
@@ -348,12 +348,13 @@ export function DesiderataPage() {
                 const fest = isFestivo(d), pref = isPrefestivo(d)
                 const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
+                const overnight = turno.ora_fine <= turno.ora_inizio
                 return (
                   <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
                     <td style={{ ...tdBase, whiteSpace: 'nowrap', width: 1, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
                       <div className="flex items-center gap-1.5">
                         <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
-                        <span style={{ color: '#475569' }}>· {turno.nome || 'Turno'}</span>
+                        <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                       </div>
                       <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
                     </td>
