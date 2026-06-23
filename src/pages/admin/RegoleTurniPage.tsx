@@ -162,13 +162,15 @@ export function RegoleTurniPage() {
     <div className="flex items-start gap-3">
       <ListChecks size={22} style={{ color: '#476540' }} className="mt-1" />
       <div className="flex-1">
-        <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Regole Turni</h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Regole Turni</h1>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
+            <span className="font-semibold text-sm text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+            <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
+          </div>
+        </div>
         <p className="text-sm text-stone-600">Trascina i turnisti dalla colonna sinistra nelle celle. Ricordati di premere <strong>Salva</strong>.</p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
-        <span className="font-semibold text-sm text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
-        <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
       </div>
     </div>
   )
