@@ -120,10 +120,21 @@ export function GestioneTurniPage() {
   function turnistiSlots(ds: string, turno: TurnoSchema): (string | null)[] {
     return Array.from({ length: turno.n_turnisti }, (_, slot) => local.get(`${ds}|${turno.id}|${slot}`) ?? null)
   }
+  /** Chi quel giorno è in turno (slot>=0) e chi è reperibile (slot -1). */
+  function turnistiGiorno(ds: string): { lavoranti: Set<string>; reperibili: Set<string> } {
+    const lav = new Set<string>(), rep = new Set<string>()
+    local.forEach((tid, key) => { const p = key.split('|'); if (p[0] !== ds) return; if (+p[2] >= 0) lav.add(tid); else rep.add(tid) })
+    return { lavoranti: lav, reperibili: rep }
+  }
   function handleDrop(ds: string, turno: TurnoSchema, tipo: string) {
     const tid = dragSource.current; dragSource.current = null; setOverKey(null)
     if (!tid) return
-    if (tipo === 'reperibile') { set(`${ds}|${turno.id}|${REP_SLOT}`, tid); return }
+    const { lavoranti, reperibili } = turnistiGiorno(ds)
+    if (tipo === 'reperibile') {
+      if (lavoranti.has(tid)) { showWarn(`${nomeTurnista(tid)} è già in turno questo giorno: non può fare il reperibile.`); return }
+      set(`${ds}|${turno.id}|${REP_SLOT}`, tid); return
+    }
+    if (reperibili.has(tid)) { showWarn(`${nomeTurnista(tid)} è il reperibile di questo giorno: non può essere anche in turno.`); return }
     const slots = turnistiSlots(ds, turno)
     if (slots.includes(tid)) { showWarn(`${nomeTurnista(tid)} è già in questo turno.`); return }
     const free = slots.findIndex(s => s === null)
