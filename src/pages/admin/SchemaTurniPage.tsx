@@ -8,6 +8,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
 import type { TurnoSchema, Ricorrenza, ConfigVersione } from '../../types'
 
@@ -149,10 +150,7 @@ export function SchemaTurniPage() {
   const { setHasUnsaved } = useUnsaved()
   const { postazioneId } = usePostazione()
 
-  const oggi = new Date()
-  const [anno, setAnno] = useState(oggi.getFullYear())
-  const [mese, setMese] = useState(oggi.getMonth() + 1)
-  const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
+  const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
 
   const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({
     queryKey: ['versione', postazioneId, meseKey],
@@ -188,7 +186,7 @@ export function SchemaTurniPage() {
     if (hasUnsaved && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
-    setMese(m); setAnno(a)
+    setMeseAnno(a, m)
   }
 
   async function configuraMese() {

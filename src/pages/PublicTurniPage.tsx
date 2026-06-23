@@ -7,6 +7,7 @@ import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
 import { nomeCompleto, cmpTurnisti } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
+import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
 import type { AuthUser, TurnoSchema, Turno, Turnista, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -28,15 +29,15 @@ function Avviso({ children }: { children: React.ReactNode }) {
 export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const qc = useQueryClient()
   const oggi = new Date()
-  const [anno, setAnno] = useState(oggi.getFullYear())
-  const [mese, setMese] = useState(oggi.getMonth() + 1)
-  const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
+  const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
   const oggiStr = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
   const [tab, setTab] = useState<'turni' | 'desiderata'>('turni')
 
   // postazioni dell'utente
   const { data: mie = [], isLoading: loadingMie } = useQuery<MiaPostazione[]>({ queryKey: ['mie-postazioni', user?.id], queryFn: () => store.getMiePostazioni(user!.id), enabled: !!user })
-  const [postazioneId, setPostazioneId] = useState<string | null>(null)
+  // postazione ricordata per la sessione (chiave condivisa con l'admin)
+  const [postazioneId, setPostazioneId] = useState<string | null>(() => { try { return localStorage.getItem('gm_postazione') } catch { return null } })
+  function scegliPostazione(id: string) { try { localStorage.setItem('gm_postazione', id) } catch { /* ignore */ } setPostazioneId(id) }
   useEffect(() => { if (mie.length && (!postazioneId || !mie.some(m => m.postazioneId === postazioneId))) setPostazioneId(mie[0].postazioneId) }, [mie, postazioneId])
   const mia = mie.find(m => m.postazioneId === postazioneId) ?? null
 
@@ -126,7 +127,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     if (delta < 0 ? !canPrev : !canNext) return
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
-    setMese(m); setAnno(a)
+    setMeseAnno(a, m)
   }
 
   // stato finestra desiderata
@@ -165,7 +166,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             <MapPin size={16} style={{ color: '#476540' }} />
             <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Postazione:</span>
             {mie.length > 1 ? (
-              <select value={postazioneId ?? ''} onChange={e => setPostazioneId(e.target.value)} className="input text-sm w-auto">
+              <select value={postazioneId ?? ''} onChange={e => scegliPostazione(e.target.value)} className="input text-sm w-auto">
                 {mie.map(m => <option key={m.postazioneId} value={m.postazioneId}>{m.nome}</option>)}
               </select>
             ) : <span className="text-sm" style={{ color: '#3a3d30' }}>{mie[0].nome}</span>}

@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus
 import { store } from '../../lib/store'
 import { fineEffettiva, prossimoInizio } from '../../lib/turniLogic'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import type { TurnoSchema, ConfigVersione, ImpaginazioneVersione, Foglio, FoglioTurno } from '../../types'
 
@@ -46,9 +47,7 @@ export function ImpaginazionePage() {
   const { setHasUnsaved } = useUnsaved()
   const { postazioneId } = usePostazione()
   const oggi = new Date()
-  const [anno, setAnno] = useState(oggi.getFullYear())
-  const [mese, setMese] = useState(oggi.getMonth() + 1)
-  const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
+  const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
   const [attivo, setAttivo] = useState<string | null>(null)   // foglio attivo
 
   const { data: configVer, isLoading: loadingConfig } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
@@ -100,7 +99,7 @@ export function ImpaginazionePage() {
     if (dirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
     editing.current = false
     let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
-    setMese(m); setAnno(a); setAttivo(null)
+    setMeseAnno(a, m); setAttivo(null)
   }
   // operazioni sulla VERSIONE (immediate: creare/cancellare la versione, validità)
   async function configura() { await store.creaImpaginazioneVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] }) }

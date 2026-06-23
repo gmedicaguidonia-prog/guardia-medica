@@ -11,6 +11,7 @@ import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, StatoCalendario, RichiestaTurno } from '../../types'
@@ -43,11 +44,8 @@ export function GestioneTurniPage() {
   const { setHasUnsaved } = useUnsaved()
   const { confirm, confirmState } = useConfirm()
   const { postazioneId } = usePostazione()
-  const oggi = new Date()
-  const [anno, setAnno] = useState(oggi.getFullYear())
-  const [mese, setMese] = useState(oggi.getMonth() + 1)
+  const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
   const [mostraRepMesi, setMostraRepMesi] = useState<Set<string>>(new Set())
-  const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
 
   const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
@@ -207,7 +205,7 @@ export function GestioneTurniPage() {
     if (dirty) discard()
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
-    setMese(m); setAnno(a)
+    setMeseAnno(a, m)
   }
   async function aggiungiReperibile() {
     const ok = await confirm({ title: 'Aggiungi reperibile', message: 'Aggiungere la colonna “Reperibile” per assegnare un reperibile a ogni turno?', confirmLabel: 'Aggiungi' })

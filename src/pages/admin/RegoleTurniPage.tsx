@@ -9,6 +9,7 @@ import { GIORNI_SETTIMANA } from '../../lib/constants'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, RegolaTurno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -49,9 +50,7 @@ export function RegoleTurniPage() {
   const { setHasUnsaved } = useUnsaved()
   const { postazioneId } = usePostazione()
   const oggi = new Date()
-  const [anno, setAnno] = useState(oggi.getFullYear())
-  const [mese, setMese] = useState(oggi.getMonth() + 1)
-  const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
+  const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
 
   const { data: configVer, isLoading: loadingConfig } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] } = useQuery<TurnoSchema[]>({ queryKey: ['schema', configVer?.id], queryFn: () => store.getSchemaVersione(configVer!.id), enabled: !!configVer })
@@ -126,7 +125,7 @@ export function RegoleTurniPage() {
     if (dirty) discard()
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
-    setMese(m); setAnno(a)
+    setMeseAnno(a, m)
   }
   async function configuraRegole() { await store.creaRegoleVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }) }
   async function cambiaValidita(v: string | null) { if (!regoleVer) return; await store.setValiditaRegoleVersione(regoleVer.id, v); await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }) }

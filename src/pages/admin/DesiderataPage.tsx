@@ -9,6 +9,7 @@ import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useNavigate } from 'react-router-dom'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata } from '../../types'
@@ -34,9 +35,7 @@ export function DesiderataPage() {
   const { setHasUnsaved } = useUnsaved()
   const { postazioneId } = usePostazione()
   const oggi = new Date()
-  const [anno, setAnno] = useState(oggi.getFullYear())
-  const [mese, setMese] = useState(oggi.getMonth() + 1)
-  const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
+  const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
 
   const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
@@ -135,7 +134,7 @@ export function DesiderataPage() {
     if (dirty) discard()
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
-    setMese(m); setAnno(a); setPicker(null)
+    setMeseAnno(a, m); setPicker(null)
   }
   async function salva() {
     setSaving(true)
