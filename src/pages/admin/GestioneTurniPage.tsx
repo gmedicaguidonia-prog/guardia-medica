@@ -120,23 +120,43 @@ export function GestioneTurniPage() {
   function turnistiSlots(ds: string, turno: TurnoSchema): (string | null)[] {
     return Array.from({ length: turno.n_turnisti }, (_, slot) => local.get(`${ds}|${turno.id}|${slot}`) ?? null)
   }
-  /** Chi quel giorno è in turno (slot>=0) e chi è reperibile (slot -1). */
-  function turnistiGiorno(ds: string): { lavoranti: Set<string>; reperibili: Set<string> } {
-    const lav = new Set<string>(), rep = new Set<string>()
-    local.forEach((tid, key) => { const p = key.split('|'); if (p[0] !== ds) return; if (+p[2] >= 0) lav.add(tid); else rep.add(tid) })
-    return { lavoranti: lav, reperibili: rep }
+  const parseMin = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m }
+  /** Intervallo orario assoluto (in minuti) di un turno in una certa data.
+   *  Se il turno passa la mezzanotte, la fine va al giorno dopo. */
+  function intervallo(ds: string, turno: TurnoSchema): [number, number] {
+    const [y, mo, d] = ds.split('-').map(Number)
+    const base = Math.round(Date.UTC(y, mo - 1, d) / 86400000) * 1440
+    let s = parseMin(turno.ora_inizio), e = parseMin(turno.ora_fine)
+    if (e <= s) e += 1440
+    return [base + s, base + e]
+  }
+  /** Se `tid` ha già un impegno (turno o reperibile) che si SOVRAPPONE come
+   *  orario al turno target, ritorna quel turno; altrimenti null. */
+  function conflittoOrario(tid: string, target: TurnoSchema, ds: string, escludiKey: string): TurnoSchema | null {
+    const [sT, eT] = intervallo(ds, target)
+    for (const [key, t] of local) {
+      if (t !== tid || key === escludiKey) continue
+      const p = key.split('|')
+      const turno2 = schema.find(s => s.id === p[1])
+      if (!turno2) continue
+      const [s2, e2] = intervallo(p[0], turno2)
+      if (sT < e2 && s2 < eT) return turno2   // sovrapposizione
+    }
+    return null
   }
   function handleDrop(ds: string, turno: TurnoSchema, tipo: string) {
     const tid = dragSource.current; dragSource.current = null; setOverKey(null)
     if (!tid) return
-    const { lavoranti, reperibili } = turnistiGiorno(ds)
+    const sovr = (conf: TurnoSchema) => showWarn(`${nomeTurnista(tid)} è già impegnato in “${conf.nome || 'un turno'}” (${conf.ora_inizio}–${conf.ora_fine}) in sovrapposizione di orario.`)
     if (tipo === 'reperibile') {
-      if (lavoranti.has(tid)) { showWarn(`${nomeTurnista(tid)} è già in turno questo giorno: non può fare il reperibile.`); return }
+      const conf = conflittoOrario(tid, turno, ds, `${ds}|${turno.id}|${REP_SLOT}`)
+      if (conf) { sovr(conf); return }
       set(`${ds}|${turno.id}|${REP_SLOT}`, tid); return
     }
-    if (reperibili.has(tid)) { showWarn(`${nomeTurnista(tid)} è il reperibile di questo giorno: non può essere anche in turno.`); return }
     const slots = turnistiSlots(ds, turno)
     if (slots.includes(tid)) { showWarn(`${nomeTurnista(tid)} è già in questo turno.`); return }
+    const conf = conflittoOrario(tid, turno, ds, '')
+    if (conf) { sovr(conf); return }
     const free = slots.findIndex(s => s === null)
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” bastano ${turno.n_turnisti} turnist${turno.n_turnisti === 1 ? 'a' : 'i'}.`); return }
     set(`${ds}|${turno.id}|${free}`, tid)
