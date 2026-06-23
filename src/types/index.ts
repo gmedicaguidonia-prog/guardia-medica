@@ -123,6 +123,7 @@ export interface RegolaVersione {
   valido_da: string
   valido_fino: string | null
   ore_min_settimana: number | null
+  cambio_auto: boolean        // true = cambio turno automaticamente approvato
   created_at: string
 }
 export interface RegolaTurno {

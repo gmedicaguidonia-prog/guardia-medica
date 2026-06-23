@@ -143,6 +143,11 @@ export function RegoleTurniPage() {
     await store.setOreMinSettimana(regoleVer.id, n)
     await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
   }
+  async function salvaCambioAuto(on: boolean) {
+    if (!regoleVer) return
+    await store.setCambioAuto(regoleVer.id, on)
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+  }
   async function salva() {
     if (!regoleVer) return
     setSaving(true)
@@ -293,6 +298,22 @@ export function RegoleTurniPage() {
         <span className="text-sm text-stone-500">ore</span>
         <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
       </div>
+
+      {/* Impostazione: cambio turno (approvazione automatica / del responsabile) */}
+      {(() => {
+        const auto = regoleVer?.cambio_auto ?? true
+        return (
+          <div className="card p-3 flex flex-wrap items-center gap-3">
+            <button onClick={() => salvaCambioAuto(!auto)} role="switch" aria-checked={auto} title="Attiva/disattiva l'approvazione automatica"
+              className="relative shrink-0 rounded-full transition-colors" style={{ width: 44, height: 24, background: auto ? '#2e7d32' : '#cbd5e1' }}>
+              <span className="absolute top-0.5 rounded-full bg-white shadow transition-all" style={{ width: 20, height: 20, left: auto ? 22 : 2 }} />
+            </button>
+            <span className="text-sm font-medium" style={{ color: '#3a3d30' }}>
+              Cambio Turno: <strong style={{ color: auto ? '#166534' : '#b45309' }}>{auto ? 'automaticamente approvato' : 'soggetto ad approvazione del responsabile'}</strong>
+            </span>
+          </div>
+        )
+      })()}
 
       {warn && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4" role="alert">

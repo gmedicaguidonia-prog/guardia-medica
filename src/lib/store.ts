@@ -253,6 +253,10 @@ const supaStore = {
     const { error } = await supabase.from('regole_versioni').update({ ore_min_settimana: ore }).eq('id', id)
     if (error) throw error
   },
+  async setCambioAuto(id: string, on: boolean): Promise<void> {
+    const { error } = await supabase.from('regole_versioni').update({ cambio_auto: on }).eq('id', id)
+    if (error) throw error
+  },
   async getTurnistiMese(postazioneId: string, mese: string): Promise<string[]> {
     const { data, error } = await supabase.from('turnisti_mese').select('turnista_id').eq('postazione_id', postazioneId).eq('mese', mese)
     if (error) throw error
@@ -452,7 +456,7 @@ const localStore = {
     return pickVersione(read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId), mese)
   },
   async creaRegoleVersione(postazioneId: string, mese: string): Promise<RegolaVersione> {
-    const v = { id: uid(), valido_da: mese, valido_fino: null, ore_min_settimana: null, created_at: new Date().toISOString(), postazione_id: postazioneId }
+    const v = { id: uid(), valido_da: mese, valido_fino: null, ore_min_settimana: null, cambio_auto: true, created_at: new Date().toISOString(), postazione_id: postazioneId }
     writeLs(LS_REGOLE_VERSIONI, [...read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []), v])
     return v
   },
@@ -482,6 +486,9 @@ const localStore = {
   },
   async setOreMinSettimana(id: string, ore: number | null): Promise<void> {
     writeLs(LS_REGOLE_VERSIONI, read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, ore_min_settimana: ore } : v))
+  },
+  async setCambioAuto(id: string, on: boolean): Promise<void> {
+    writeLs(LS_REGOLE_VERSIONI, read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, cambio_auto: on } : v))
   },
   async getTurnistiMese(postazioneId: string, mese: string): Promise<string[]> {
     return read<{ mese: string; turnista_id: string; postazione_id?: string }[]>(LS_TURNISTI_MESE, []).filter(x => x.mese === mese && (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId).map(x => x.turnista_id)
