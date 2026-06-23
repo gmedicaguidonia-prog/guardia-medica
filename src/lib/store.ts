@@ -6,10 +6,10 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
-export interface NuovoTurnista { nome: string; cognome: string; email: string; livello: Livello }
+export interface NuovoMembro { nome: string; cognome: string; email: string; livello: Livello; utenteId?: string }
 export type NuovoTurnoInput = Omit<TurnoSchema, 'id' | 'created_at' | 'ordine' | 'versione_id'>
 
 function pgCode(e: unknown): string | undefined { return (e as { code?: string })?.code }
@@ -31,6 +31,19 @@ function pickVersione<T extends { valido_da: string; valido_fino: string | null 
 // ════════════════════════════════════════════════════════════════
 // SUPABASE
 // ════════════════════════════════════════════════════════════════
+function normMembro(r: Record<string, unknown>): Turnista {
+  const u = (r.utenti ?? {}) as Record<string, unknown>
+  return {
+    id:         r.id as string,
+    utente_id:  r.utente_id as string,
+    nome:       (u.nome as string) ?? '',
+    cognome:    (u.cognome as string) ?? '',
+    email:      (u.email as string) ?? '',
+    livello:    r.livello as Livello,
+    created_at: (r.created_at as string) ?? '',
+  }
+}
+
 function normSchema(r: Record<string, unknown>): TurnoSchema {
   return {
     id:            r.id as string,
@@ -66,8 +79,8 @@ const supaStore = {
     const { error } = await supabase.from('postazioni').delete().eq('id', id)
     if (error) throw error
   },
-  async getPostazioniGestite(turnistaId: string): Promise<string[]> {
-    const { data, error } = await supabase.from('postazione_responsabili').select('postazione_id').eq('turnista_id', turnistaId)
+  async getPostazioniGestite(utenteId: string): Promise<string[]> {
+    const { data, error } = await supabase.from('turnisti').select('postazione_id').eq('utente_id', utenteId).eq('livello', 'responsabile')
     if (error) throw error
     return (data ?? []).map(r => r.postazione_id as string)
   },
@@ -93,25 +106,59 @@ const supaStore = {
 
   // ── Turnisti ──
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {
-    const { data, error } = await supabase.from('turnisti').select('*').eq('postazione_id', postazioneId).order('cognome').order('nome')
+    const { data, error } = await supabase.from('turnisti').select('id, utente_id, livello, created_at, utenti(nome, cognome, email)').eq('postazione_id', postazioneId)
     if (error) throw error
-    return (data ?? []) as Turnista[]
+    return (data ?? []).map(normMembro)
   },
-  async addTurnista(postazioneId: string, input: NuovoTurnista): Promise<void> {
-    const { error } = await supabase.from('turnisti').insert({ nome: input.nome.trim(), cognome: input.cognome.trim(), email: input.email.trim().toLowerCase(), livello: input.livello, postazione_id: postazioneId })
-    if (error) { if (pgCode(error) === '23505') throw new Error('Esiste già un turnista con questa email.'); throw error }
+  async searchUtenti(query: string): Promise<Utente[]> {
+    const q = query.trim()
+    if (q.length < 3) return []
+    const { data, error } = await supabase.from('utenti').select('id, nome, cognome, email').or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`).order('cognome').limit(8)
+    if (error) throw error
+    return (data ?? []) as Utente[]
   },
-  async updateTurnista(id: string, patch: Partial<NuovoTurnista>): Promise<void> {
-    const upd: Record<string, unknown> = {}
-    if (patch.nome    !== undefined) upd.nome    = patch.nome.trim()
-    if (patch.cognome !== undefined) upd.cognome = patch.cognome.trim()
-    if (patch.email   !== undefined) upd.email   = patch.email.trim().toLowerCase()
-    if (patch.livello !== undefined) upd.livello = patch.livello
-    const { error } = await supabase.from('turnisti').update(upd).eq('id', id)
-    if (error) { if (pgCode(error) === '23505') throw new Error('Esiste già un turnista con questa email.'); throw error }
+  async addMembro(postazioneId: string, input: NuovoMembro): Promise<void> {
+    const email = input.email.trim().toLowerCase()
+    let utenteId = input.utenteId
+    if (!utenteId) {
+      const { data: ex } = await supabase.from('utenti').select('id').eq('email', email).maybeSingle()
+      if (ex) utenteId = ex.id as string
+      else {
+        const { data: cr, error: e1 } = await supabase.from('utenti').insert({ nome: input.nome.trim(), cognome: input.cognome.trim(), email }).select('id').single()
+        if (e1) { if (pgCode(e1) === '23505') throw new Error('Esiste già un utente con questa email.'); throw e1 }
+        utenteId = cr.id as string
+      }
+    }
+    if (input.livello === 'turnista') {
+      const { data: gia } = await supabase.from('turnisti').select('postazioni(nome)').eq('utente_id', utenteId).eq('livello', 'turnista').maybeSingle()
+      if (gia) throw new Error(`${input.nome} ${input.cognome} è già Turnista nella postazione “${(gia.postazioni as { nome?: string } | null)?.nome ?? '—'}”. Può essere Turnista in una sola postazione (Esterno in più).`)
+    }
+    const { error } = await supabase.from('turnisti').insert({ postazione_id: postazioneId, utente_id: utenteId, livello: input.livello, nome: input.nome.trim(), cognome: input.cognome.trim(), email })
+    if (error) {
+      if (pgCode(error) === '23505') throw new Error('Questa persona è già nel personale di questa postazione.')
+      throw error
+    }
   },
-  async deleteTurnista(id: string): Promise<void> {
-    const { error } = await supabase.from('turnisti').delete().eq('id', id)
+  async updateMembro(membershipId: string, utenteId: string, patch: Partial<NuovoMembro>): Promise<void> {
+    const u: Record<string, unknown> = {}
+    if (patch.nome    !== undefined) u.nome    = patch.nome.trim()
+    if (patch.cognome !== undefined) u.cognome = patch.cognome.trim()
+    if (patch.email   !== undefined) u.email   = patch.email.trim().toLowerCase()
+    if (Object.keys(u).length) {
+      const { error } = await supabase.from('utenti').update(u).eq('id', utenteId)
+      if (error) { if (pgCode(error) === '23505') throw new Error('Esiste già un utente con questa email.'); throw error }
+    }
+    if (patch.livello !== undefined) {
+      if (patch.livello === 'turnista') {
+        const { data: gia } = await supabase.from('turnisti').select('postazioni(nome)').eq('utente_id', utenteId).eq('livello', 'turnista').neq('id', membershipId).maybeSingle()
+        if (gia) throw new Error(`È già Turnista nella postazione “${(gia.postazioni as { nome?: string } | null)?.nome ?? '—'}”. Può esserlo in una sola.`)
+      }
+      const { error } = await supabase.from('turnisti').update({ livello: patch.livello }).eq('id', membershipId)
+      if (error) throw error
+    }
+  },
+  async removeMembro(membershipId: string): Promise<void> {
+    const { error } = await supabase.from('turnisti').delete().eq('id', membershipId)
     if (error) throw error
   },
 
@@ -284,7 +331,7 @@ const LS_TURNISTI_MESE    = 'gm_turnisti_mese'
 const LS_DESIDERATA       = 'gm_desiderata'
 const LS_DESIDERATA_FIN   = 'gm_desiderata_finestra'
 const LS_POSTAZIONI       = 'gm_postazioni'
-const LS_SEEDED           = 'gm_seeded_v4'
+const LS_SEEDED           = 'gm_seeded_v5'
 const DEV_POSTAZIONE      = 'dev-postazione-1'
 
 function uid(): string { try { return crypto.randomUUID() } catch { return 'id-' + Math.random().toString(36).slice(2) } }
@@ -299,7 +346,8 @@ function ensureSeed(): void {
   const pid = DEV_POSTAZIONE
   writeLs<Postazione[]>(LS_POSTAZIONI, [{ id: pid, nome: 'Guidonia - Palombara Giorno', attiva: true, created_at: now }])
   writeLs<(ConfigVersione & { postazione_id: string })[]>(LS_VERSIONI, [{ id: vid, valido_da: meseCorrente(), valido_fino: null, created_at: now, postazione_id: pid }])
-  writeLs<(Turnista & { postazione_id: string })[]>(LS_TURNISTI, [{ id: uid(), nome: 'Stefano', cognome: 'Marabelli', email: ADMIN_EMAIL, livello: 'admin', created_at: now, postazione_id: pid }])
+  const sid = uid()
+  writeLs<(Turnista & { postazione_id: string })[]>(LS_TURNISTI, [{ id: sid, utente_id: sid, nome: 'Stefano', cognome: 'Marabelli', email: ADMIN_EMAIL, livello: 'turnista', created_at: now, postazione_id: pid }])
   writeLs<TurnoSchema[]>(LS_SCHEMA, [
     { id: uid(), versione_id: vid, nome: 'Notte',  ora_inizio: '20:00', ora_fine: '08:00', n_turnisti: 1, ricorrenza: 'tutti',   giorni_custom: [], ordine: 10, created_at: now },
     { id: uid(), versione_id: vid, nome: 'Giorno', ora_inizio: '08:00', ora_fine: '20:00', n_turnisti: 1, ricorrenza: 'festivi', giorni_custom: [], ordine: 20, created_at: now },
@@ -338,28 +386,46 @@ const localStore = {
 
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {
     ensureSeed()
-    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId).slice().sort(cmpTurnisti)
+    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId).map(t => ({ ...t, utente_id: t.utente_id ?? t.id })).slice().sort(cmpTurnisti)
   },
-  async addTurnista(postazioneId: string, input: NuovoTurnista): Promise<void> {
+  async searchUtenti(query: string): Promise<Utente[]> {
+    const q = query.trim().toLowerCase()
+    if (q.length < 3) return []
+    const seen = new Set<string>(); const out: Utente[] = []
+    for (const t of read<WithPost<Turnista>[]>(LS_TURNISTI, [])) {
+      const key = t.email.toLowerCase()
+      if (seen.has(key)) continue
+      if (t.nome.toLowerCase().includes(q) || t.cognome.toLowerCase().includes(q)) { seen.add(key); out.push({ id: t.utente_id ?? t.id, nome: t.nome, cognome: t.cognome, email: t.email }) }
+    }
+    return out.sort(cmpTurnisti).slice(0, 8)
+  },
+  async addMembro(postazioneId: string, input: NuovoMembro): Promise<void> {
     ensureSeed()
     const list = read<WithPost<Turnista>[]>(LS_TURNISTI, [])
     const email = input.email.trim().toLowerCase()
-    if (list.some(t => t.email.toLowerCase() === email)) throw new Error('Esiste già un turnista con questa email.')
-    list.push({ id: uid(), nome: input.nome.trim(), cognome: input.cognome.trim(), email, livello: input.livello, created_at: new Date().toISOString(), postazione_id: postazioneId })
+    if (input.livello === 'turnista' && list.some(t => t.email.toLowerCase() === email && t.livello === 'turnista')) throw new Error(`${input.nome} ${input.cognome} è già Turnista in un'altra postazione. Può esserlo in una sola.`)
+    if (list.some(t => t.email.toLowerCase() === email && (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId)) throw new Error('Questa persona è già nel personale di questa postazione.')
+    const utenteId = input.utenteId ?? list.find(t => t.email.toLowerCase() === email)?.utente_id ?? uid()
+    list.push({ id: uid(), utente_id: utenteId, nome: input.nome.trim(), cognome: input.cognome.trim(), email, livello: input.livello, created_at: new Date().toISOString(), postazione_id: postazioneId })
     writeLs(LS_TURNISTI, list)
   },
-  async updateTurnista(id: string, patch: Partial<NuovoTurnista>): Promise<void> {
+  async updateMembro(membershipId: string, _utenteId: string, patch: Partial<NuovoMembro>): Promise<void> {
     const list = read<WithPost<Turnista>[]>(LS_TURNISTI, [])
-    writeLs(LS_TURNISTI, list.map(t => t.id === id ? {
-      ...t,
-      ...(patch.nome    !== undefined ? { nome: patch.nome.trim() } : {}),
-      ...(patch.cognome !== undefined ? { cognome: patch.cognome.trim() } : {}),
-      ...(patch.email   !== undefined ? { email: patch.email.trim().toLowerCase() } : {}),
-      ...(patch.livello !== undefined ? { livello: patch.livello } : {}),
-    } : t))
+    const target = list.find(t => t.id === membershipId)
+    const uref = target ? (target.utente_id ?? target.id) : ''
+    writeLs(LS_TURNISTI, list.map(t => {
+      const sameUser = (t.utente_id ?? t.id) === uref
+      return {
+        ...t,
+        ...(sameUser && patch.nome    !== undefined ? { nome: patch.nome.trim() } : {}),
+        ...(sameUser && patch.cognome !== undefined ? { cognome: patch.cognome.trim() } : {}),
+        ...(sameUser && patch.email   !== undefined ? { email: patch.email.trim().toLowerCase() } : {}),
+        ...(t.id === membershipId && patch.livello !== undefined ? { livello: patch.livello } : {}),
+      }
+    }))
   },
-  async deleteTurnista(id: string): Promise<void> {
-    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => t.id !== id))
+  async removeMembro(membershipId: string): Promise<void> {
+    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => t.id !== membershipId))
   },
 
   async getVersioneMese(postazioneId: string, mese: string): Promise<ConfigVersione | null> {

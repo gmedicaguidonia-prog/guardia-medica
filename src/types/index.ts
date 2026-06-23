@@ -17,15 +17,28 @@ export function puoGestire(l: Livello | null | undefined): boolean {
   return l === 'admin' || l === 'responsabile'
 }
 
-// ─── Turnista (anagrafica + autorizzazione all'accesso) ─────────────
+// ─── Utente (identità globale: una persona, una email) ──────────────
+export interface Utente {
+  id: string
+  nome: string
+  cognome: string
+  email: string
+}
+
+// ─── Turnista = APPARTENENZA (utente × postazione × livello) ─────────
+//  id = id dell'appartenenza; utente_id = identità globale.
 export interface Turnista {
   id: string
-  nome: string       // nome di battesimo
-  cognome: string    // cognome
-  email: string
-  livello: Livello
+  utente_id: string
+  nome: string       // dall'utente
+  cognome: string    // dall'utente
+  email: string      // dall'utente
+  livello: Livello   // ruolo IN QUESTA postazione (responsabile|turnista|esterno)
   created_at: string
 }
+
+/** Livelli assegnabili nel personale di una postazione (admin è globale, non qui). */
+export const LIVELLI_PERSONALE = LIVELLI.filter(l => l.value !== 'admin')
 
 /** Nominativo completo nella forma "Cognome Nome". */
 export function nomeCompleto(t: { nome?: string | null; cognome?: string | null }): string {
