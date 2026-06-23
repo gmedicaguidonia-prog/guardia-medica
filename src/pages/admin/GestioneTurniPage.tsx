@@ -12,7 +12,7 @@ import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra } from '../../types'
+import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -55,6 +55,7 @@ export function GestioneTurniPage() {
   const { data: regoleVer } = useQuery<RegolaVersione | null>({ queryKey: ['regole-versione', postazioneId, meseKey], queryFn: () => store.getRegoleVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: regole = [] } = useQuery<RegolaTurno[]>({ queryKey: ['regole', regoleVer?.id], queryFn: () => store.getRegole(regoleVer!.id), enabled: !!regoleVer })
   const { data: finestraDes } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: desiderataMese = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -112,7 +113,10 @@ export function GestioneTurniPage() {
   const coperturaOk = copertura.totali > 0 && copertura.coperti >= copertura.totali
   // Warning (non bloccanti)
   const regoleVuote = !regoleVer || regole.length === 0
-  const desiderataNonPub = !finestraDes?.aperta_a
+  const desNonPub = !finestraDes?.aperta_a
+  const desVuote = !desNonPub && desiderataMese.length === 0
+  const desiderataWarn = desNonPub || desVuote
+  const desiderataMsg = desNonPub ? 'Desiderata non pubblicate' : 'Nessuna desiderata inserita'
 
   // ── drag&drop ──
   const dragSource = useRef<string | null>(null)
@@ -299,7 +303,7 @@ export function GestioneTurniPage() {
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={coperturaOk ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' } : { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }} title="Turni del mese con tutti i posti assegnati"><CalendarDays size={13} /> Turni coperti {copertura.coperti}/{copertura.totali}</span>
         {regoleVuote && <button onClick={() => navigate('/admin/regole')} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full hover:brightness-95 transition-all" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }} title="Vai alle Regole Turni"><AlertTriangle size={13} /> Regole del mese non impostate</button>}
-        {desiderataNonPub && <button onClick={() => navigate('/admin/desiderata')} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full hover:brightness-95 transition-all" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }} title="Vai a Desiderata - Indisponibilità"><AlertTriangle size={13} /> Desiderata non pubblicate</button>}
+        {desiderataWarn && <button onClick={() => navigate('/admin/desiderata')} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full hover:brightness-95 transition-all" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }} title="Vai a Desiderata - Indisponibilità"><AlertTriangle size={13} /> {desiderataMsg}</button>}
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
           {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
