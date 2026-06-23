@@ -17,7 +17,9 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   const loc = useLocation()
   const navigate = useNavigate()
   const { postazioni, postazioneId, setPostazioneId } = usePostazione()
-  const mostraSelettore = puoGestire(user.livello) && postazioni.length > 0
+  // Nella pagina pubblica "I miei turni" il selettore postazione è già nel corpo:
+  // nasconderlo dalla navbar per non confondere.
+  const mostraSelettore = puoGestire(user.livello) && postazioni.length > 0 && loc.pathname !== '/turni'
 
   const link = (to: string, label: string, Icon: React.ElementType) => {
     const active = loc.pathname === to || loc.pathname.startsWith(to + '/')
