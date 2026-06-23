@@ -5,7 +5,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoTurnista { nome: string; email: string; livello: Livello }
@@ -193,6 +193,32 @@ const supaStore = {
     const { error } = await supabase.from('turnisti_mese').delete().match({ mese, turnista_id: turnistaId })
     if (error) throw error
   },
+
+  // ── Desiderata / Indisponibilità ──
+  async getDesiderataMese(anno: number, mese: number): Promise<Desiderata[]> {
+    const { first, last } = meseRange(anno, mese)
+    const { data, error } = await supabase.from('desiderata').select('*').gte('data', first).lte('data', last)
+    if (error) throw error
+    return (data ?? []) as Desiderata[]
+  },
+  async setDesiderata(data: string, turnoSchemaId: string, turnistaId: string, tipo: TipoDesiderata | null): Promise<void> {
+    if (tipo === null) {
+      const { error } = await supabase.from('desiderata').delete().match({ data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId })
+      if (error) throw error
+    } else {
+      const { error } = await supabase.from('desiderata').upsert({ data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, tipo }, { onConflict: 'data,turno_schema_id,turnista_id' })
+      if (error) throw error
+    }
+  },
+  async getDesiderataFinestra(mese: string): Promise<DesiderataFinestra | null> {
+    const { data, error } = await supabase.from('desiderata_finestra').select('*').eq('mese', mese).maybeSingle()
+    if (error) throw error
+    return data ? { mese: data.mese as string, aperta_da: data.aperta_da as string | null, aperta_a: data.aperta_a as string | null } : null
+  },
+  async setDesiderataFinestra(mese: string, da: string | null, a: string | null): Promise<void> {
+    const { error } = await supabase.from('desiderata_finestra').upsert({ mese, aperta_da: da, aperta_a: a }, { onConflict: 'mese' })
+    if (error) throw error
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -205,6 +231,8 @@ const LS_REGOLE_VERSIONI  = 'gm_regole_versioni'
 const LS_REGOLE           = 'gm_regole'
 const LS_TURNI            = 'gm_turni'
 const LS_TURNISTI_MESE    = 'gm_turnisti_mese'
+const LS_DESIDERATA       = 'gm_desiderata'
+const LS_DESIDERATA_FIN   = 'gm_desiderata_finestra'
 const LS_SEEDED           = 'gm_seeded_v2'
 
 function uid(): string { try { return crypto.randomUUID() } catch { return 'id-' + Math.random().toString(36).slice(2) } }
@@ -341,6 +369,24 @@ const localStore = {
   },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.mese === mese && x.turnista_id === turnistaId)))
+  },
+
+  async getDesiderataMese(anno: number, mese: number): Promise<Desiderata[]> {
+    const { first, last } = meseRange(anno, mese)
+    return read<Desiderata[]>(LS_DESIDERATA, []).filter(d => d.data >= first && d.data <= last)
+  },
+  async setDesiderata(data: string, turnoSchemaId: string, turnistaId: string, tipo: TipoDesiderata | null): Promise<void> {
+    const list = read<Desiderata[]>(LS_DESIDERATA, []).filter(d => !(d.data === data && d.turno_schema_id === turnoSchemaId && d.turnista_id === turnistaId))
+    if (tipo !== null) list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, tipo, created_at: new Date().toISOString() })
+    writeLs(LS_DESIDERATA, list)
+  },
+  async getDesiderataFinestra(mese: string): Promise<DesiderataFinestra | null> {
+    return read<DesiderataFinestra[]>(LS_DESIDERATA_FIN, []).find(f => f.mese === mese) ?? null
+  },
+  async setDesiderataFinestra(mese: string, da: string | null, a: string | null): Promise<void> {
+    const list = read<DesiderataFinestra[]>(LS_DESIDERATA_FIN, []).filter(f => f.mese !== mese)
+    list.push({ mese, aperta_da: da, aperta_a: a })
+    writeLs(LS_DESIDERATA_FIN, list)
   },
 }
 

@@ -91,6 +91,27 @@ export interface RegolaTurno {
   created_at: string
 }
 
+// ─── Desiderata / Indisponibilità ───────────────────────────────────
+//  Una preferenza espressa da (o per) un turnista su uno specifico turno:
+//  'desiderata' = lo vorrebbe fare, 'indisponibilita' = non può farlo.
+export type TipoDesiderata = 'desiderata' | 'indisponibilita'
+
+export interface Desiderata {
+  id: string
+  data: string             // 'YYYY-MM-DD'
+  turno_schema_id: string  // FK → schema_turni
+  turnista_id: string
+  tipo: TipoDesiderata
+  created_at: string
+}
+
+/** Finestra (per mese) in cui la raccolta desiderata è aperta ai turnisti. */
+export interface DesiderataFinestra {
+  mese: string             // 'YYYY-MM'
+  aperta_da: string | null // 'YYYY-MM-DD'
+  aperta_a: string | null  // 'YYYY-MM-DD'
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────
 export interface AuthUser {
   id: string

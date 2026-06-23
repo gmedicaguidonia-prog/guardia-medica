@@ -1,14 +1,15 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, CalendarClock, CalendarDays, ListChecks } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays, ListChecks, ClipboardList } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 
 const links: { to: string; label: string; Icon: typeof Home; num: number | null }[] = [
-  { to: '/admin',          label: 'Home',                  Icon: Home,          num: null },
-  { to: '/admin/turnisti', label: 'Turnisti',              Icon: Users,         num: null },
-  { to: '/admin/schema',   label: 'Configurazione Turni',  Icon: CalendarClock, num: 1 },
-  { to: '/admin/regole',   label: 'Regole Turni',          Icon: ListChecks,    num: 2 },
-  { to: '/admin/turni',    label: 'Turni del Mese',        Icon: CalendarDays,  num: 3 },
+  { to: '/admin',            label: 'Home',                        Icon: Home,          num: null },
+  { to: '/admin/turnisti',   label: 'Turnisti',                    Icon: Users,         num: null },
+  { to: '/admin/schema',     label: 'Configurazione Turni',        Icon: CalendarClock, num: 1 },
+  { to: '/admin/regole',     label: 'Regole Turni',                Icon: ListChecks,    num: 2 },
+  { to: '/admin/desiderata', label: 'Desiderata/Indisponibilità',  Icon: ClipboardList, num: 3 },
+  { to: '/admin/turni',      label: 'Turni del Mese',              Icon: CalendarDays,  num: 4 },
 ]
 
 export function AdminLayout({ user }: { user: AuthUser | null }) {

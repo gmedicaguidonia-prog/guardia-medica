@@ -131,3 +131,38 @@ create policy turni_select on turni for select using (is_utente_attivo());
 create policy turni_modify on turni for all using (is_admin()) with check (is_admin());
 grant select, insert, update, delete on turni to authenticated;
 create index if not exists idx_turni_data on turni(data);
+
+-- ─── DESIDERATA / INDISPONIBILITÀ ───────────────────────────────────
+-- Una riga per (data, turno, turnista): tipo = 'desiderata' (lo vorrebbe)
+-- oppure 'indisponibilita' (non può). Un turnista sta in una sola colonna
+-- per turno (unique sul terzetto).
+create table if not exists desiderata (
+  id uuid primary key default gen_random_uuid(),
+  data date not null,
+  turno_schema_id uuid not null references schema_turni(id) on delete cascade,
+  turnista_id uuid not null references turnisti(id) on delete cascade,
+  tipo text not null check (tipo in ('desiderata','indisponibilita')),
+  created_at timestamptz default now(),
+  unique (data, turno_schema_id, turnista_id)
+);
+alter table desiderata enable row level security;
+drop policy if exists des_select on desiderata;
+drop policy if exists des_modify on desiderata;
+create policy des_select on desiderata for select using (is_utente_attivo());
+create policy des_modify on desiderata for all using (is_admin()) with check (is_admin());
+grant select, insert, update, delete on desiderata to authenticated;
+create index if not exists idx_desiderata_data on desiderata(data);
+
+-- Finestra (per mese) in cui la raccolta è aperta ai turnisti.
+create table if not exists desiderata_finestra (
+  mese text primary key,
+  aperta_da date,
+  aperta_a date,
+  created_at timestamptz default now()
+);
+alter table desiderata_finestra enable row level security;
+drop policy if exists df_select on desiderata_finestra;
+drop policy if exists df_modify on desiderata_finestra;
+create policy df_select on desiderata_finestra for select using (is_utente_attivo());
+create policy df_modify on desiderata_finestra for all using (is_admin()) with check (is_admin());
+grant select, insert, update, delete on desiderata_finestra to authenticated;
