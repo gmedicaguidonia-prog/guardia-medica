@@ -41,9 +41,11 @@ export function useVersionCheck() {
   }, [])
 
   function applyUpdate() {
-    const u = new URL(window.location.href)
-    u.searchParams.set('_r', String(Date.now()))
-    window.location.replace(u.toString())
+    // Ricarica sempre dalla ROOT dell'app: evita il 404 di GitHub Pages sulle
+    // rotte profonde (es. /admin/desiderata) durante il reload "duro".
+    // Il router riporterà l'utente alla pagina giusta in base al ruolo.
+    const base = import.meta.env.BASE_URL || '/'
+    window.location.replace(`${base}?_r=${Date.now()}`)
   }
 
   return { updateAvailable, applyUpdate }
