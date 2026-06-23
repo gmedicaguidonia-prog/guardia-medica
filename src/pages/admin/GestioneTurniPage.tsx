@@ -212,6 +212,23 @@ export function GestioneTurniPage() {
   }
   async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
   async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
+  // Importa: se ci sono turnisti con desiderata non ancora importati, propone di
+  // importarli in automatico; poi apre comunque il modal per gli altri.
+  async function apriImporta() {
+    const desIds = [...new Set(desiderataMese.map(d => d.turnista_id))].filter(id => tById.has(id) && !importati.has(id))
+    if (desIds.length > 0) {
+      const ok = await confirm({
+        title: 'Turnisti dalle desiderata',
+        message: `Ci sono ${desIds.length} turnist${desIds.length === 1 ? 'a' : 'i'} con desiderata non ancora important${desIds.length === 1 ? 'o' : 'i'} per ${MESI[mese - 1]} ${anno}. Vuoi importarl${desIds.length === 1 ? 'o' : 'i'} automaticamente?`,
+        confirmLabel: 'Sì, importa',
+      })
+      if (ok) {
+        for (const id of desIds) await store.addTurnistaMese(postazioneId!, meseKey, id)
+        await qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] })
+      }
+    }
+    setShowImport(true)
+  }
   async function salva() {
     setSaving(true)
     try {
@@ -384,7 +401,7 @@ export function GestioneTurniPage() {
 
       {/* Barra azioni / salvataggio */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={() => setShowImport(true)} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
+        <button onClick={apriImporta} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={coperturaOk ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' } : { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }} title="Turni del mese con tutti i posti assegnati"><CalendarDays size={13} /> Turni coperti {copertura.coperti}/{copertura.totali}</span>
         <button onClick={() => showWarn('Assegnazione automatica dei turni — funzione in arrivo.')}

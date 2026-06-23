@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock, Moon, Sun } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock, Moon, Sun, UserPlus } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, cmpTurnisti, gruppiPerLivello } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
@@ -39,6 +39,7 @@ export function DesiderataPage() {
   const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
+  const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
 
@@ -50,6 +51,7 @@ export function DesiderataPage() {
   }, [desiderata])
   const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap)
   const [saving, setSaving] = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
   useEffect(() => {
@@ -59,8 +61,11 @@ export function DesiderataPage() {
   }, [dirty])
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
-  // palette = TUTTI i turnisti (elenco completo), divisi per ruolo
-  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti), [turnisti])
+  const importati = useMemo(() => new Set(turnistiMese), [turnistiMese])
+  // palette = solo i turnisti importati per questo mese, divisi per ruolo
+  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id))), [turnisti, importati])
+  // candidati da importare (non ancora nella palette)
+  const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id))), [turnisti, importati])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
 
   // raggruppa il contenuto delle celle: `data|turnoId|tipo` → [turnistaId]
@@ -97,8 +102,8 @@ export function DesiderataPage() {
   const pickerCandidati = useMemo(() => {
     if (!picker) return []
     const inCella = new Set(byCell.get(`${picker.ds}|${picker.turnoId}|${picker.tipo}`) ?? [])
-    return turnisti.filter(t => !inCella.has(t.id)).slice().sort(cmpTurnisti)
-  }, [picker, byCell, turnisti])
+    return turnisti.filter(t => importati.has(t.id) && !inCella.has(t.id)).slice().sort(cmpTurnisti)
+  }, [picker, byCell, turnisti, importati])
 
   useEffect(() => {
     const el = containerRef.current
@@ -135,6 +140,8 @@ export function DesiderataPage() {
     } catch (e) { console.error('[Desiderata] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }
   }
+  async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
+  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
 
   // ── finestra di raccolta (periodo aperto ai turnisti) ──
   const [finDa, setFinDa] = useState(''); const [finA, setFinA] = useState('')
@@ -243,13 +250,18 @@ export function DesiderataPage() {
   }
 
   const PaletteBadge = (t: Turnista) => (
-    <div key={t.id} draggable={true}
-      onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
-      onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
-      onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
-      className="rounded-md px-2 py-1 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity"
-      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
-      title={`Trascina ${nomeCompleto(t)}`}>{nomeCompleto(t)}</div>
+    <div key={t.id} className="relative">
+      <div draggable={true}
+        onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
+        onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
+        onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
+        className="rounded-md px-2 py-1 pr-6 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity"
+        style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
+        title={`Trascina ${nomeCompleto(t)}`}>{nomeCompleto(t)}</div>
+      <button onClick={() => rimuoviDalMese(t.id)} title="Togli dal mese"
+        className="absolute top-1/2 -translate-y-1/2 right-1 opacity-60 hover:opacity-100 transition-opacity"
+        style={{ color: ROLE_COLOR[t.livello].fg }}><X size={11} strokeWidth={3} /></button>
+    </div>
   )
   const Badge = (ds: string, turnoId: string, tid: string, tipo: TipoDesiderata) => (
     <span data-badge key={tid} className="relative rounded px-2 py-0.5 text-[11px] font-semibold shadow-sm" style={{ background: COL[tipo].badge, color: '#fff' }}>
@@ -293,6 +305,31 @@ export function DesiderataPage() {
     <div className="p-4 sm:p-6 space-y-4">
       {Header}
 
+      {/* Modal: importa turnisti per il mese (chi può esprimere desiderata) */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowImport(false)}>
+          <div className="card w-full max-w-md p-5 max-h-[80vh] overflow-auto" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Importa turnisti · {MESI[mese - 1]} {anno}</h3>
+              <button onClick={() => setShowImport(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-stone-500 mb-3">Clicca un turnista per aggiungerlo alla palette del mese (chi può esprimere desiderata).</p>
+            {importGruppi.length ? importGruppi.map(g => (
+              <div key={g.liv} className="mb-3">
+                <h4 className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h4>
+                <div className="flex flex-wrap gap-2">
+                  {g.items.map(t => (
+                    <button key={t.id} onClick={() => importaTurnista(t.id)} className="rounded-md px-2 py-1 text-xs font-medium shadow-sm border border-white/60 hover:scale-105 transition-transform"
+                      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg }}>{nomeCompleto(t)} <span className="font-bold opacity-60">＋</span></button>
+                  ))}
+                </div>
+              </div>
+            )) : <span className="text-xs text-stone-400">Tutti i turnisti sono già nella palette.</span>}
+            <div className="flex justify-end mt-2"><button onClick={() => setShowImport(false)} className="btn-primary text-sm py-1.5 px-3">Fatto</button></div>
+          </div>
+        </div>
+      )}
+
       {/* Pubblicazione raccolta */}
       <div className="card p-3 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -331,6 +368,7 @@ export function DesiderataPage() {
       {/* Barra azioni / salvataggio (nascosta quando la griglia è in sola lettura) */}
       {!readonly && (
       <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setShowImport(true)} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
           {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
@@ -363,7 +401,7 @@ export function DesiderataPage() {
               <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
-          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista.</span></div>}
+          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista importato. Usa “Importa i turnisti”.</span></div>}
         </aside>
         )}
 
