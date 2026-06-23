@@ -84,27 +84,7 @@ const supaStore = {
     if (error) throw error
     return (data ?? []).map(r => r.postazione_id as string)
   },
-  async getResponsabiliPostazione(postazioneId: string): Promise<string[]> {
-    const { data, error } = await supabase.from('postazione_responsabili').select('turnista_id').eq('postazione_id', postazioneId)
-    if (error) throw error
-    return (data ?? []).map(r => r.turnista_id as string)
-  },
-  async setResponsabilePostazione(postazioneId: string, turnistaId: string, on: boolean): Promise<void> {
-    if (on) {
-      const { error } = await supabase.from('postazione_responsabili').upsert({ postazione_id: postazioneId, turnista_id: turnistaId }, { onConflict: 'postazione_id,turnista_id', ignoreDuplicates: true })
-      if (error) throw error
-    } else {
-      const { error } = await supabase.from('postazione_responsabili').delete().match({ postazione_id: postazioneId, turnista_id: turnistaId })
-      if (error) throw error
-    }
-  },
-  async getResponsabili(): Promise<Turnista[]> {
-    const { data, error } = await supabase.from('turnisti').select('*').in('livello', ['admin', 'responsabile']).order('cognome').order('nome')
-    if (error) throw error
-    return (data ?? []) as Turnista[]
-  },
-
-  // ── Turnisti ──
+  // ── Personale (appartenenze) ──
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {
     const { data, error } = await supabase.from('turnisti').select('id, utente_id, livello, created_at, utenti(nome, cognome, email)').eq('postazione_id', postazioneId)
     if (error) throw error
@@ -133,7 +113,7 @@ const supaStore = {
       const { data: gia } = await supabase.from('turnisti').select('postazioni(nome)').eq('utente_id', utenteId).eq('livello', 'turnista').maybeSingle()
       if (gia) throw new Error(`${input.nome} ${input.cognome} è già Turnista nella postazione “${(gia.postazioni as { nome?: string } | null)?.nome ?? '—'}”. Può essere Turnista in una sola postazione (Esterno in più).`)
     }
-    const { error } = await supabase.from('turnisti').insert({ postazione_id: postazioneId, utente_id: utenteId, livello: input.livello, nome: input.nome.trim(), cognome: input.cognome.trim(), email })
+    const { error } = await supabase.from('turnisti').insert({ postazione_id: postazioneId, utente_id: utenteId, livello: input.livello })
     if (error) {
       if (pgCode(error) === '23505') throw new Error('Questa persona è già nel personale di questa postazione.')
       throw error
@@ -376,12 +356,6 @@ const localStore = {
   async getPostazioniGestite(_turnistaId: string): Promise<string[]> {
     ensureSeed()
     return read<Postazione[]>(LS_POSTAZIONI, []).map(p => p.id)
-  },
-  async getResponsabiliPostazione(_postazioneId: string): Promise<string[]> { return [] },
-  async setResponsabilePostazione(_postazioneId: string, _turnistaId: string, _on: boolean): Promise<void> {},
-  async getResponsabili(): Promise<Turnista[]> {
-    ensureSeed()
-    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => t.livello === 'admin' || t.livello === 'responsabile').slice().sort(cmpTurnisti)
   },
 
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {
