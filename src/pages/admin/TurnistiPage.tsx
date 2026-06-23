@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Pencil, Save, X, Users, Shield, User, UserCog, Lock, Crown } from 'lucide-react'
 import { store } from '../../lib/store'
 import { ADMIN_EMAIL } from '../../lib/constants'
-import { LIVELLI, nomeCompleto, cmpTurnisti } from '../../types'
+import { LIVELLI, nomeCompleto, gruppiPerLivello } from '../../types'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
@@ -16,10 +16,6 @@ const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType }
   turnista:     { bg: '#dbeafe', fg: '#1e40af', Icon: User },
   esterno:      { bg: '#dcfce7', fg: '#166534', Icon: Shield },
 }
-
-// L'elenco è sempre diviso per livello (in quest'ordine) e alfabetico dentro ogni gruppo
-const LIV_ORDER: Livello[] = ['admin', 'responsabile', 'turnista', 'esterno']
-const LIV_GRUPPO: Record<Livello, string> = { admin: 'Admin', responsabile: 'Responsabili', turnista: 'Turnisti', esterno: 'Esterni' }
 
 function LivelloBadge({ livello }: { livello: Livello }) {
   const { bg, fg, Icon } = BADGE[livello]
@@ -46,9 +42,7 @@ export function TurnistiPage() {
   })
 
   // Elenco diviso per livello, alfabetico ("Cognome Nome") dentro ogni gruppo
-  const gruppi = useMemo(() => LIV_ORDER
-    .map(liv => ({ liv, label: LIV_GRUPPO[liv], lista: turnisti.filter(t => t.livello === liv).slice().sort(cmpTurnisti) }))
-    .filter(g => g.lista.length), [turnisti])
+  const gruppi = useMemo(() => gruppiPerLivello(turnisti), [turnisti])
 
   // Un utente non può assegnare un livello più alto del proprio:
   // solo l'Admin può creare/assegnare il livello Admin.
@@ -183,8 +177,8 @@ export function TurnistiPage() {
 
             {gruppi.map(g => (
               <Fragment key={g.liv}>
-                <tr><td colSpan={4} className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ background: '#f1efe7', color: BADGE[g.liv].fg }}>{g.label} · {g.lista.length}</td></tr>
-                {g.lista.map(t => {
+                <tr><td colSpan={4} className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ background: '#f1efe7', color: BADGE[g.liv].fg }}>{g.label} · {g.items.length}</td></tr>
+                {g.items.map(t => {
               const isPerm = t.email.toLowerCase() === ADMIN_EMAIL
               const canModify = isAdminUser || t.livello !== 'admin'
 

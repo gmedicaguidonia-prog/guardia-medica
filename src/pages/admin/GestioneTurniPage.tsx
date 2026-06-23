@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check } from 'lucide-react'
 import { store } from '../../lib/store'
-import { nomeCompleto, cmpTurnisti } from '../../types'
+import { nomeCompleto, gruppiPerLivello } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
@@ -69,12 +69,10 @@ export function GestioneTurniPage() {
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const importati = useMemo(() => new Set(turnistiMese), [turnistiMese])
-  // palette = solo i turnisti importati per questo mese
-  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno' && importati.has(t.id)).slice().sort(cmpTurnisti), [turnisti, importati])
-  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno' && importati.has(t.id)).slice().sort(cmpTurnisti), [turnisti, importati])
-  // candidati da importare (non ancora nella palette)
-  const importTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno' && !importati.has(t.id)).slice().sort(cmpTurnisti), [turnisti, importati])
-  const importEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno' && !importati.has(t.id)).slice().sort(cmpTurnisti), [turnisti, importati])
+  // palette = solo i turnisti importati per questo mese, divisi per livello
+  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id))), [turnisti, importati])
+  // candidati da importare (non ancora nella palette), divisi per livello
+  const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id))), [turnisti, importati])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
   const coloreTurnista = (id: string) => ROLE_COLOR[tById.get(id)?.livello ?? 'turnista']
   // Ore assegnate per turnista nel mese (esclude il reperibile = slot -1)
@@ -258,17 +256,17 @@ export function GestioneTurniPage() {
               <button onClick={() => setShowImport(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
             </div>
             <p className="text-xs text-stone-500 mb-3">Clicca un turnista per aggiungerlo alla palette del mese (chi farà le rotazioni).</p>
-            {[{ titolo: 'Turnisti', col: '#476540', lista: importTurnisti }, { titolo: 'Esterni', col: '#166534', lista: importEsterni }].map(g => (
-              <div key={g.titolo} className="mb-3">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: g.col }}>{g.titolo}</h4>
+            {importGruppi.length ? importGruppi.map(g => (
+              <div key={g.liv} className="mb-3">
+                <h4 className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h4>
                 <div className="flex flex-wrap gap-2">
-                  {g.lista.length ? g.lista.map(t => (
+                  {g.items.map(t => (
                     <button key={t.id} onClick={() => importaTurnista(t.id)} className="rounded-md px-2 py-1 text-xs font-medium shadow-sm border border-white/60 hover:scale-105 transition-transform"
                       style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg }}>{nomeCompleto(t)} <span className="font-bold opacity-60">＋</span></button>
-                  )) : <span className="text-xs text-stone-400">tutti già nella palette</span>}
+                  ))}
                 </div>
               </div>
-            ))}
+            )) : <span className="text-xs text-stone-400">Tutti i turnisti sono già nella palette.</span>}
             <div className="flex justify-end mt-2"><button onClick={() => setShowImport(false)} className="btn-primary text-sm py-1.5 px-3">Fatto</button></div>
           </div>
         </div>
@@ -304,14 +302,12 @@ export function GestioneTurniPage() {
 
         {/* Palette */}
         <aside className="w-40 sm:w-44 shrink-0 space-y-3" style={{ position: 'sticky', top: 8 }}>
-          <div className="card p-2">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: '#476540' }}>Turnisti</h3>
-            <div className="flex flex-col gap-1.5">{gruppoTurnisti.length ? gruppoTurnisti.map(PaletteBadge) : <span className="text-xs text-stone-400 px-1">nessuno</span>}</div>
-          </div>
-          <div className="card p-2">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: '#166534' }}>Esterni</h3>
-            <div className="flex flex-col gap-1.5">{gruppoEsterni.length ? gruppoEsterni.map(PaletteBadge) : <span className="text-xs text-stone-400 px-1">nessuno</span>}</div>
-          </div>
+          {paletteGruppi.length ? paletteGruppi.map(g => (
+            <div key={g.liv} className="card p-2">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
+              <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
+            </div>
+          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista importato. Usa “Importa i turnisti”.</span></div>}
         </aside>
 
         {/* Lista turni */}

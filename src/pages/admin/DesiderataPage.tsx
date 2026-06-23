@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock } from 'lucide-react'
 import { store } from '../../lib/store'
-import { nomeCompleto, cmpTurnisti } from '../../types'
+import { nomeCompleto, cmpTurnisti, gruppiPerLivello } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
@@ -60,8 +60,7 @@ export function DesiderataPage() {
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   // palette = TUTTI i turnisti (elenco completo), divisi per ruolo
-  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno').slice().sort(cmpTurnisti), [turnisti])
-  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno').slice().sort(cmpTurnisti), [turnisti])
+  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti), [turnisti])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
 
   // raggruppa il contenuto delle celle: `data|turnoId|tipo` → [turnistaId]
@@ -326,14 +325,12 @@ export function DesiderataPage() {
 
         {/* Palette = elenco completo */}
         <aside className="w-40 sm:w-44 shrink-0 space-y-3" style={{ position: 'sticky', top: 8 }}>
-          <div className="card p-2">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: '#476540' }}>Turnisti</h3>
-            <div className="flex flex-col gap-1.5">{gruppoTurnisti.length ? gruppoTurnisti.map(PaletteBadge) : <span className="text-xs text-stone-400 px-1">nessuno</span>}</div>
-          </div>
-          <div className="card p-2">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: '#166534' }}>Esterni</h3>
-            <div className="flex flex-col gap-1.5">{gruppoEsterni.length ? gruppoEsterni.map(PaletteBadge) : <span className="text-xs text-stone-400 px-1">nessuno</span>}</div>
-          </div>
+          {paletteGruppi.length ? paletteGruppi.map(g => (
+            <div key={g.liv} className="card p-2">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
+              <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
+            </div>
+          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista.</span></div>}
         </aside>
 
         {/* Griglia turni */}

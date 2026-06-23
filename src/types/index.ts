@@ -38,6 +38,18 @@ export function cmpTurnisti(a: { nome?: string | null; cognome?: string | null }
   return nomeCompleto(a).localeCompare(nomeCompleto(b), 'it')
 }
 
+/** Etichette di gruppo (plurali) per livello. */
+export const LIVELLO_GRUPPO: Record<Livello, string> = {
+  admin: 'Admin', responsabile: 'Responsabili', turnista: 'Turnisti', esterno: 'Esterni',
+}
+/** Raggruppa i turnisti per livello (Admin→Esterno), alfabetico "Cognome Nome" dentro ogni gruppo.
+ *  Restituisce solo i gruppi non vuoti. Usato in TUTTE le viste che elencano turnisti. */
+export function gruppiPerLivello<T extends { livello: Livello; nome?: string | null; cognome?: string | null }>(lista: T[]): { liv: Livello; label: string; items: T[] }[] {
+  return (['admin', 'responsabile', 'turnista', 'esterno'] as Livello[])
+    .map(liv => ({ liv, label: LIVELLO_GRUPPO[liv], items: lista.filter(t => t.livello === liv).slice().sort(cmpTurnisti) }))
+    .filter(g => g.items.length)
+}
+
 // ─── Schema turni (il "progetto" flessibile dei turni) ──────────────
 
 /** Quando si applica un turno nell'arco del mese. */
