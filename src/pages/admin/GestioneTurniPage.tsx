@@ -2,12 +2,13 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
+import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
@@ -59,6 +60,7 @@ export function GestioneTurniPage() {
   const { data: desiderataMese = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId })
+  const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
   // ordinate per giorno crescente (stesso giorno raggruppato), poi per turno e arrivo
   const richiesteOrdinate = useMemo(() => {
     const ord = (id: string) => schema.find(s => s.id === id)?.ordine ?? 0
@@ -102,12 +104,13 @@ export function GestioneTurniPage() {
   const fmtOre = (x: number) => (Number.isInteger(x) ? `${x}` : x.toFixed(1))
 
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
-  // Righe = ogni (giorno, turno applicabile)
-  const righe = useMemo(() => {
+  // Una griglia per foglio: righe = ogni (giorno, turno applicabile) DI QUEL foglio
+  const righePerFoglio = useMemo(() => fogliConTurni.map(fc => {
     const out: { ds: string; d: Date; turno: TurnoSchema }[] = []
-    giorni.forEach(d => schema.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
-    return out
-  }, [giorni, schema])
+    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
+    return { foglio: fc.foglio, righe: out }
+  }), [fogliConTurni, giorni])
+  const righe = useMemo(() => righePerFoglio.flatMap(x => x.righe), [righePerFoglio])
 
   const hasRep = useMemo(() => [...local.keys()].some(k => k.endsWith(`|${REP_SLOT}`)), [local])
   const showRep = mostraRepMesi.has(meseKey) || hasRep
@@ -335,6 +338,18 @@ export function GestioneTurniPage() {
       </div>
     )
   }
+  if (!impaginazioneOk) {
+    return (
+      <div className="max-w-5xl mx-auto p-6">{Header}
+        <div className="card p-5 flex items-start gap-3 mt-4"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
+          <div>
+            <p className="text-sm text-stone-600 mb-2">Per <strong>{MESI[mese - 1]} {anno}</strong> manca l'<strong>impaginazione</strong>: prima di comporre i turni devi dividere i turni in fogli (passo ③).</p>
+            <button onClick={() => navigate('/admin/impaginazione')} className="btn-primary text-sm py-1.5 px-3 inline-flex items-center gap-1.5"><LayoutGrid size={14} /> Vai a Impaginazione</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const PaletteBadge = (t: Turnista) => {
     const ore = oreByTurnista.get(t.id) ?? 0
@@ -469,8 +484,15 @@ export function GestioneTurniPage() {
           )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista importato. Usa “Importa i turnisti”.</span></div>}
         </aside>
 
-        {/* Lista turni */}
-        <div className="flex-1 min-w-0 overflow-auto card">
+        {/* Una griglia per foglio (passo ③ Impaginazione) */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {righePerFoglio.map(({ foglio, righe: righeF }) => (
+          <div key={foglio.id} className="card overflow-auto">
+            <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+              <LayoutGrid size={14} style={{ color: '#476540' }} />
+              <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
+              <span className="text-xs text-stone-400">· {MESI[mese - 1]} {anno}</span>
+            </div>
           <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
               <tr>
@@ -480,7 +502,7 @@ export function GestioneTurniPage() {
               </tr>
             </thead>
             <tbody>
-              {righe.map(({ ds, d, turno }) => {
+              {righeF.map(({ ds, d, turno }) => {
                 const fest = isFestivo(d), pref = isPrefestivo(d)
                 const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                 const overnight = turno.ora_fine <= turno.ora_inizio
@@ -525,6 +547,8 @@ export function GestioneTurniPage() {
               })}
             </tbody>
           </table>
+          </div>
+          ))}
         </div>
       </div>
 

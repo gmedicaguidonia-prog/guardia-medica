@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock, Moon, Sun, UserPlus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock, Moon, Sun, UserPlus, LayoutGrid } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, cmpTurnisti, gruppiPerLivello } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
@@ -9,6 +9,8 @@ import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { useImpaginazione } from '../../hooks/useImpaginazione'
+import { useNavigate } from 'react-router-dom'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -42,6 +44,8 @@ export function DesiderataPage() {
   const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
+  const navigate = useNavigate()
+  const { impaginazioneOk, fogliConTurni, loadingImpag } = useImpaginazione(postazioneId, meseKey, schema)
 
   // serverMap: chiave `data|turnoId|turnistaId` → tipo ('desiderata'|'indisponibilita')
   const serverMap = useMemo(() => {
@@ -81,11 +85,12 @@ export function DesiderataPage() {
   }, [local])
 
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
-  const righe = useMemo(() => {
+  // Una griglia per foglio (passo ③ Impaginazione): righe = (giorno, turno) di quel foglio
+  const righePerFoglio = useMemo(() => fogliConTurni.map(fc => {
     const out: { ds: string; d: Date; turno: TurnoSchema }[] = []
-    giorni.forEach(d => schema.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
-    return out
-  }, [giorni, schema])
+    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
+    return { foglio: fc.foglio, righe: out }
+  }), [fogliConTurni, giorni])
 
   // ── drag&drop ──
   const dragSource = useRef<string | null>(null)
@@ -212,7 +217,24 @@ export function DesiderataPage() {
   )
 
   if (!postazioneId) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento postazione…</p></div>
-  if (loadingVer || loadingFin) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento…</p></div>
+  if (loadingVer || loadingFin || loadingImpag) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento…</p></div>
+  if (!versione || schema.length === 0) return (
+    <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
+      <div className="card p-5 flex items-start gap-3 mt-2"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
+        <p className="text-sm text-stone-600">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>. Impostala prima in <strong>Configurazione Turni</strong> (passo ①).</p>
+      </div>
+    </div>
+  )
+  if (!impaginazioneOk) return (
+    <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
+      <div className="card p-5 flex items-start gap-3 mt-2"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
+        <div>
+          <p className="text-sm text-stone-600 mb-2">Per <strong>{MESI[mese - 1]} {anno}</strong> manca l'<strong>impaginazione</strong>: prima di raccogliere le desiderata devi dividere i turni in fogli (passo ③).</p>
+          <button onClick={() => navigate('/admin/impaginazione')} className="btn-primary text-sm py-1.5 px-3 inline-flex items-center gap-1.5"><LayoutGrid size={14} /> Vai a Impaginazione</button>
+        </div>
+      </div>
+    </div>
+  )
 
   // Raccolta non attiva → schermata di attivazione (o mese passato non attivabile)
   if (!attiva) {
@@ -234,17 +256,6 @@ export function DesiderataPage() {
             <button onClick={attivaRaccolta} className="btn-primary text-sm py-2 px-4 mt-1 inline-flex items-center gap-2"><Power size={16} /> Attiva Desiderata - Indisponibilità</button>
           </div>
         )}
-      </div>
-    )
-  }
-
-  // Attiva ma turni non più configurati (caso limite)
-  if (!versione || schema.length === 0) {
-    return (
-      <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
-        <div className="card p-5 flex items-start gap-3 mt-2"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
-          <p className="text-sm text-stone-600">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>. Impostala prima in <strong>Configurazione Turni</strong> (passo ①).</p>
-        </div>
       </div>
     )
   }
@@ -405,8 +416,15 @@ export function DesiderataPage() {
         </aside>
         )}
 
-        {/* Griglia turni */}
-        <div className="flex-1 min-w-0 overflow-auto card">
+        {/* Una griglia per foglio (passo ③ Impaginazione) */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {righePerFoglio.map(({ foglio, righe: righeF }) => (
+          <div key={foglio.id} className="card overflow-auto">
+            <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+              <LayoutGrid size={14} style={{ color: '#476540' }} />
+              <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
+              <span className="text-xs text-stone-400">· {MESI[mese - 1]} {anno}</span>
+            </div>
           <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
               <tr>
@@ -416,7 +434,7 @@ export function DesiderataPage() {
               </tr>
             </thead>
             <tbody>
-              {righe.map(({ ds, d, turno }) => {
+              {righeF.map(({ ds, d, turno }) => {
                 const fest = isFestivo(d), pref = isPrefestivo(d)
                 const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
@@ -437,6 +455,8 @@ export function DesiderataPage() {
               })}
             </tbody>
           </table>
+          </div>
+          ))}
         </div>
       </div>
 

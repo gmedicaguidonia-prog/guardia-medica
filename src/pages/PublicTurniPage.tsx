@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand } from 'lucide-react'
+import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
 import { nomeCompleto, cmpTurnisti } from '../types'
+import { useImpaginazione } from '../hooks/useImpaginazione'
 import type { AuthUser, TurnoSchema, Turno, Turnista, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -52,13 +53,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
   const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneId], queryFn: () => store.getMesiConContenuto(postazioneId!), enabled: !!postazioneId })
 
+  const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
   const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
-  const righe = useMemo(() => {
+  // Una griglia per foglio (passo ③ Impaginazione): righe = (giorno, turno) di quel foglio
+  const righePerFoglio = useMemo(() => fogliConTurni.map(fc => {
     const out: { ds: string; d: Date; turno: TurnoSchema }[] = []
-    giorni.forEach(d => schema.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
-    return out
-  }, [giorni, schema])
+    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
+    return { foglio: fc.foglio, righe: out }
+  }), [fogliConTurni, giorni])
 
   // calendario: assegnazioni
   const assegn = useMemo(() => {
@@ -136,7 +139,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const pubblicheMode = !!fin?.pubbliche            // desiderata visibili a tutti (vista a colonne)
   const desEditabile = desStato === 'aperta'        // si modifica solo a raccolta aperta
 
-  const turniConfigurati = !!versione && schema.length > 0
+  const turniConfigurati = !!versione && schema.length > 0 && impaginazioneOk
 
   const MeseNav = (
     <div className="flex items-center gap-2">
@@ -197,7 +200,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     <p className="text-sm" style={{ color: '#7f1d1d' }}>Calendario in costruzione: dove vedi <strong>???</strong> manca un turnista. Cliccaci sopra per <strong>candidarti</strong>; il responsabile approverà o rifiuterà la richiesta.</p>
                   </div>
                 )}
-                <div className="card overflow-auto">
+                {righePerFoglio.map(({ foglio, righe: righeF }) => (
+                <div key={foglio.id} className="card overflow-auto">
+                  <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+                    <LayoutGrid size={14} style={{ color: '#476540' }} />
+                    <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
+                  </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: 58 }} />
@@ -207,7 +215,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     </colgroup>
                     <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={thStyle}>Turnisti</th>{hasRep && <th style={thStyle}>Reperibile</th>}</tr></thead>
                     <tbody>
-                      {righe.map(({ ds, d, turno }) => {
+                      {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d), pref = isPrefestivo(d)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
@@ -255,6 +263,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     </tbody>
                   </table>
                 </div>
+                ))}
               </>
             )
           )}
@@ -265,7 +274,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               <Avviso>La raccolta <strong>desiderata / indisponibilità</strong> di {MESI[mese - 1]} {anno} non è ancora stata pubblicata.</Avviso>
             ) : desStato === 'programmata' ? (
               <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} aprirà il <strong>{itDate(fin!.aperta_da!)}</strong>.</Avviso>
-            ) : !versione || schema.length === 0 ? (
+            ) : !versione || schema.length === 0 || !impaginazioneOk ? (
               <Avviso>Non ci sono turni configurati per {MESI[mese - 1]} {anno}.</Avviso>
             ) : pubblicheMode ? (
               /* ── DESIDERATA PUBBLICHE: una colonna per turnista, modifichi la tua ── */
@@ -275,7 +284,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     ? <>Scegli nella <strong>tua</strong> colonna; vedi anche le scelte degli altri. Raccolta aperta fino al {itDate(fin!.aperta_a!)}.</>
                     : <>Raccolta chiusa{fin?.aperta_a ? ` il ${itDate(fin.aperta_a)}` : ''} — sola lettura.</>}
                 </p>
-                <div className="card overflow-auto">
+                {righePerFoglio.map(({ foglio, righe: righeF }) => (
+                <div key={foglio.id} className="card overflow-auto">
+                  <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+                    <LayoutGrid size={14} style={{ color: '#476540' }} />
+                    <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
+                  </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr>
@@ -287,7 +301,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {righe.map(({ ds, d, turno }) => {
+                      {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d), pref = isPrefestivo(d)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
@@ -329,17 +343,23 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     </tbody>
                   </table>
                 </div>
+                ))}
               </>
             ) : desStato === 'chiusa' ? (
               <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} si è chiusa il <strong>{itDate(fin!.aperta_a!)}</strong>.</Avviso>
             ) : (
               <>
                 <p className="text-xs text-stone-500">Per ogni turno indica se lo <strong style={{ color: '#166534' }}>vorresti</strong> o se <strong style={{ color: '#b91c1c' }}>non puoi</strong>. Raccolta aperta fino al {itDate(fin!.aperta_a!)}.</p>
-                <div className="card overflow-auto">
+                {righePerFoglio.map(({ foglio, righe: righeF }) => (
+                <div key={foglio.id} className="card overflow-auto">
+                  <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+                    <LayoutGrid size={14} style={{ color: '#476540' }} />
+                    <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
+                  </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
                     <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={{ ...thStyle, textAlign: 'center' }}>La tua scelta</th></tr></thead>
                     <tbody>
-                      {righe.map(({ ds, d, turno }) => {
+                      {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d), pref = isPrefestivo(d)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
@@ -372,6 +392,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     </tbody>
                   </table>
                 </div>
+                ))}
               </>
             )
           )}
