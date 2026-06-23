@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Infinity as InfinityIcon } from 'lucide-react'
 import { store } from '../../lib/store'
+import { nomeCompleto, cmpTurnisti } from '../../types'
 import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
 import { GIORNI_SETTIMANA } from '../../lib/constants'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
@@ -77,9 +78,9 @@ export function RegoleTurniPage() {
   useEffect(() => { setOreMin(regoleVer?.ore_min_settimana != null ? String(regoleVer.ore_min_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_min_settimana])
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
-  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti])
-  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti])
-  const nomeTurnista = (id: string) => tById.get(id)?.nome ?? '—'
+  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno').slice().sort(cmpTurnisti), [turnisti])
+  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno').slice().sort(cmpTurnisti), [turnisti])
+  const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
   const coloreTurnista = (id: string) => ROLE_COLOR[tById.get(id)?.livello ?? 'turnista']
 
   // drag&drop
@@ -195,7 +196,7 @@ export function RegoleTurniPage() {
       onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
       className="rounded-md px-2 py-1 text-xs font-medium select-none shadow-sm border border-white/60 truncate transition-opacity"
       style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
-      title={`Trascina ${t.nome} in una cella`}>{t.nome}</div>
+      title={`Trascina ${nomeCompleto(t)} in una cella`}>{nomeCompleto(t)}</div>
   )
 
   return (

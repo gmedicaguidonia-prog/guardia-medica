@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock } from 'lucide-react'
 import { store } from '../../lib/store'
+import { nomeCompleto, cmpTurnisti } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
@@ -59,9 +60,9 @@ export function DesiderataPage() {
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   // palette = TUTTI i turnisti (elenco completo), divisi per ruolo
-  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti])
-  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti])
-  const nomeTurnista = (id: string) => tById.get(id)?.nome ?? '—'
+  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno').slice().sort(cmpTurnisti), [turnisti])
+  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno').slice().sort(cmpTurnisti), [turnisti])
+  const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
 
   // raggruppa il contenuto delle celle: `data|turnoId|tipo` → [turnistaId]
   const byCell = useMemo(() => {
@@ -97,7 +98,7 @@ export function DesiderataPage() {
   const pickerCandidati = useMemo(() => {
     if (!picker) return []
     const inCella = new Set(byCell.get(`${picker.ds}|${picker.turnoId}|${picker.tipo}`) ?? [])
-    return turnisti.filter(t => !inCella.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
+    return turnisti.filter(t => !inCella.has(t.id)).slice().sort(cmpTurnisti)
   }, [picker, byCell, turnisti])
 
   useEffect(() => {
@@ -239,7 +240,7 @@ export function DesiderataPage() {
       onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
       className="rounded-md px-2 py-1 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity"
       style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
-      title={`Trascina ${t.nome}`}>{t.nome}</div>
+      title={`Trascina ${nomeCompleto(t)}`}>{nomeCompleto(t)}</div>
   )
   const Badge = (ds: string, turnoId: string, tid: string, tipo: TipoDesiderata) => (
     <span data-badge key={tid} className="relative rounded px-2 py-0.5 text-[11px] font-semibold shadow-sm" style={{ background: COL[tipo].badge, color: '#fff' }}>
@@ -381,7 +382,7 @@ export function DesiderataPage() {
               <button key={t.id} onClick={() => { set(`${picker.ds}|${picker.turnoId}|${t.id}`, picker.tipo); setPicker(null) }}
                 className="flex items-center gap-1.5 w-full text-left px-1.5 py-1 rounded hover:bg-stone-100 text-xs">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ROLE_COLOR[t.livello].fg }} />
-                <span className="truncate">{t.nome}</span>
+                <span className="truncate">{nomeCompleto(t)}</span>
               </button>
             )) : <p className="text-xs text-stone-400 px-1.5 py-1">tutti già inseriti</p>}
           </div>

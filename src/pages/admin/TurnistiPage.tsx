@@ -4,14 +4,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Pencil, Save, X, Users, Shield, User, UserCog, Lock, Crown } from 'lucide-react'
 import { store } from '../../lib/store'
 import { ADMIN_EMAIL } from '../../lib/constants'
-import { LIVELLI } from '../../types'
+import { LIVELLI, nomeCompleto, cmpTurnisti } from '../../types'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import type { Turnista, Livello, AuthUser } from '../../types'
-
-// Potere decrescente: admin → responsabile → turnista → esterno
-const RANK: Record<Livello, number> = { admin: 0, responsabile: 1, turnista: 2, esterno: 3 }
 
 const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType }> = {
   admin:        { bg: '#fee2e2', fg: '#b91c1c', Icon: Crown },
@@ -44,51 +41,52 @@ export function TurnistiPage() {
     enabled: !!postazioneId,
   })
 
-  // Ordine: admin permanente per primo, poi per livello (admin→responsabile→turnista→esterno),
-  // infine alfabetico per nome.
-  const turnistiOrdinati = useMemo(() => [...turnisti].sort((a, b) => {
-    const ap = a.email.toLowerCase() === ADMIN_EMAIL
-    const bp = b.email.toLowerCase() === ADMIN_EMAIL
-    if (ap !== bp) return ap ? -1 : 1
-    if (a.livello !== b.livello) return RANK[a.livello] - RANK[b.livello]
-    return a.nome.localeCompare(b.nome, 'it')
-  }), [turnisti])
+  // Elenco in ordine alfabetico per "Cognome Nome"
+  const turnistiOrdinati = useMemo(() => [...turnisti].sort(cmpTurnisti), [turnisti])
+
+  // Un utente non può assegnare un livello più alto del proprio:
+  // solo l'Admin può creare/assegnare il livello Admin.
+  const isAdminUser = user?.livello === 'admin'
+  const livelliAssegnabili = isAdminUser ? LIVELLI : LIVELLI.filter(l => l.value !== 'admin')
 
   // Form "aggiungi"
-  const [nome, setNome]       = useState('')
-  const [email, setEmail]     = useState('')
-  const [livello, setLivello] = useState<Livello>('turnista')
-  const [errore, setErrore]   = useState('')
-  const [saving, setSaving]   = useState(false)
+  const [nome, setNome]         = useState('')
+  const [cognome, setCognome]   = useState('')
+  const [email, setEmail]       = useState('')
+  const [livello, setLivello]   = useState<Livello>('turnista')
+  const [errore, setErrore]     = useState('')
+  const [saving, setSaving]     = useState(false)
 
   // Editing inline
-  const [editId, setEditId]       = useState<string | null>(null)
-  const [editNome, setEditNome]   = useState('')
-  const [editEmail, setEditEmail] = useState('')
-  const [editLiv, setEditLiv]     = useState<Livello>('turnista')
+  const [editId, setEditId]           = useState<string | null>(null)
+  const [editNome, setEditNome]       = useState('')
+  const [editCognome, setEditCognome] = useState('')
+  const [editEmail, setEditEmail]     = useState('')
+  const [editLiv, setEditLiv]         = useState<Livello>('turnista')
 
   async function refetch() { await qc.invalidateQueries({ queryKey: ['turnisti'] }) }
 
   async function aggiungi() {
-    if (!nome.trim())  { setErrore('Inserisci il nome.'); return }
-    if (!email.trim()) { setErrore("Inserisci l'email."); return }
+    if (!nome.trim())    { setErrore('Inserisci il nome.'); return }
+    if (!cognome.trim()) { setErrore('Inserisci il cognome.'); return }
+    if (!email.trim())   { setErrore("Inserisci l'email."); return }
     setSaving(true); setErrore('')
     try {
-      await store.addTurnista(postazioneId!, { nome, email, livello })
-      setNome(''); setEmail(''); setLivello('turnista')
+      await store.addTurnista(postazioneId!, { nome, cognome, email, livello })
+      setNome(''); setCognome(''); setEmail(''); setLivello('turnista')
       await refetch()
     } catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
   }
 
   function startEdit(t: Turnista) {
-    setEditId(t.id); setEditNome(t.nome); setEditEmail(t.email); setEditLiv(t.livello); setErrore('')
+    setEditId(t.id); setEditNome(t.nome); setEditCognome(t.cognome); setEditEmail(t.email); setEditLiv(t.livello); setErrore('')
   }
   async function saveEdit() {
-    if (!editNome.trim() || !editEmail.trim()) { setErrore('Nome ed email obbligatori.'); return }
+    if (!editNome.trim() || !editCognome.trim() || !editEmail.trim()) { setErrore('Nome, cognome ed email obbligatori.'); return }
     setSaving(true); setErrore('')
     try {
-      await store.updateTurnista(editId!, { nome: editNome, email: editEmail, livello: editLiv })
+      await store.updateTurnista(editId!, { nome: editNome, cognome: editCognome, email: editEmail, livello: editLiv })
       setEditId(null); await refetch()
     } catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
@@ -97,8 +95,8 @@ export function TurnistiPage() {
   async function elimina(t: Turnista) {
     if (t.email.toLowerCase() === ADMIN_EMAIL) return
     const ok = await confirm({
-      title:        `Rimuovi ${t.nome}`,
-      message:      `${t.nome} non potrà più accedere all'app. Sei sicuro?`,
+      title:        `Rimuovi ${nomeCompleto(t)}`,
+      message:      `${nomeCompleto(t)} non potrà più accedere all'app. Sei sicuro?`,
       confirmLabel: 'Rimuovi',
       danger:       true,
     })
@@ -130,11 +128,17 @@ export function TurnistiPage() {
       {/* ── Aggiungi ── */}
       <div className="card p-4 space-y-3">
         <h2 className="font-semibold text-stone-700 text-sm">Aggiungi turnista</h2>
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid sm:grid-cols-3 gap-3">
           <div>
-            <label className="label text-xs">Nome e cognome *</label>
+            <label className="label text-xs">Nome *</label>
             <input value={nome} onChange={e => setNome(e.target.value)}
-              placeholder="Mario Rossi" className="input text-sm"
+              placeholder="Mario" className="input text-sm"
+              onKeyDown={e => e.key === 'Enter' && aggiungi()} />
+          </div>
+          <div>
+            <label className="label text-xs">Cognome *</label>
+            <input value={cognome} onChange={e => setCognome(e.target.value)}
+              placeholder="Rossi" className="input text-sm"
               onKeyDown={e => e.key === 'Enter' && aggiungi()} />
           </div>
           <div>
@@ -148,7 +152,7 @@ export function TurnistiPage() {
           <div>
             <label className="label text-xs">Livello</label>
             <select value={livello} onChange={e => setLivello(e.target.value as Livello)} className="input text-sm w-56">
-              {LIVELLI.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+              {livelliAssegnabili.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </div>
           <button onClick={aggiungi} disabled={saving} className="btn-primary text-sm">
@@ -162,7 +166,7 @@ export function TurnistiPage() {
         <table className="w-full text-sm">
           <thead className="bg-stone-50 border-b border-stone-200">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-stone-600">Nome</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-stone-600">Nominativo (Cognome Nome)</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-stone-600">Email</th>
               <th className="px-3 py-2 text-center text-xs font-semibold text-stone-600 w-28">Livello</th>
               <th className="px-3 py-2 w-20" />
@@ -173,18 +177,22 @@ export function TurnistiPage() {
 
             {turnistiOrdinati.map(t => {
               const isPerm = t.email.toLowerCase() === ADMIN_EMAIL
+              const canModify = isAdminUser || t.livello !== 'admin'
 
               if (editId === t.id) return (
                 <tr key={t.id} className="bg-blue-50/40">
                   <td className="px-2 py-1.5">
-                    <input value={editNome} onChange={e => setEditNome(e.target.value)} className="input py-0.5 text-xs w-full" autoFocus />
+                    <div className="flex gap-1">
+                      <input value={editCognome} onChange={e => setEditCognome(e.target.value)} className="input py-0.5 text-xs w-full" placeholder="Cognome" autoFocus />
+                      <input value={editNome} onChange={e => setEditNome(e.target.value)} className="input py-0.5 text-xs w-full" placeholder="Nome" />
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
                     <input value={editEmail} onChange={e => setEditEmail(e.target.value)} type="email" className="input py-0.5 text-xs w-full" disabled={isPerm} />
                   </td>
                   <td className="px-2 py-1.5">
                     <select value={editLiv} onChange={e => setEditLiv(e.target.value as Livello)} className="input py-0.5 text-xs w-full" disabled={isPerm}>
-                      {LIVELLI.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                      {livelliAssegnabili.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                     </select>
                   </td>
                   <td className="px-2 py-1.5">
@@ -198,7 +206,7 @@ export function TurnistiPage() {
 
               return (
                 <tr key={t.id} className="hover:bg-stone-50 group">
-                  <td className="px-3 py-2 font-medium text-stone-800">{t.nome}</td>
+                  <td className="px-3 py-2 font-medium text-stone-800">{nomeCompleto(t)}</td>
                   <td className="px-3 py-2 font-mono text-xs text-gray-600">{t.email}</td>
                   <td className="px-3 py-2 text-center"><LivelloBadge livello={t.livello} /></td>
                   <td className="px-3 py-2">
@@ -210,11 +218,13 @@ export function TurnistiPage() {
                           <button onClick={() => startEdit(t)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica il tuo nominativo"><Pencil size={13} /></button>
                         )}
                       </div>
-                    ) : (
+                    ) : canModify ? (
                       <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => startEdit(t)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica"><Pencil size={13} /></button>
                         <button onClick={() => elimina(t)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Rimuovi"><Trash2 size={13} /></button>
                       </div>
+                    ) : (
+                      <div className="flex justify-end" title="Non puoi modificare un Admin"><Lock size={12} style={{ color: '#cbd5e1' }} /></div>
                     )}
                   </td>
                 </tr>

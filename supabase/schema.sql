@@ -7,6 +7,7 @@ create extension if not exists pgcrypto;
 create table if not exists turnisti (
   id         uuid primary key default gen_random_uuid(),
   nome       text not null,
+  cognome    text not null default '',
   email      text unique not null,
   livello    text not null check (livello in ('admin','responsabile','turnista','esterno')),
   created_at timestamptz default now()
@@ -44,8 +45,8 @@ $$ language sql security definer stable;
 
 -- Profilo dell'utente loggato (usato dall'app per il login/whitelist)
 create or replace function get_my_profile()
-returns table (id uuid, email text, livello text, nome text) as $$
-  select t.id, t.email, t.livello, t.nome
+returns table (id uuid, email text, livello text, nome text, cognome text, postazione_id uuid) as $$
+  select t.id, t.email, t.livello, t.nome, t.cognome, t.postazione_id
   from turnisti t
   where t.email = (select email from auth.users where id = auth.uid())
 $$ language sql security definer stable;
@@ -63,8 +64,12 @@ drop policy if exists turnisti_delete on turnisti;
 -- Usare l'email dal JWT: (auth.jwt() ->> 'email').
 create policy turnisti_select on turnisti for select
   using (email = (auth.jwt() ->> 'email') or is_admin());
-create policy turnisti_insert on turnisti for insert with check (is_admin());
-create policy turnisti_update on turnisti for update using (is_admin());
+-- Anti-escalation: un responsabile non puo creare/assegnare il livello admin
+create policy turnisti_insert on turnisti for insert
+  with check (is_admin() and (livello <> 'admin' or is_super_admin()));
+create policy turnisti_update on turnisti for update
+  using (is_admin())
+  with check (is_admin() and (livello <> 'admin' or is_super_admin()));
 create policy turnisti_delete on turnisti for delete using (is_admin());
 
 drop policy if exists schema_select on schema_turni;

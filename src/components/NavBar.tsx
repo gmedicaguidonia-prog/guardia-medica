@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw, MapPin } from 'lucide-react'
-import { puoGestire } from '../types'
+import { puoGestire, nomeCompleto } from '../types'
 import { usePostazione } from '../contexts/PostazioneContext'
 import type { AuthUser, Livello } from '../types'
 
@@ -107,7 +107,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         {/* Utente + logout */}
         <div className="flex items-center gap-3 shrink-0">
           <span className="hidden lg:flex items-center gap-1.5 text-xs" style={{ color: '#9ab488' }}>
-            {user.nome || user.email}
+            {nomeCompleto(user) || user.email}
             {puoGestire(user.livello) && (
               <span className="text-[10px] font-bold px-1 rounded" style={{ background: user.livello === 'admin' ? '#b91c1c' : '#a16207', color: '#fff' }}>
                 {user.livello === 'admin' ? 'ADMIN' : 'RESPONSABILE'}

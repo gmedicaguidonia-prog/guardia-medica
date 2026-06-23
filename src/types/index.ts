@@ -20,10 +20,22 @@ export function puoGestire(l: Livello | null | undefined): boolean {
 // ─── Turnista (anagrafica + autorizzazione all'accesso) ─────────────
 export interface Turnista {
   id: string
-  nome: string
+  nome: string       // nome di battesimo
+  cognome: string    // cognome
   email: string
   livello: Livello
   created_at: string
+}
+
+/** Nominativo completo nella forma "Cognome Nome". */
+export function nomeCompleto(t: { nome?: string | null; cognome?: string | null }): string {
+  const c = (t.cognome ?? '').trim()
+  const n = (t.nome ?? '').trim()
+  return [c, n].filter(Boolean).join(' ')
+}
+/** Comparatore alfabetico per "Cognome Nome" (ordinamento italiano). */
+export function cmpTurnisti(a: { nome?: string | null; cognome?: string | null }, b: { nome?: string | null; cognome?: string | null }): number {
+  return nomeCompleto(a).localeCompare(nomeCompleto(b), 'it')
 }
 
 // ─── Schema turni (il "progetto" flessibile dei turni) ──────────────
@@ -135,5 +147,6 @@ export interface AuthUser {
   email: string
   livello: Livello
   nome: string | null
+  cognome: string | null
   postazioneId: string | null   // postazione di appartenenza (per turnisti/esterni)
 }

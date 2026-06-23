@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check } from 'lucide-react'
 import { store } from '../../lib/store'
+import { nomeCompleto, cmpTurnisti } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
@@ -69,12 +70,12 @@ export function GestioneTurniPage() {
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const importati = useMemo(() => new Set(turnistiMese), [turnistiMese])
   // palette = solo i turnisti importati per questo mese
-  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno' && importati.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti, importati])
-  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno' && importati.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti, importati])
+  const gruppoTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno' && importati.has(t.id)).slice().sort(cmpTurnisti), [turnisti, importati])
+  const gruppoEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno' && importati.has(t.id)).slice().sort(cmpTurnisti), [turnisti, importati])
   // candidati da importare (non ancora nella palette)
-  const importTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno' && !importati.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti, importati])
-  const importEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno' && !importati.has(t.id)).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it')), [turnisti, importati])
-  const nomeTurnista = (id: string) => tById.get(id)?.nome ?? '—'
+  const importTurnisti = useMemo(() => turnisti.filter(t => t.livello !== 'esterno' && !importati.has(t.id)).slice().sort(cmpTurnisti), [turnisti, importati])
+  const importEsterni  = useMemo(() => turnisti.filter(t => t.livello === 'esterno' && !importati.has(t.id)).slice().sort(cmpTurnisti), [turnisti, importati])
+  const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
   const coloreTurnista = (id: string) => ROLE_COLOR[tById.get(id)?.livello ?? 'turnista']
   // Ore assegnate per turnista nel mese (esclude il reperibile = slot -1)
   const durataById = useMemo(() => { const m = new Map<string, number>(); schema.forEach(c => m.set(c.id, oreTurno(c.ora_inizio, c.ora_fine))); return m }, [schema])
@@ -221,8 +222,8 @@ export function GestioneTurniPage() {
           onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
           className="rounded-md px-2 py-1 pr-6 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity flex items-center gap-1"
           style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
-          title={`Trascina ${t.nome} — ${fmtOre(ore)} ore assegnate`}>
-          <span className="truncate flex-1">{t.nome}</span>
+          title={`Trascina ${nomeCompleto(t)} — ${fmtOre(ore)} ore assegnate`}>
+          <span className="truncate flex-1">{nomeCompleto(t)}</span>
           <span className="shrink-0 font-bold text-[10px] rounded px-1" style={{ background: 'rgba(0,0,0,0.10)' }}>{fmtOre(ore)}h</span>
         </div>
         <button onClick={() => rimuoviDalMese(t.id)} title="Togli dal mese"
@@ -263,7 +264,7 @@ export function GestioneTurniPage() {
                 <div className="flex flex-wrap gap-2">
                   {g.lista.length ? g.lista.map(t => (
                     <button key={t.id} onClick={() => importaTurnista(t.id)} className="rounded-md px-2 py-1 text-xs font-medium shadow-sm border border-white/60 hover:scale-105 transition-transform"
-                      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg }}>{t.nome} <span className="font-bold opacity-60">＋</span></button>
+                      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg }}>{nomeCompleto(t)} <span className="font-bold opacity-60">＋</span></button>
                   )) : <span className="text-xs text-stone-400">tutti già nella palette</span>}
                 </div>
               </div>

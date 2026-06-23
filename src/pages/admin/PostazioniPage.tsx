@@ -6,6 +6,7 @@ import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { nomeCompleto } from '../../types'
 import type { AuthUser, Postazione, Turnista } from '../../types'
 
 function ResponsabiliEditor({ postazione, pool }: { postazione: Postazione; pool: Turnista[] }) {
@@ -31,7 +32,7 @@ function ResponsabiliEditor({ postazione, pool }: { postazione: Postazione; pool
               className="rounded-md px-2 py-1 text-xs font-medium border transition-colors flex items-center gap-1"
               style={on ? { background: '#fef3c7', color: '#92400e', borderColor: '#fbbf24' } : { background: '#faf8f3', color: '#78716c', borderColor: '#e7e2d6' }}
               title={on ? 'Clicca per togliere' : 'Clicca per assegnare'}>
-              {t.nome}{on && <Check size={11} strokeWidth={3} />}
+              {nomeCompleto(t)}{on && <Check size={11} strokeWidth={3} />}
             </button>
           )
         })}
