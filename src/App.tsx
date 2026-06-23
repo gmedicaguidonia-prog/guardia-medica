@@ -15,6 +15,7 @@ import { AdminHomePage } from './pages/admin/AdminHomePage'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import { UpdateToast } from './components/UpdateToast'
 import { UnsavedProvider } from './contexts/UnsavedContext'
+import { puoGestire } from './types'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -67,7 +68,7 @@ function AppRoutes() {
           element={
             loading ? <Spinner />
               : !user ? <Navigate to="/login" replace />
-              : user.livello === 'admin' ? <Navigate to="/admin" replace />
+              : puoGestire(user.livello) ? <Navigate to="/admin" replace />
               : <Navigate to="/turni" replace />
           } />
 

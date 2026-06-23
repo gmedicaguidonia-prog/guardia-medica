@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Pencil, Save, X, Users, Shield, User, UserCog, Lock } from 'lucide-react'
+import { Plus, Trash2, Pencil, Save, X, Users, Shield, User, UserCog, Lock, Crown } from 'lucide-react'
 import { store } from '../../lib/store'
 import { ADMIN_EMAIL } from '../../lib/constants'
 import { LIVELLI } from '../../types'
@@ -9,21 +9,23 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import type { Turnista, Livello, AuthUser } from '../../types'
 
-// Potere decrescente: admin → turnista → esterno
-const RANK: Record<Livello, number> = { admin: 0, turnista: 1, esterno: 2 }
+// Potere decrescente: admin → responsabile → turnista → esterno
+const RANK: Record<Livello, number> = { admin: 0, responsabile: 1, turnista: 2, esterno: 3 }
 
 const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType }> = {
-  admin:    { bg: '#fef3c7', fg: '#92400e', Icon: UserCog },
-  turnista: { bg: '#dbeafe', fg: '#1e40af', Icon: User },
-  esterno:  { bg: '#dcfce7', fg: '#166534', Icon: Shield },
+  admin:        { bg: '#fee2e2', fg: '#b91c1c', Icon: Crown },
+  responsabile: { bg: '#fef3c7', fg: '#92400e', Icon: UserCog },
+  turnista:     { bg: '#dbeafe', fg: '#1e40af', Icon: User },
+  esterno:      { bg: '#dcfce7', fg: '#166534', Icon: Shield },
 }
 
 function LivelloBadge({ livello }: { livello: Livello }) {
   const { bg, fg, Icon } = BADGE[livello]
+  const label = LIVELLI.find(l => l.value === livello)?.label ?? livello
   return (
     <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-medium"
       style={{ background: bg, color: fg }}>
-      <Icon size={10} /> {livello}
+      <Icon size={10} /> {label}
     </span>
   )
 }
@@ -39,7 +41,7 @@ export function TurnistiPage() {
     queryFn: () => store.getTurnisti(),
   })
 
-  // Ordine: admin perpetuo per primo, poi per livello (admin→turnista→esterno),
+  // Ordine: admin permanente per primo, poi per livello (admin→responsabile→turnista→esterno),
   // infine alfabetico per nome.
   const turnistiOrdinati = useMemo(() => [...turnisti].sort((a, b) => {
     const ap = a.email.toLowerCase() === ADMIN_EMAIL
@@ -197,8 +199,8 @@ export function TurnistiPage() {
                   <td className="px-3 py-2">
                     {isPerm ? (
                       <div className="flex gap-2 items-center justify-end">
-                        <span className="text-xs flex items-center gap-1" style={{ color: '#2563eb' }}
-                          title="Admin perpetuo: non eliminabile, modificabile solo da te"><Lock size={11} /> perpetuo</span>
+                        <span className="text-xs flex items-center gap-1 font-semibold" style={{ color: '#b91c1c' }}
+                          title="Admin permanente: non eliminabile, modificabile solo da te"><Lock size={11} /> Permanente</span>
                         {ioSonoPerpetuo && (
                           <button onClick={() => startEdit(t)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica il tuo nominativo"><Pencil size={13} /></button>
                         )}

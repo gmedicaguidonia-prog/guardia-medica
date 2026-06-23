@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw } from 'lucide-react'
+import { puoGestire } from '../types'
 import type { AuthUser, Livello } from '../types'
 
 interface Props {
@@ -45,7 +46,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         {/* Link */}
         <div className="flex items-center gap-1 ml-1">
           {link('/turni', 'I miei turni', CalendarDays)}
-          {user.livello === 'admin' && link('/admin', 'Admin', Settings)}
+          {puoGestire(user.livello) && link('/admin', 'Admin', Settings)}
         </div>
 
         {/* Badge arancione "Aggiornamento disponibile" */}
@@ -76,6 +77,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
               style={{ background: '#456b3a', color: '#fff' }}
             >
               <option value="admin">admin</option>
+              <option value="responsabile">responsabile</option>
               <option value="turnista">turnista</option>
               <option value="esterno">esterno</option>
             </select>
@@ -86,9 +88,9 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         <div className="flex items-center gap-3 shrink-0">
           <span className="hidden lg:flex items-center gap-1.5 text-xs" style={{ color: '#9ab488' }}>
             {user.nome || user.email}
-            {user.livello === 'admin' && (
-              <span className="text-[10px] font-bold px-1 rounded" style={{ background: '#9ab488', color: '#1c2818' }}>
-                ADMIN
+            {puoGestire(user.livello) && (
+              <span className="text-[10px] font-bold px-1 rounded" style={{ background: user.livello === 'admin' ? '#b91c1c' : '#a16207', color: '#fff' }}>
+                {user.livello === 'admin' ? 'ADMIN' : 'RESPONSABILE'}
               </span>
             )}
           </span>

@@ -12,9 +12,10 @@ import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, Re
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
-  admin:    { bg: '#fef3c7', fg: '#92400e' },
-  turnista: { bg: '#dbeafe', fg: '#1e40af' },
-  esterno:  { bg: '#dcfce7', fg: '#166534' },
+  admin:        { bg: '#fee2e2', fg: '#b91c1c' },
+  responsabile: { bg: '#fef3c7', fg: '#92400e' },
+  turnista:     { bg: '#dbeafe', fg: '#1e40af' },
+  esterno:      { bg: '#dcfce7', fg: '#166534' },
 }
 const thStyle = (corner: boolean): CSSProperties => ({
   background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 8px', textAlign: 'center',

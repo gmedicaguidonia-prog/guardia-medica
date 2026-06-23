@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom'
+import { puoGestire } from '../types'
 import type { AuthUser, Livello } from '../types'
 
 interface Props {
@@ -23,9 +24,9 @@ export function ProtectedRoute({ user, loading, requireAdmin = false, allowedRol
   }
 
   if (!user) return <Navigate to="/login" replace />
-  if (requireAdmin && user.livello !== 'admin') return <Navigate to="/" replace />
+  if (requireAdmin && !puoGestire(user.livello)) return <Navigate to="/" replace />
 
-  const roles = allowedRoles ?? ['admin', 'turnista', 'esterno']
+  const roles = allowedRoles ?? ['admin', 'responsabile', 'turnista', 'esterno']
   if (!roles.includes(user.livello)) return <Navigate to="/" replace />
 
   return <>{children}</>

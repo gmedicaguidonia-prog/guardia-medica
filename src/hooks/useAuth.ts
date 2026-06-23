@@ -113,6 +113,7 @@ export function useAuth() {
       email:   livello === 'admin' ? ADMIN_EMAIL : `${livello}@dev.local`,
       livello,
       nome:    livello === 'admin' ? 'Admin (DEV)'
+             : livello === 'responsabile' ? 'Responsabile (DEV)'
              : livello === 'turnista' ? 'Turnista (DEV)' : 'Esterno (DEV)',
     }
     persistDevUser(u); setUser(u)

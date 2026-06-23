@@ -12,9 +12,10 @@ import type { TurnoSchema, Turnista, Livello, ConfigVersione, Desiderata, Deside
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
-  admin:    { bg: '#fef3c7', fg: '#92400e' },
-  turnista: { bg: '#dbeafe', fg: '#1e40af' },
-  esterno:  { bg: '#dcfce7', fg: '#166534' },
+  admin:        { bg: '#fee2e2', fg: '#b91c1c' },
+  responsabile: { bg: '#fef3c7', fg: '#92400e' },
+  turnista:     { bg: '#dbeafe', fg: '#1e40af' },
+  esterno:      { bg: '#dcfce7', fg: '#166534' },
 }
 const COL: Record<TipoDesiderata, { th: string; badge: string }> = {
   desiderata:      { th: '#15803d', badge: '#16a34a' },

@@ -8,7 +8,7 @@ create table if not exists turnisti (
   id         uuid primary key default gen_random_uuid(),
   nome       text not null,
   email      text unique not null,
-  livello    text not null check (livello in ('admin','turnista','esterno')),
+  livello    text not null check (livello in ('admin','responsabile','turnista','esterno')),
   created_at timestamptz default now()
 );
 
@@ -33,11 +33,12 @@ create or replace function is_utente_attivo() returns boolean as $$
   )
 $$ language sql security definer stable;
 
+-- "Admin" nel codice = poteri di gestione: admin (proprietario) + responsabile
 create or replace function is_admin() returns boolean as $$
   select exists (
     select 1 from turnisti
     where email = (select email from auth.users where id = auth.uid())
-      and livello = 'admin'
+      and livello in ('admin','responsabile')
   )
 $$ language sql security definer stable;
 
@@ -80,17 +81,17 @@ declare
 begin
   if tg_op = 'DELETE' then
     if old.email = 'marabelli.s@gmail.com' then
-      raise exception 'Admin perpetuo: non eliminabile';
+      raise exception 'Admin permanente: non eliminabile';
     end if;
     return old;
   end if;
   if old.email = 'marabelli.s@gmail.com' then
     current_email := auth.jwt() ->> 'email';
     if current_email is distinct from 'marabelli.s@gmail.com' then
-      raise exception 'Admin perpetuo: modificabile solo da te stesso';
+      raise exception 'Admin permanente: modificabile solo da te stesso';
     end if;
     if new.email <> old.email or new.livello <> old.livello then
-      raise exception 'Admin perpetuo: email e livello non modificabili';
+      raise exception 'Admin permanente: email e livello non modificabili';
     end if;
   end if;
   return new;

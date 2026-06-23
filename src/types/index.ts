@@ -1,14 +1,21 @@
 // ─── Ruoli / livelli di autorizzazione ─────────────────────────────
-//  - 'admin'    → gestione completa
-//  - 'turnista' → vede i propri turni nella pagina pubblica
-//  - 'esterno'  → ospite/sostituto: vede i turni, accesso limitato
-export type Livello = 'admin' | 'turnista' | 'esterno'
+//  - 'admin'        → proprietario permanente, gestione completa (badge rosso)
+//  - 'responsabile' → gestione completa come admin, non permanente (badge giallo)
+//  - 'turnista'     → vede i propri turni nella pagina pubblica
+//  - 'esterno'      → ospite/sostituto: vede i turni, accesso limitato
+export type Livello = 'admin' | 'responsabile' | 'turnista' | 'esterno'
 
 export const LIVELLI: { value: Livello; label: string }[] = [
-  { value: 'admin',    label: 'Admin' },
-  { value: 'turnista', label: 'Turnista' },
-  { value: 'esterno',  label: 'Esterno' },
+  { value: 'admin',        label: 'Admin' },
+  { value: 'responsabile', label: 'Responsabile' },
+  { value: 'turnista',     label: 'Turnista' },
+  { value: 'esterno',      label: 'Esterno' },
 ]
+
+/** Livelli con poteri di gestione (admin + responsabile = gli ex-admin). */
+export function puoGestire(l: Livello | null | undefined): boolean {
+  return l === 'admin' || l === 'responsabile'
+}
 
 // ─── Turnista (anagrafica + autorizzazione all'accesso) ─────────────
 export interface Turnista {

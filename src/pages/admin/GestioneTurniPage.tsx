@@ -15,9 +15,10 @@ const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
 const REP_SLOT = -1   // slot speciale per il reperibile
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
-  admin:    { bg: '#fef3c7', fg: '#92400e' },
-  turnista: { bg: '#dbeafe', fg: '#1e40af' },
-  esterno:  { bg: '#dcfce7', fg: '#166534' },
+  admin:        { bg: '#fee2e2', fg: '#b91c1c' },
+  responsabile: { bg: '#fef3c7', fg: '#92400e' },
+  turnista:     { bg: '#dbeafe', fg: '#1e40af' },
+  esterno:      { bg: '#dcfce7', fg: '#166534' },
 }
 const thStyle: CSSProperties = { background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: 2 }
 const tdBase: CSSProperties = { padding: '6px 10px', border: '1px solid #e5e7eb', verticalAlign: 'top' }
