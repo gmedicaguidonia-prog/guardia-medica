@@ -303,14 +303,15 @@ export function RegoleTurniPage() {
       {(() => {
         const auto = regoleVer?.cambio_auto ?? true
         return (
-          <div className="card p-3 flex flex-wrap items-center gap-3">
+          <div className="card p-3 flex items-start gap-3">
             <button onClick={() => salvaCambioAuto(!auto)} role="switch" aria-checked={auto} title="Attiva/disattiva l'approvazione automatica"
-              className="relative shrink-0 rounded-full transition-colors" style={{ width: 44, height: 24, background: auto ? '#2e7d32' : '#cbd5e1' }}>
+              className="relative shrink-0 rounded-full transition-colors mt-0.5" style={{ width: 44, height: 24, background: auto ? '#2e7d32' : '#cbd5e1' }}>
               <span className="absolute top-0.5 rounded-full bg-white shadow transition-all" style={{ width: 20, height: 20, left: auto ? 22 : 2 }} />
             </button>
-            <span className="text-sm font-medium" style={{ color: '#3a3d30' }}>
-              Cambio Turno: <strong style={{ color: auto ? '#166534' : '#b45309' }}>{auto ? 'automaticamente approvato' : 'soggetto ad approvazione del responsabile'}</strong>
-            </span>
+            <p className="text-sm font-medium leading-snug flex-1" style={{ color: '#3a3d30' }}>
+              Cambio Turno: <strong style={{ color: auto ? '#166534' : '#b45309' }}>{auto ? 'automaticamente approvato' : 'soggetto ad approvazione'}</strong>{' '}
+              <span className="text-stone-500 font-normal">({auto ? 'i turnisti fanno il cambio ed il sistema lo aggiorna in automatico' : 'è necessario che un Responsabile autorizzi o neghi il cambio che non sarà visibile fino all’approvazione'})</span>
+            </p>
           </div>
         )
       })()}
