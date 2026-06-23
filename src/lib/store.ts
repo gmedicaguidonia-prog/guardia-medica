@@ -219,6 +219,11 @@ const supaStore = {
     const { error } = await supabase.from('desiderata_finestra').upsert({ mese, aperta_da: da, aperta_a: a }, { onConflict: 'mese' })
     if (error) throw error
   },
+  async attivaDesiderata(mese: string): Promise<void> {
+    // crea la riga (= raccolta attiva) senza toccare eventuali date già impostate
+    const { error } = await supabase.from('desiderata_finestra').upsert({ mese }, { onConflict: 'mese', ignoreDuplicates: true })
+    if (error) throw error
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -387,6 +392,10 @@ const localStore = {
     const list = read<DesiderataFinestra[]>(LS_DESIDERATA_FIN, []).filter(f => f.mese !== mese)
     list.push({ mese, aperta_da: da, aperta_a: a })
     writeLs(LS_DESIDERATA_FIN, list)
+  },
+  async attivaDesiderata(mese: string): Promise<void> {
+    const list = read<DesiderataFinestra[]>(LS_DESIDERATA_FIN, [])
+    if (!list.some(f => f.mese === mese)) { list.push({ mese, aperta_da: null, aperta_a: null }); writeLs(LS_DESIDERATA_FIN, list) }
   },
 }
 

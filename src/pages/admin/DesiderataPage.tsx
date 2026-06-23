@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock } from 'lucide-react'
 import { store } from '../../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
@@ -22,6 +22,7 @@ const COL: Record<TipoDesiderata, { th: string; badge: string }> = {
 }
 const thStyle: CSSProperties = { background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: 2 }
 const tdBase: CSSProperties = { padding: '6px 10px', border: '1px solid #e5e7eb', verticalAlign: 'top' }
+function itDate(iso: string): string { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
 
 export function DesiderataPage() {
   const qc = useQueryClient()
@@ -35,7 +36,7 @@ export function DesiderataPage() {
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti'], queryFn: () => store.getTurnisti() })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', anno, mese], queryFn: () => store.getDesiderataMese(anno, mese) })
-  const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', meseKey], queryFn: () => store.getDesiderataFinestra(meseKey) })
+  const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', meseKey], queryFn: () => store.getDesiderataFinestra(meseKey) })
 
   // serverMap: chiave `data|turnoId|turnistaId` → tipo ('desiderata'|'indisponibilita')
   const serverMap = useMemo(() => {
@@ -84,6 +85,10 @@ export function DesiderataPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [warn, setWarn] = useState<string | null>(null)
+  const warnTimer = useRef<number | null>(null)
+  function showWarn(msg: string) { setWarn(msg); if (warnTimer.current) clearTimeout(warnTimer.current); warnTimer.current = window.setTimeout(() => setWarn(null), 4500) }
+  useEffect(() => () => { if (warnTimer.current) clearTimeout(warnTimer.current) }, [])
   // mini-elenco "clicca per aggiungere"
   const [picker, setPicker] = useState<{ ds: string; turnoId: string; tipo: TipoDesiderata; x: number; y: number } | null>(null)
   const pickerCandidati = useMemo(() => {
@@ -136,8 +141,32 @@ export function DesiderataPage() {
     try {
       await store.setDesiderataFinestra(meseKey, finDa || null, finA || null)
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', meseKey] })
-      setFinMsg('Periodo salvato'); setTimeout(() => setFinMsg(null), 2500)
-    } catch (e) { console.error(e); alert('Errore nel salvataggio del periodo.') }
+      setFinMsg('Pubblicato'); setTimeout(() => setFinMsg(null), 2500)
+    } catch (e) { console.error(e); alert('Errore nella pubblicazione del periodo.') }
+  }
+
+  // ── stato della raccolta per il mese selezionato ──
+  const meseCorrenteKey = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`
+  const oggiStr = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
+  const isPast = meseKey < meseCorrenteKey
+  const attiva = !!finestra
+  const chiusa = attiva && (isPast || (!!finestra?.aperta_a && finestra.aperta_a < oggiStr))
+  const aperta = attiva && !chiusa && !!finestra?.aperta_da && !!finestra?.aperta_a && finestra.aperta_da <= oggiStr && oggiStr <= finestra.aperta_a
+  const programmata = attiva && !chiusa && !aperta && !!finestra?.aperta_da && oggiStr < finestra.aperta_da
+  const stato = chiusa
+    ? { label: 'Chiusa', bg: '#fee2e2', fg: '#b91c1c', br: '#fca5a5' }
+    : aperta
+      ? { label: 'Aperta · in raccolta', bg: '#dcfce7', fg: '#166534', br: '#86efac' }
+      : programmata
+        ? { label: `Programmata · apre il ${finestra?.aperta_da ? itDate(finestra.aperta_da) : ''}`, bg: '#fef3c7', fg: '#92400e', br: '#fbbf24' }
+        : { label: 'Attiva · da pubblicare', bg: '#e5e7eb', fg: '#374151', br: '#d1d5db' }
+
+  async function attivaRaccolta() {
+    if (!versione || schema.length === 0) { showWarn(`Non ci sono turni configurati per ${MESI[mese - 1]} ${anno}: impostali prima in Configurazione Turni (passo ①), poi potrai attivare la raccolta.`); return }
+    try {
+      await store.attivaDesiderata(meseKey)
+      await qc.invalidateQueries({ queryKey: ['desiderata-finestra', meseKey] })
+    } catch (e) { console.error(e); alert('Errore nell\'attivazione della raccolta.') }
   }
 
   const Header = (
@@ -152,11 +181,47 @@ export function DesiderataPage() {
     </div>
   )
 
-  if (loadingVer) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento…</p></div>
+  const WarnToast = warn && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4" role="alert">
+      <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl shadow-2xl pointer-events-auto" style={{ background: '#fef3c7', borderLeft: '5px solid #d97706', color: '#78350f', maxWidth: 460, animation: 'fadeSlideIn 180ms ease-out' }}>
+        <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: '#b45309' }} />
+        <span className="text-sm font-medium leading-snug flex-1">{warn}</span>
+        <button onClick={() => setWarn(null)} className="shrink-0 hover:opacity-70" style={{ color: '#92400e' }}><X size={16} /></button>
+      </div>
+    </div>
+  )
+
+  if (loadingVer || loadingFin) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento…</p></div>
+
+  // Raccolta non attiva → schermata di attivazione (o mese passato non attivabile)
+  if (!attiva) {
+    return (
+      <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
+        {isPast ? (
+          <div className="card p-6 flex items-start gap-3 mt-2" style={{ maxWidth: 560, margin: '0 auto' }}>
+            <Lock className="shrink-0 mt-0.5" size={20} style={{ color: '#b45309' }} />
+            <div>
+              <h2 className="text-base font-bold mb-1" style={{ color: '#2b3c24' }}>Mese chiuso</h2>
+              <p className="text-sm text-stone-600">La raccolta per <strong>{MESI[mese - 1]} {anno}</strong> non è stata attivata e il mese è concluso: non è più possibile attivarla.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="card p-8 flex flex-col items-center text-center gap-3 mt-2" style={{ maxWidth: 560, margin: '0 auto' }}>
+            <CalendarHeart size={40} style={{ color: '#9ab488' }} />
+            <h2 className="text-lg font-bold" style={{ color: '#2b3c24' }}>Raccolta non attiva per {MESI[mese - 1]} {anno}</h2>
+            <p className="text-sm text-stone-500">Attiva la raccolta per generare la griglia dei turni e impostare il periodo in cui i turnisti potranno indicare desiderata e indisponibilità.</p>
+            <button onClick={attivaRaccolta} className="btn-primary text-sm py-2 px-4 mt-1 inline-flex items-center gap-2"><Power size={16} /> Attiva Desiderata - Indisponibilità</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Attiva ma turni non più configurati (caso limite)
   if (!versione || schema.length === 0) {
     return (
-      <div className="max-w-5xl mx-auto p-6">{Header}
-        <div className="card p-5 flex items-start gap-3 mt-4"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
+      <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
+        <div className="card p-5 flex items-start gap-3 mt-2"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
           <p className="text-sm text-stone-600">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>. Impostala prima in <strong>Configurazione Turni</strong> (passo ①).</p>
         </div>
       </div>
@@ -204,17 +269,29 @@ export function DesiderataPage() {
     <div className="p-4 sm:p-6 space-y-4">
       {Header}
 
-      {/* Finestra di raccolta */}
-      <div className="card p-3 flex items-center gap-3 flex-wrap">
-        <CalendarRange size={18} style={{ color: '#476540' }} />
-        <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Raccolta aperta ai turnisti</span>
-        <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>dal
-          <input type="date" value={finDa} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
-        <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>al
-          <input type="date" value={finA} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
-        <button onClick={salvaFinestra} className="btn-secondary text-xs py-1 px-2.5">Salva periodo</button>
-        {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
-        <span className="text-[11px] text-stone-400 w-full">La pagina di compilazione lato-turnista userà questo periodo (in arrivo).</span>
+      {/* Pubblicazione raccolta */}
+      <div className="card p-3 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <CalendarRange size={18} style={{ color: '#476540' }} />
+          <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Pubblica calendario desiderata - Indisponibilità</span>
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: stato.bg, color: stato.fg, border: `1px solid ${stato.br}` }}>{stato.label}</span>
+        </div>
+        {chiusa ? (
+          <p className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
+            <Lock size={13} /> Raccolta chiusa{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''} — non più riapribile. Puoi comunque modificare le caselle qui sotto.
+            {finestra?.aperta_da && finestra?.aperta_a && <span className="text-stone-400">· periodo {itDate(finestra.aperta_da)} → {itDate(finestra.aperta_a)}</span>}
+          </p>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>apertura
+              <input type="date" value={finDa} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
+            <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>chiusura
+              <input type="date" value={finA} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
+            <button onClick={salvaFinestra} className="btn-primary text-xs py-1 px-3">Pubblica</button>
+            {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
+          </div>
+        )}
+        <span className="text-[11px] text-stone-400 block">La pagina di compilazione lato-turnista userà questo periodo (in arrivo).</span>
       </div>
 
       {/* Barra azioni / salvataggio */}
@@ -306,6 +383,8 @@ export function DesiderataPage() {
           </div>
         </>
       )}
+
+      {WarnToast}
     </div>
   )
 }
