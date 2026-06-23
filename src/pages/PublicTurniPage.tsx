@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban } from 'lucide-react'
+import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Users } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
 import { nomeCompleto } from '../types'
-import type { AuthUser, TurnoSchema, Turno, Turnista, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata } from '../types'
+import type { AuthUser, TurnoSchema, Turno, Turnista, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -43,9 +43,11 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: versione } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] } = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: personale = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
-  const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'turni' })
+  const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'turni' })
+  const pianificazione = tab === 'turni' && statoCal === 'pianificazione'
+  const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'turni' && statoCal === 'pubblicato' })
   const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
-  const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'desiderata' })
+  const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && (tab === 'desiderata' || pianificazione) })
 
   const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
@@ -69,6 +71,18 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     return m
   }, [desiderata, mia])
 
+  // pianificazione: disponibilità (vorrei) / indisponibilità (non posso) di TUTTI, per turno
+  const dispoByTurno = useMemo(() => {
+    const m = new Map<string, { vogliono: string[]; nonPossono: string[] }>()
+    desiderata.forEach(x => {
+      const k = `${x.data}|${x.turno_schema_id}`
+      const e = m.get(k) ?? { vogliono: [], nonPossono: [] }
+      ;(x.tipo === 'desiderata' ? e.vogliono : e.nonPossono).push(x.turnista_id)
+      m.set(k, e)
+    })
+    return m
+  }, [desiderata])
+
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
     await store.setDesiderata(postazioneId!, ds, turnoId, mia.membershipId, tipo)
@@ -89,7 +103,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     : fin.aperta_a < oggiStr ? 'chiusa'
     : 'aperta'
 
-  const turniPubblicati = !!versione && schema.length > 0 && turni.length > 0
+  const turniConfigurati = !!versione && schema.length > 0
 
   const MeseNav = (
     <div className="flex items-center gap-2">
@@ -138,8 +152,55 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
           {/* ───── CALENDARIO TURNI ───── */}
           {tab === 'turni' && (
-            !turniPubblicati ? (
+            statoCal === 'non_pubblicato' ? (
               <Avviso>Il <strong>calendario turni</strong> di {MESI[mese - 1]} {anno} non è ancora stato pubblicato per questa postazione.</Avviso>
+            ) : !turniConfigurati ? (
+              <Avviso>Non ci sono turni configurati per {MESI[mese - 1]} {anno}.</Avviso>
+            ) : pianificazione ? (
+              <>
+                <div className="card p-3 flex items-start gap-2" style={{ background: '#eff6ff' }}>
+                  <Users size={16} className="shrink-0 mt-0.5" style={{ color: '#1e40af' }} />
+                  <p className="text-sm" style={{ color: '#1e3a8a' }}><strong>Modalità pianificazione.</strong> Indica le tue disponibilità per aiutare il responsabile a comporre i turni. Qui vedi anche le scelte degli altri.</p>
+                </div>
+                <div className="card overflow-auto">
+                  <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
+                    <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={thStyle}>Disponibilità del gruppo</th><th style={{ ...thStyle, textAlign: 'center' }}>La tua scelta</th></tr></thead>
+                    <tbody>
+                      {righe.map(({ ds, d, turno }) => {
+                        const fest = isFestivo(d), pref = isPrefestivo(d)
+                        const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
+                        const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
+                        const overnight = turno.ora_fine <= turno.ora_inizio
+                        const k = `${ds}|${turno.id}`
+                        const dispo = dispoByTurno.get(k) ?? { vogliono: [], nonPossono: [] }
+                        const cur = miaPref.get(k)
+                        return (
+                          <tr key={k} style={{ background: rowBg }}>
+                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span></td>
+                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
+                              <span className="inline-flex items-center gap-1">{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
+                              <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
+                            </td>
+                            <td style={tdBase}>
+                              <div className="flex flex-wrap gap-1.5 items-center">
+                                {dispo.vogliono.length === 0 && dispo.nonPossono.length === 0 && <span className="text-[11px] text-stone-300 italic">nessuna scelta</span>}
+                                {dispo.vogliono.map(id => { const io = id === mia?.membershipId; return <span key={'v' + id} className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium" style={{ background: io ? '#16a34a' : '#dcfce7', color: io ? '#fff' : '#166534' }} title="Disponibile"><Check size={10} /> {nomeById.get(id) ?? '—'}{io && ' (tu)'}</span> })}
+                                {dispo.nonPossono.map(id => { const io = id === mia?.membershipId; return <span key={'n' + id} className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium" style={{ background: io ? '#dc2626' : '#fee2e2', color: io ? '#fff' : '#b91c1c' }} title="Non disponibile"><Ban size={10} /> {nomeById.get(id) ?? '—'}{io && ' (tu)'}</span> })}
+                              </div>
+                            </td>
+                            <td style={{ ...tdBase, textAlign: 'center' }}>
+                              <div className="inline-flex gap-1.5">
+                                <button onClick={() => setPref(ds, turno.id, cur === 'desiderata' ? null : 'desiderata')} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold border transition-colors" style={cur === 'desiderata' ? { background: '#16a34a', color: '#fff', borderColor: '#15803d' } : { background: '#fff', color: '#166534', borderColor: '#bbf7d0' }}><Check size={12} /> Vorrei</button>
+                                <button onClick={() => setPref(ds, turno.id, cur === 'indisponibilita' ? null : 'indisponibilita')} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold border transition-colors" style={cur === 'indisponibilita' ? { background: '#dc2626', color: '#fff', borderColor: '#b91c1c' } : { background: '#fff', color: '#b91c1c', borderColor: '#fecaca' }}><Ban size={12} /> Non posso</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : (
               <div className="card overflow-auto">
                 <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>

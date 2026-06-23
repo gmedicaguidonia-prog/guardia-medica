@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoMembro { nome: string; cognome: string; email: string; livello: Livello; utenteId?: string }
@@ -310,6 +310,17 @@ const supaStore = {
     const { error } = await supabase.from('desiderata_finestra').upsert({ mese, postazione_id: postazioneId }, { onConflict: 'postazione_id,mese', ignoreDuplicates: true })
     if (error) throw error
   },
+
+  // ── Stato calendario turni (non_pubblicato | pubblicato | pianificazione) ──
+  async getStatoCalendario(postazioneId: string, mese: string): Promise<StatoCalendario> {
+    const { data, error } = await supabase.from('turni_stato').select('stato').eq('postazione_id', postazioneId).eq('mese', mese).maybeSingle()
+    if (error) throw error
+    return (data?.stato as StatoCalendario) ?? 'non_pubblicato'
+  },
+  async setStatoCalendario(postazioneId: string, mese: string, stato: StatoCalendario): Promise<void> {
+    const { error } = await supabase.from('turni_stato').upsert({ postazione_id: postazioneId, mese, stato, updated_at: new Date().toISOString() }, { onConflict: 'postazione_id,mese' })
+    if (error) throw error
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -324,6 +335,7 @@ const LS_TURNI            = 'gm_turni'
 const LS_TURNISTI_MESE    = 'gm_turnisti_mese'
 const LS_DESIDERATA       = 'gm_desiderata'
 const LS_DESIDERATA_FIN   = 'gm_desiderata_finestra'
+const LS_TURNI_STATO      = 'gm_turni_stato'
 const LS_POSTAZIONI       = 'gm_postazioni'
 const LS_SEEDED           = 'gm_seeded_v5'
 const DEV_POSTAZIONE      = 'dev-postazione-1'
@@ -539,6 +551,15 @@ const localStore = {
   async attivaDesiderata(postazioneId: string, mese: string): Promise<void> {
     const list = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, [])
     if (!list.some(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)) { list.push({ mese, aperta_da: null, aperta_a: null, postazione_id: postazioneId }); writeLs(LS_DESIDERATA_FIN, list) }
+  },
+
+  async getStatoCalendario(postazioneId: string, mese: string): Promise<StatoCalendario> {
+    return read<{ postazione_id: string; mese: string; stato: StatoCalendario }[]>(LS_TURNI_STATO, []).find(s => s.mese === mese && (s.postazione_id ?? DEV_POSTAZIONE) === postazioneId)?.stato ?? 'non_pubblicato'
+  },
+  async setStatoCalendario(postazioneId: string, mese: string, stato: StatoCalendario): Promise<void> {
+    const list = read<{ postazione_id: string; mese: string; stato: StatoCalendario }[]>(LS_TURNI_STATO, []).filter(s => !(s.mese === mese && (s.postazione_id ?? DEV_POSTAZIONE) === postazioneId))
+    list.push({ postazione_id: postazioneId, mese, stato })
+    writeLs(LS_TURNI_STATO, list)
   },
 }
 

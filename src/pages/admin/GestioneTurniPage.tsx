@@ -2,9 +2,9 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users } from 'lucide-react'
 import { store } from '../../lib/store'
-import { nomeCompleto, gruppiPerLivello } from '../../types'
+import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
@@ -12,7 +12,7 @@ import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata } from '../../types'
+import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, StatoCalendario } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -56,6 +56,7 @@ export function GestioneTurniPage() {
   const { data: regole = [] } = useQuery<RegolaTurno[]>({ queryKey: ['regole', regoleVer?.id], queryFn: () => store.getRegole(regoleVer!.id), enabled: !!regoleVer })
   const { data: finestraDes } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: desiderataMese = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
+  const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -65,6 +66,9 @@ export function GestioneTurniPage() {
   const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap)
   const [saving, setSaving] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showStatoModal, setShowStatoModal] = useState(false)
+  const [statoScelto, setStatoScelto] = useState<StatoCalendario>('non_pubblicato')
+  const [savingStato, setSavingStato] = useState(false)
 
   useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
   useEffect(() => {
@@ -209,9 +213,24 @@ export function GestioneTurniPage() {
     } catch (e) { console.error('[Turni] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }
   }
+  function apriStatoModal() { setStatoScelto(statoCal); setShowStatoModal(true) }
+  async function salvaStato() {
+    setSavingStato(true)
+    try {
+      await store.setStatoCalendario(postazioneId!, meseKey, statoScelto)
+      await qc.invalidateQueries({ queryKey: ['turni-stato', postazioneId, meseKey] })
+      setShowStatoModal(false)
+    } catch (e) { console.error('[Turni] salvataggio stato fallito:', e); alert('Errore nel salvataggio dello stato.') }
+    finally { setSavingStato(false) }
+  }
+
+  // Pulsante di stato (accanto al selettore mese) + descrittori
+  const statoStile = STATO_CALENDARIO_STILE[statoCal]
+  const StatoIcon = statoCal === 'pubblicato' ? Eye : statoCal === 'pianificazione' ? Users : EyeOff
+  const statoLabel = STATI_CALENDARIO.find(s => s.value === statoCal)!.label
 
   const Header = (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 flex-wrap">
       <CalendarDays size={22} style={{ color: '#476540' }} />
       <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Turni del Mese</h1>
       <div className="flex items-center gap-2">
@@ -219,6 +238,46 @@ export function GestioneTurniPage() {
         <span className="font-semibold text-sm text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
         <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
       </div>
+      {/* Stato del calendario turni — apre il modal di scelta */}
+      <button onClick={apriStatoModal}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border transition-all hover:brightness-95"
+        style={{ background: statoStile.bg, color: statoStile.fg, borderColor: statoStile.border }}
+        title="Imposta lo stato del calendario: decide cosa vedono i turnisti nella pagina pubblica">
+        <StatoIcon size={15} /> {statoLabel}
+      </button>
+
+      {/* Modal: scelta dello stato del calendario */}
+      {showStatoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowStatoModal(false)}>
+          <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Stato calendario · {MESI[mese - 1]} {anno}</h3>
+              <button onClick={() => setShowStatoModal(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-stone-500 mb-3">Decidi cosa vedono i turnisti nella pagina pubblica «I miei turni».</p>
+            <div className="space-y-2">
+              {STATI_CALENDARIO.map(s => {
+                const st = STATO_CALENDARIO_STILE[s.value]
+                const sel = statoScelto === s.value
+                return (
+                  <button key={s.value} onClick={() => setStatoScelto(s.value)} className="w-full text-left rounded-lg p-3 border-2 transition-all"
+                    style={{ borderColor: sel ? st.fg : '#e5e7eb', background: sel ? st.bg : '#fff' }}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3.5 h-3.5 rounded-full border-2 shrink-0" style={{ borderColor: sel ? st.fg : '#cbd5e1', background: sel ? st.fg : 'transparent' }} />
+                      <span className="font-bold text-sm" style={{ color: sel ? st.fg : '#374151' }}>{s.label}</span>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-1" style={{ marginLeft: 22 }}>{s.descr}</p>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowStatoModal(false)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
+              <button onClick={salvaStato} disabled={savingStato} className="btn-primary text-sm py-1.5 px-4">{savingStato ? 'Salvo…' : 'Salva'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 
@@ -302,6 +361,12 @@ export function GestioneTurniPage() {
         <button onClick={() => setShowImport(true)} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={coperturaOk ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' } : { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }} title="Turni del mese con tutti i posti assegnati"><CalendarDays size={13} /> Turni coperti {copertura.coperti}/{copertura.totali}</span>
+        <button onClick={() => showWarn('Assegnazione automatica dei turni — funzione in arrivo.')}
+          className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95"
+          style={{ background: '#ede9fe', color: '#6d28d9', borderColor: '#c4b5fd' }}
+          title="Genera automaticamente l'assegnazione dei turni (in arrivo)">
+          <Wand2 size={14} /> Auto Assegnazione
+        </button>
         {regoleVuote && <button onClick={() => navigate('/admin/regole')} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full hover:brightness-95 transition-all" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }} title="Vai alle Regole Turni"><AlertTriangle size={13} /> Regole del mese non impostate</button>}
         {desiderataWarn && <button onClick={() => navigate('/admin/desiderata')} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full hover:brightness-95 transition-all" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }} title="Vai a Desiderata - Indisponibilità"><AlertTriangle size={13} /> {desiderataMsg}</button>}
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}

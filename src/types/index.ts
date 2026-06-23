@@ -165,6 +165,27 @@ export interface DesiderataFinestra {
   aperta_a: string | null  // 'YYYY-MM-DD'
 }
 
+// ─── Stato del calendario turni (per postazione × mese) ─────────────
+//  Controlla cosa vede il turnista nella pagina pubblica "I miei turni":
+//   - 'non_pubblicato' → niente, solo un avviso "non ancora pubblicato"
+//   - 'pubblicato'     → il calendario con i turni pianificati
+//   - 'pianificazione' → modalità collaborativa: non i turni, ma le
+//                        disponibilità/indisponibilità di tutti i turnisti
+export type StatoCalendario = 'non_pubblicato' | 'pubblicato' | 'pianificazione'
+
+export const STATI_CALENDARIO: { value: StatoCalendario; label: string; descr: string }[] = [
+  { value: 'non_pubblicato', label: 'Non Pubblicato',          descr: 'I turnisti non vedono il calendario: compare solo un avviso che non è ancora stato pubblicato.' },
+  { value: 'pubblicato',     label: 'Pubblicato',              descr: 'I turnisti vedono il calendario con i turni pianificati.' },
+  { value: 'pianificazione', label: 'Modalità Pianificazione', descr: 'I turnisti non vedono i turni pianificati, ma le disponibilità e indisponibilità di tutti: una modalità collaborativa per aiutare il responsabile a comporre i turni.' },
+]
+
+/** Stile del badge/pulsante che riflette lo stato del calendario. */
+export const STATO_CALENDARIO_STILE: Record<StatoCalendario, { bg: string; fg: string; border: string }> = {
+  non_pubblicato: { bg: '#f1f5f9', fg: '#475569', border: '#cbd5e1' },
+  pubblicato:     { bg: '#dcfce7', fg: '#166534', border: '#86efac' },
+  pianificazione: { bg: '#dbeafe', fg: '#1e40af', border: '#93c5fd' },
+}
+
 // ─── Postazioni (multi-tenancy) ─────────────────────────────────────
 //  Ogni postazione è un "mondo" a sé: turnisti, configurazioni, regole,
 //  desiderata e turni sono filtrati per postazione_id.
