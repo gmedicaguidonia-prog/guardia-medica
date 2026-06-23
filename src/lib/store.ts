@@ -329,7 +329,7 @@ const supaStore = {
   // ── Richieste di turno (candidature in Modalità Pianificazione) ──
   async getRichiesteMese(postazioneId: string, anno: number, mese: number): Promise<RichiestaTurno[]> {
     const { first, last } = meseRange(anno, mese)
-    const { data, error } = await supabase.from('richieste_turno').select('*').eq('postazione_id', postazioneId).gte('data', first).lte('data', last).order('created_at')
+    const { data, error } = await supabase.from('richieste_turno').select('*').eq('postazione_id', postazioneId).gte('data', first).lte('data', last).order('data', { ascending: true }).order('created_at', { ascending: true })
     if (error) throw error
     return (data ?? []) as RichiestaTurno[]
   },

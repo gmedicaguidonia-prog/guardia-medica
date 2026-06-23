@@ -59,6 +59,11 @@ export function GestioneTurniPage() {
   const { data: desiderataMese = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId })
+  // ordinate per giorno crescente (stesso giorno raggruppato), poi per turno e arrivo
+  const richiesteOrdinate = useMemo(() => {
+    const ord = (id: string) => schema.find(s => s.id === id)?.ordine ?? 0
+    return richieste.slice().sort((a, b) => a.data.localeCompare(b.data) || ord(a.turno_schema_id) - ord(b.turno_schema_id) || a.created_at.localeCompare(b.created_at))
+  }, [richieste, schema])
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -411,7 +416,7 @@ export function GestioneTurniPage() {
             <h3 className="text-sm font-bold" style={{ color: '#7f1d1d' }}>Richieste di candidatura ({richieste.length})</h3>
           </div>
           <div className="space-y-1.5">
-            {richieste.map(r => {
+            {richiesteOrdinate.map(r => {
               const turno = schema.find(s => s.id === r.turno_schema_id)
               return (
                 <div key={r.id} className="flex items-center gap-2 flex-wrap rounded-lg px-3 py-2" style={{ background: '#fff', border: '1px solid #fee2e2' }}>
