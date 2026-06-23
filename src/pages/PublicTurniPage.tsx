@@ -48,6 +48,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'turni' && statoCal !== 'non_pubblicato' })
   const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'desiderata' })
+  const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
   const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneId], queryFn: () => store.getMesiConContenuto(postazioneId!), enabled: !!postazioneId })
 
@@ -87,7 +88,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     desiderata.forEach(d => m.set(`${d.data}|${d.turno_schema_id}|${d.turnista_id}`, d.tipo))
     return m
   }, [desiderata])
-  const colonne = useMemo(() => personale.slice().sort(cmpTurnisti), [personale])
+  // colonne della matrice = solo i turnisti IMPORTATI per il mese (non tutta la postazione)
+  const importatiMese = useMemo(() => new Set(turnistiMese), [turnistiMese])
+  const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id)).sort(cmpTurnisti), [personale, importatiMese])
 
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
