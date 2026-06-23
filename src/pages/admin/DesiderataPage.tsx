@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, ClipboardList, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check } from 'lucide-react'
 import { store } from '../../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
@@ -142,7 +142,7 @@ export function DesiderataPage() {
 
   const Header = (
     <div className="flex items-center gap-3">
-      <ClipboardList size={22} style={{ color: '#476540' }} />
+      <CalendarHeart size={22} style={{ color: '#476540' }} />
       <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Desiderata / Indisponibilità</h1>
       <div className="ml-auto flex items-center gap-2">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
