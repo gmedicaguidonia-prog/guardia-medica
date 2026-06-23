@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, ArrowRightLeft, CalendarDays } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ArrowRightLeft } from 'lucide-react'
 import { store } from '../../lib/store'
-import type { ConfigVersione } from '../../types'
+import type { ConfigVersione, DesiderataFinestra } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 function meseKeyOffset(off: number): string {
@@ -12,6 +12,7 @@ function meseKeyOffset(off: number): string {
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`
 }
 function meseLabel(key: string): string { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
+function itDate(iso: string): string { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
 function copre(v: ConfigVersione, mese: string): boolean {
   return v.valido_da <= mese && (v.valido_fino == null || mese <= v.valido_fino)
 }
@@ -33,7 +34,9 @@ function PlaceholderCard({ Icon, titolo, descr }: { Icon: typeof ArrowRightLeft;
 
 export function AdminHomePage() {
   const navigate = useNavigate()
+  const meseProssimo = meseKeyOffset(1)
   const { data: versioni = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all'], queryFn: () => store.getVersioni() })
+  const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', meseProssimo], queryFn: () => store.getDesiderataFinestra(meseProssimo) })
 
   const avvisi = useMemo<Avviso[]>(() => {
     const out: Avviso[] = []
@@ -50,8 +53,17 @@ export function AdminHomePage() {
     if (corrente?.valido_fino && corrente.valido_fino <= mesi[1]) {
       out.push({ testo: `La configurazione turni scade a ${meseLabel(corrente.valido_fino)}: ricordati di riconfigurare i turni.`, cta: 'Configura', azione: () => navigate('/admin/schema') })
     }
+    // Raccolta desiderata per il mese prossimo (solo se i turni sono già configurati)
+    if (versioni.some(v => copre(v, meseProssimo))) {
+      const oggiStr = new Date().toISOString().slice(0, 10)
+      if (!finestraProssimo?.aperta_a) {
+        out.push({ testo: `Non hai ancora impostato il periodo di raccolta desiderata per ${meseLabel(meseProssimo)}.`, cta: 'Imposta', azione: () => navigate('/admin/desiderata') })
+      } else if (finestraProssimo.aperta_a < oggiStr) {
+        out.push({ testo: `La raccolta desiderata per ${meseLabel(meseProssimo)} si è chiusa il ${itDate(finestraProssimo.aperta_a)}.`, cta: 'Apri', azione: () => navigate('/admin/desiderata') })
+      }
+    }
     return out
-  }, [versioni, navigate])
+  }, [versioni, finestraProssimo, meseProssimo, navigate])
 
   return (
     <div className="relative min-h-full">
@@ -84,7 +96,6 @@ export function AdminHomePage() {
           <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">In arrivo</h2>
           <div className="grid sm:grid-cols-2 gap-3">
             <PlaceholderCard Icon={ArrowRightLeft} titolo="Cambi turno" descr="Avvisi delle richieste e dei cambi turno effettuati dai turnisti." />
-            <PlaceholderCard Icon={CalendarDays} titolo="Desiderata e indisponibilità" descr="Apertura e scadenza del calendario per le preferenze dei turnisti." />
           </div>
         </section>
       </div>
