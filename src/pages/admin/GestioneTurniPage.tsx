@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
@@ -11,7 +12,7 @@ import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione } from '../../types'
+import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -36,6 +37,7 @@ function oreTurno(inizio: string, fine: string): number {
 
 export function GestioneTurniPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { setHasUnsaved } = useUnsaved()
   const { confirm, confirmState } = useConfirm()
   const { postazioneId } = usePostazione()
@@ -50,6 +52,9 @@ export function GestioneTurniPage() {
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
   const { data: turni = [] }    = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: regoleVer } = useQuery<RegolaVersione | null>({ queryKey: ['regole-versione', postazioneId, meseKey], queryFn: () => store.getRegoleVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: regole = [] } = useQuery<RegolaTurno[]>({ queryKey: ['regole', regoleVer?.id], queryFn: () => store.getRegole(regoleVer!.id), enabled: !!regoleVer })
+  const { data: finestraDes } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -94,6 +99,20 @@ export function GestioneTurniPage() {
 
   const hasRep = useMemo(() => [...local.keys()].some(k => k.endsWith(`|${REP_SLOT}`)), [local])
   const showRep = mostraRepMesi.has(meseKey) || hasRep
+
+  // Copertura turni del mese: un turno è "coperto" quando tutti gli slot sono assegnati
+  const copertura = useMemo(() => {
+    let cop = 0
+    righe.forEach(({ ds, turno }) => {
+      const n = Array.from({ length: turno.n_turnisti }, (_, s) => local.get(`${ds}|${turno.id}|${s}`)).filter(Boolean).length
+      if (turno.n_turnisti > 0 && n >= turno.n_turnisti) cop++
+    })
+    return { coperti: cop, totali: righe.length }
+  }, [righe, local])
+  const coperturaOk = copertura.totali > 0 && copertura.coperti >= copertura.totali
+  // Warning (non bloccanti)
+  const regoleVuote = !regoleVer || regole.length === 0
+  const desiderataNonPub = !finestraDes?.aperta_a
 
   // ── drag&drop ──
   const dragSource = useRef<string | null>(null)
@@ -278,6 +297,9 @@ export function GestioneTurniPage() {
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => setShowImport(true)} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
+        <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={coperturaOk ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' } : { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }} title="Turni del mese con tutti i posti assegnati"><CalendarDays size={13} /> Turni coperti {copertura.coperti}/{copertura.totali}</span>
+        {regoleVuote && <button onClick={() => navigate('/admin/regole')} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full hover:brightness-95 transition-all" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }} title="Vai alle Regole Turni"><AlertTriangle size={13} /> Regole del mese non impostate</button>}
+        {desiderataNonPub && <button onClick={() => navigate('/admin/desiderata')} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full hover:brightness-95 transition-all" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }} title="Vai a Desiderata - Indisponibilità"><AlertTriangle size={13} /> Desiderata non pubblicate</button>}
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
           {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
