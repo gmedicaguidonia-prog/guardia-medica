@@ -3,6 +3,7 @@ import { CalendarDays, Clock, Moon, Sun, Info } from 'lucide-react'
 import { store } from '../lib/store'
 import { RICORRENZE } from '../types'
 import { GIORNI_SETTIMANA } from '../lib/constants'
+import { usePostazione } from '../contexts/PostazioneContext'
 import type { TurnoSchema } from '../types'
 
 function ricorrenzaLabel(t: TurnoSchema): string {
@@ -14,8 +15,9 @@ function ricorrenzaLabel(t: TurnoSchema): string {
 }
 
 export function PublicTurniPage() {
+  const { postazioneId } = usePostazione()
   const meseKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-  const { data: versione } = useQuery({ queryKey: ['versione', meseKey], queryFn: () => store.getVersioneMese(meseKey) })
+  const { data: versione } = useQuery({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] } = useQuery<TurnoSchema[]>({
     queryKey: ['schema', versione?.id],
     queryFn: () => store.getSchemaVersione(versione!.id),

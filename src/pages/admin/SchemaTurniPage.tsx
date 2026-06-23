@@ -7,6 +7,7 @@ import { GIORNI_SETTIMANA } from '../../lib/constants'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useUnsaved } from '../../contexts/UnsavedContext'
+import { usePostazione } from '../../contexts/PostazioneContext'
 import { prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
 import type { TurnoSchema, Ricorrenza, ConfigVersione } from '../../types'
 
@@ -146,6 +147,7 @@ export function SchemaTurniPage() {
   const qc = useQueryClient()
   const { confirm, confirmState } = useConfirm()
   const { setHasUnsaved } = useUnsaved()
+  const { postazioneId } = usePostazione()
 
   const oggi = new Date()
   const [anno, setAnno] = useState(oggi.getFullYear())
@@ -153,15 +155,16 @@ export function SchemaTurniPage() {
   const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
 
   const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({
-    queryKey: ['versione', meseKey],
-    queryFn: () => store.getVersioneMese(meseKey),
+    queryKey: ['versione', postazioneId, meseKey],
+    queryFn: () => store.getVersioneMese(postazioneId!, meseKey),
+    enabled: !!postazioneId,
   })
   const { data: schema = [], isLoading: loadingSchema } = useQuery<TurnoSchema[]>({
     queryKey: ['schema', versione?.id],
     queryFn: () => store.getSchemaVersione(versione!.id),
     enabled: !!versione,
   })
-  const { data: tutteVer = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all'], queryFn: () => store.getVersioni() })
+  const { data: tutteVer = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all', postazioneId], queryFn: () => store.getVersioni(postazioneId!), enabled: !!postazioneId })
 
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
   const handleDirty = useCallback((id: string, dirty: boolean) => {
@@ -189,7 +192,7 @@ export function SchemaTurniPage() {
   }
 
   async function configuraMese() {
-    await store.creaVersione(meseKey)
+    await store.creaVersione(postazioneId!, meseKey)
     await qc.invalidateQueries({ queryKey: ['versione'] })
   }
   async function cambiaValidita(validoFino: string | null) {
@@ -218,6 +221,8 @@ export function SchemaTurniPage() {
     await store.deleteTurnoSchema(t.id)
     await qc.invalidateQueries({ queryKey: ['schema', t.versione_id] })
   }
+
+  if (!postazioneId) return <div className="max-w-4xl mx-auto p-6 text-sm text-stone-500">Caricamento postazione…</div>
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-4">

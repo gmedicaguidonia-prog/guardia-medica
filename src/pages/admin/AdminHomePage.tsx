@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, ArrowRightLeft } from 'lucide-react'
 import { store } from '../../lib/store'
+import { usePostazione } from '../../contexts/PostazioneContext'
 import type { ConfigVersione, DesiderataFinestra } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -34,9 +35,10 @@ function PlaceholderCard({ Icon, titolo, descr }: { Icon: typeof ArrowRightLeft;
 
 export function AdminHomePage() {
   const navigate = useNavigate()
+  const { postazioneId } = usePostazione()
   const meseProssimo = meseKeyOffset(1)
-  const { data: versioni = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all'], queryFn: () => store.getVersioni() })
-  const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', meseProssimo], queryFn: () => store.getDesiderataFinestra(meseProssimo) })
+  const { data: versioni = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all', postazioneId], queryFn: () => store.getVersioni(postazioneId!), enabled: !!postazioneId })
+  const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseProssimo], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseProssimo), enabled: !!postazioneId })
 
   const avvisi = useMemo<Avviso[]>(() => {
     const out: Avviso[] = []

@@ -7,6 +7,7 @@ import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
+import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione } from '../../types'
@@ -36,17 +37,18 @@ export function GestioneTurniPage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
   const { confirm, confirmState } = useConfirm()
+  const { postazioneId } = usePostazione()
   const oggi = new Date()
   const [anno, setAnno] = useState(oggi.getFullYear())
   const [mese, setMese] = useState(oggi.getMonth() + 1)
   const [mostraRepMesi, setMostraRepMesi] = useState<Set<string>>(new Set())
   const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
 
-  const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', meseKey], queryFn: () => store.getVersioneMese(meseKey) })
+  const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
-  const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti'], queryFn: () => store.getTurnisti() })
-  const { data: turni = [] }    = useQuery<Turno[]>({ queryKey: ['turni', anno, mese], queryFn: () => store.getTurniMese(anno, mese) })
-  const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', meseKey], queryFn: () => store.getTurnistiMese(meseKey) })
+  const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
+  const { data: turni = [] }    = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId })
+  const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId })
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -174,13 +176,13 @@ export function GestioneTurniPage() {
     const ok = await confirm({ title: 'Aggiungi reperibile', message: 'Aggiungere la colonna “Reperibile” per assegnare un reperibile a ogni turno?', confirmLabel: 'Aggiungi' })
     if (ok) setMostraRepMesi(prev => { const n = new Set(prev); n.add(meseKey); return n })
   }
-  async function importaTurnista(id: string) { await store.addTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', meseKey] }) }
-  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', meseKey] }) }
+  async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
+  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
   async function salva() {
     setSaving(true)
     try {
-      for (const c of diff()) { const [data, turnoId, slot] = c.key.split('|'); await store.setAssegnazione(data, turnoId, +slot, c.value) }
-      await qc.invalidateQueries({ queryKey: ['turni', anno, mese] })
+      for (const c of diff()) { const [data, turnoId, slot] = c.key.split('|'); await store.setAssegnazione(postazioneId!, data, turnoId, +slot, c.value) }
+      await qc.invalidateQueries({ queryKey: ['turni', postazioneId, anno, mese] })
     } catch (e) { console.error('[Turni] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }
   }
@@ -197,6 +199,7 @@ export function GestioneTurniPage() {
     </div>
   )
 
+  if (!postazioneId) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento postazione…</p></div>
   if (loadingVer) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento…</p></div>
   if (!versione || schema.length === 0) {
     return (

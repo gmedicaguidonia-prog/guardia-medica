@@ -11,10 +11,12 @@ import { SchemaTurniPage } from './pages/admin/SchemaTurniPage'
 import { GestioneTurniPage } from './pages/admin/GestioneTurniPage'
 import { RegoleTurniPage } from './pages/admin/RegoleTurniPage'
 import { DesiderataPage } from './pages/admin/DesiderataPage'
+import { PostazioniPage } from './pages/admin/PostazioniPage'
 import { AdminHomePage } from './pages/admin/AdminHomePage'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import { UpdateToast } from './components/UpdateToast'
 import { UnsavedProvider } from './contexts/UnsavedContext'
+import { PostazioneProvider } from './contexts/PostazioneContext'
 import { puoGestire } from './types'
 
 const queryClient = new QueryClient({
@@ -40,6 +42,7 @@ function AppRoutes() {
   const { updateAvailable, applyUpdate } = useVersionCheck()
 
   return (
+    <PostazioneProvider user={user}>
     <div className="min-h-screen flex flex-col">
       {user && <NavBar user={user} onSignOut={signOut} isDev={isDev} onDevSwitch={devLogin}
         updateAvailable={updateAvailable} onReload={applyUpdate} />}
@@ -56,6 +59,7 @@ function AppRoutes() {
         <Route path="/admin"
           element={<ProtectedRoute user={user} loading={loading} requireAdmin><AdminLayout user={user} /></ProtectedRoute>}>
           <Route index element={<AdminHomePage />} />
+          <Route path="postazioni" element={<PostazioniPage />} />
           <Route path="regole"     element={<RegoleTurniPage />} />
           <Route path="desiderata" element={<DesiderataPage />} />
           <Route path="turni"      element={<GestioneTurniPage />} />
@@ -78,6 +82,7 @@ function AppRoutes() {
       {/* Toast centrato: nuova versione disponibile (badge anche nella navbar) */}
       {updateAvailable && <UpdateToast onReload={applyUpdate} />}
     </div>
+    </PostazioneProvider>
   )
 }
 

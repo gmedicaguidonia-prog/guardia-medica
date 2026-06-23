@@ -119,10 +119,21 @@ export interface DesiderataFinestra {
   aperta_a: string | null  // 'YYYY-MM-DD'
 }
 
+// ─── Postazioni (multi-tenancy) ─────────────────────────────────────
+//  Ogni postazione è un "mondo" a sé: turnisti, configurazioni, regole,
+//  desiderata e turni sono filtrati per postazione_id.
+export interface Postazione {
+  id: string
+  nome: string
+  attiva: boolean
+  created_at: string
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────
 export interface AuthUser {
   id: string
   email: string
   livello: Livello
   nome: string | null
+  postazioneId: string | null   // postazione di appartenenza (per turnisti/esterni)
 }

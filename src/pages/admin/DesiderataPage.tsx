@@ -7,6 +7,7 @@ import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
+import { usePostazione } from '../../contexts/PostazioneContext'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -28,16 +29,17 @@ function itDate(iso: string): string { const [a, m, d] = iso.split('-'); return 
 export function DesiderataPage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
+  const { postazioneId } = usePostazione()
   const oggi = new Date()
   const [anno, setAnno] = useState(oggi.getFullYear())
   const [mese, setMese] = useState(oggi.getMonth() + 1)
   const meseKey = `${anno}-${String(mese).padStart(2, '0')}`
 
-  const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', meseKey], queryFn: () => store.getVersioneMese(meseKey) })
+  const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
-  const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti'], queryFn: () => store.getTurnisti() })
-  const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', anno, mese], queryFn: () => store.getDesiderataMese(anno, mese) })
-  const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', meseKey], queryFn: () => store.getDesiderataFinestra(meseKey) })
+  const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
+  const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
+  const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
 
   // serverMap: chiave `data|turnoId|turnistaId` → tipo ('desiderata'|'indisponibilita')
   const serverMap = useMemo(() => {
@@ -128,8 +130,8 @@ export function DesiderataPage() {
   async function salva() {
     setSaving(true)
     try {
-      for (const c of diff()) { const [data, turnoId, tid] = c.key.split('|'); await store.setDesiderata(data, turnoId, tid, c.value as TipoDesiderata | null) }
-      await qc.invalidateQueries({ queryKey: ['desiderata', anno, mese] })
+      for (const c of diff()) { const [data, turnoId, tid] = c.key.split('|'); await store.setDesiderata(postazioneId!, data, turnoId, tid, c.value as TipoDesiderata | null) }
+      await qc.invalidateQueries({ queryKey: ['desiderata', postazioneId, anno, mese] })
     } catch (e) { console.error('[Desiderata] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }
   }
@@ -140,8 +142,8 @@ export function DesiderataPage() {
   useEffect(() => { setFinDa(finestra?.aperta_da ?? ''); setFinA(finestra?.aperta_a ?? '') }, [finestra])
   async function salvaFinestra() {
     try {
-      await store.setDesiderataFinestra(meseKey, finDa || null, finA || null)
-      await qc.invalidateQueries({ queryKey: ['desiderata-finestra', meseKey] })
+      await store.setDesiderataFinestra(postazioneId!, meseKey, finDa || null, finA || null)
+      await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
       setFinMsg('Pubblicato'); setTimeout(() => setFinMsg(null), 2500)
     } catch (e) { console.error(e); alert('Errore nella pubblicazione del periodo.') }
   }
@@ -165,8 +167,8 @@ export function DesiderataPage() {
   async function attivaRaccolta() {
     if (!versione || schema.length === 0) { showWarn(`Non ci sono turni configurati per ${MESI[mese - 1]} ${anno}: impostali prima in Configurazione Turni (passo ①), poi potrai attivare la raccolta.`); return }
     try {
-      await store.attivaDesiderata(meseKey)
-      await qc.invalidateQueries({ queryKey: ['desiderata-finestra', meseKey] })
+      await store.attivaDesiderata(postazioneId!, meseKey)
+      await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
     } catch (e) { console.error(e); alert('Errore nell\'attivazione della raccolta.') }
   }
 
@@ -192,6 +194,7 @@ export function DesiderataPage() {
     </div>
   )
 
+  if (!postazioneId) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento postazione…</p></div>
   if (loadingVer || loadingFin) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento…</p></div>
 
   // Raccolta non attiva → schermata di attivazione (o mese passato non attivabile)

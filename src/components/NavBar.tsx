@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw } from 'lucide-react'
+import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw, MapPin } from 'lucide-react'
 import { puoGestire } from '../types'
+import { usePostazione } from '../contexts/PostazioneContext'
 import type { AuthUser, Livello } from '../types'
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
 export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, onReload }: Props) {
   const loc = useLocation()
   const navigate = useNavigate()
+  const { postazioni, postazioneId, setPostazioneId } = usePostazione()
+  const mostraSelettore = puoGestire(user.livello) && postazioni.length > 0
 
   const link = (to: string, label: string, Icon: React.ElementType) => {
     const active = loc.pathname === to || loc.pathname.startsWith(to + '/')
@@ -42,6 +45,23 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
             Guardia Medica
           </span>
         </div>
+
+        {/* Selettore postazione */}
+        {mostraSelettore && (
+          <div className="flex items-center gap-1 shrink-0 rounded-lg pl-2 pr-1 py-0.5" style={{ background: 'rgba(255,255,255,0.10)' }} title="Postazione attiva">
+            <MapPin size={14} style={{ color: '#9ab488' }} />
+            <select
+              value={postazioneId ?? ''}
+              onChange={e => setPostazioneId(e.target.value)}
+              className="text-xs font-semibold border-0 outline-none cursor-pointer py-1 pr-1"
+              style={{ background: 'transparent', color: '#e0e8d8', maxWidth: 200 }}
+            >
+              {postazioni.map(p => (
+                <option key={p.id} value={p.id} style={{ color: '#1c2818' }}>{p.nome}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Link */}
         <div className="flex items-center gap-1 ml-1">

@@ -1,11 +1,11 @@
 /**
  * store — data-layer dell'app (Supabase in produzione, localStorage in DEV).
- * La configurazione turni è VERSIONATA: ogni versione è valida per un
- * intervallo di mesi (valido_da..valido_fino|∞) e contiene i propri turni.
+ * MULTI-POSTAZIONE: ogni dato è filtrato per `postazioneId`. La configurazione
+ * turni è VERSIONATA: ogni versione è valida per un intervallo di mesi.
  */
 
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoTurnista { nome: string; email: string; livello: Livello }
@@ -46,14 +46,58 @@ function normSchema(r: Record<string, unknown>): TurnoSchema {
 }
 
 const supaStore = {
-  // ── Turnisti ──
-  async getTurnisti(): Promise<Turnista[]> {
-    const { data, error } = await supabase.from('turnisti').select('*').order('nome')
+  // ── Postazioni ──
+  async getPostazioni(): Promise<Postazione[]> {
+    const { data, error } = await supabase.from('postazioni').select('*').order('nome')
+    if (error) throw error
+    return (data ?? []) as Postazione[]
+  },
+  async creaPostazione(nome: string): Promise<Postazione> {
+    const { data, error } = await supabase.from('postazioni').insert({ nome: nome.trim() }).select().single()
+    if (error) throw error
+    return data as Postazione
+  },
+  async updatePostazione(id: string, patch: Partial<Pick<Postazione, 'nome' | 'attiva'>>): Promise<void> {
+    const { error } = await supabase.from('postazioni').update(patch).eq('id', id)
+    if (error) throw error
+  },
+  async deletePostazione(id: string): Promise<void> {
+    const { error } = await supabase.from('postazioni').delete().eq('id', id)
+    if (error) throw error
+  },
+  async getPostazioniGestite(turnistaId: string): Promise<string[]> {
+    const { data, error } = await supabase.from('postazione_responsabili').select('postazione_id').eq('turnista_id', turnistaId)
+    if (error) throw error
+    return (data ?? []).map(r => r.postazione_id as string)
+  },
+  async getResponsabiliPostazione(postazioneId: string): Promise<string[]> {
+    const { data, error } = await supabase.from('postazione_responsabili').select('turnista_id').eq('postazione_id', postazioneId)
+    if (error) throw error
+    return (data ?? []).map(r => r.turnista_id as string)
+  },
+  async setResponsabilePostazione(postazioneId: string, turnistaId: string, on: boolean): Promise<void> {
+    if (on) {
+      const { error } = await supabase.from('postazione_responsabili').upsert({ postazione_id: postazioneId, turnista_id: turnistaId }, { onConflict: 'postazione_id,turnista_id', ignoreDuplicates: true })
+      if (error) throw error
+    } else {
+      const { error } = await supabase.from('postazione_responsabili').delete().match({ postazione_id: postazioneId, turnista_id: turnistaId })
+      if (error) throw error
+    }
+  },
+  async getResponsabili(): Promise<Turnista[]> {
+    const { data, error } = await supabase.from('turnisti').select('*').in('livello', ['admin', 'responsabile']).order('nome')
     if (error) throw error
     return (data ?? []) as Turnista[]
   },
-  async addTurnista(input: NuovoTurnista): Promise<void> {
-    const { error } = await supabase.from('turnisti').insert({ nome: input.nome.trim(), email: input.email.trim().toLowerCase(), livello: input.livello })
+
+  // ── Turnisti ──
+  async getTurnisti(postazioneId: string): Promise<Turnista[]> {
+    const { data, error } = await supabase.from('turnisti').select('*').eq('postazione_id', postazioneId).order('nome')
+    if (error) throw error
+    return (data ?? []) as Turnista[]
+  },
+  async addTurnista(postazioneId: string, input: NuovoTurnista): Promise<void> {
+    const { error } = await supabase.from('turnisti').insert({ nome: input.nome.trim(), email: input.email.trim().toLowerCase(), livello: input.livello, postazione_id: postazioneId })
     if (error) { if (pgCode(error) === '23505') throw new Error('Esiste già un turnista con questa email.'); throw error }
   },
   async updateTurnista(id: string, patch: Partial<NuovoTurnista>): Promise<void> {
@@ -70,18 +114,18 @@ const supaStore = {
   },
 
   // ── Versioni di configurazione ──
-  async getVersioneMese(mese: string): Promise<ConfigVersione | null> {
-    const { data, error } = await supabase.from('schema_versioni').select('*')
+  async getVersioneMese(postazioneId: string, mese: string): Promise<ConfigVersione | null> {
+    const { data, error } = await supabase.from('schema_versioni').select('*').eq('postazione_id', postazioneId)
     if (error) throw error
     return pickVersione((data ?? []) as ConfigVersione[], mese)
   },
-  async getVersioni(): Promise<ConfigVersione[]> {
-    const { data, error } = await supabase.from('schema_versioni').select('*').order('valido_da')
+  async getVersioni(postazioneId: string): Promise<ConfigVersione[]> {
+    const { data, error } = await supabase.from('schema_versioni').select('*').eq('postazione_id', postazioneId).order('valido_da')
     if (error) throw error
     return (data ?? []) as ConfigVersione[]
   },
-  async creaVersione(mese: string): Promise<ConfigVersione> {
-    const { data, error } = await supabase.from('schema_versioni').insert({ valido_da: mese, valido_fino: null }).select().single()
+  async creaVersione(postazioneId: string, mese: string): Promise<ConfigVersione> {
+    const { data, error } = await supabase.from('schema_versioni').insert({ valido_da: mese, valido_fino: null, postazione_id: postazioneId }).select().single()
     if (error) throw error
     return data as ConfigVersione
   },
@@ -118,30 +162,30 @@ const supaStore = {
   },
 
   // ── Turni assegnati ──
-  async getTurniMese(anno: number, mese: number): Promise<Turno[]> {
+  async getTurniMese(postazioneId: string, anno: number, mese: number): Promise<Turno[]> {
     const { first, last } = meseRange(anno, mese)
-    const { data, error } = await supabase.from('turni').select('*').gte('data', first).lte('data', last)
+    const { data, error } = await supabase.from('turni').select('*').eq('postazione_id', postazioneId).gte('data', first).lte('data', last)
     if (error) throw error
     return (data ?? []) as Turno[]
   },
-  async setAssegnazione(data: string, turnoSchemaId: string, slot: number, turnistaId: string | null): Promise<void> {
+  async setAssegnazione(postazioneId: string, data: string, turnoSchemaId: string, slot: number, turnistaId: string | null): Promise<void> {
     if (turnistaId === null) {
       const { error } = await supabase.from('turni').delete().match({ data, turno_schema_id: turnoSchemaId, slot })
       if (error) throw error
     } else {
-      const { error } = await supabase.from('turni').upsert({ data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId }, { onConflict: 'data,turno_schema_id,slot' })
+      const { error } = await supabase.from('turni').upsert({ data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, postazione_id: postazioneId }, { onConflict: 'data,turno_schema_id,slot' })
       if (error) throw error
     }
   },
 
   // ── Regole turni fisse (settimanali, versionate) ──
-  async getRegoleVersioneMese(mese: string): Promise<RegolaVersione | null> {
-    const { data, error } = await supabase.from('regole_versioni').select('*')
+  async getRegoleVersioneMese(postazioneId: string, mese: string): Promise<RegolaVersione | null> {
+    const { data, error } = await supabase.from('regole_versioni').select('*').eq('postazione_id', postazioneId)
     if (error) throw error
     return pickVersione((data ?? []) as RegolaVersione[], mese)
   },
-  async creaRegoleVersione(mese: string): Promise<RegolaVersione> {
-    const { data, error } = await supabase.from('regole_versioni').insert({ valido_da: mese, valido_fino: null }).select().single()
+  async creaRegoleVersione(postazioneId: string, mese: string): Promise<RegolaVersione> {
+    const { data, error } = await supabase.from('regole_versioni').insert({ valido_da: mese, valido_fino: null, postazione_id: postazioneId }).select().single()
     if (error) throw error
     return data as RegolaVersione
   },
@@ -167,8 +211,8 @@ const supaStore = {
     const { error } = await supabase.from('schema_versioni').delete().eq('id', id)
     if (error) throw error
   },
-  async getRegoleVersioni(): Promise<RegolaVersione[]> {
-    const { data, error } = await supabase.from('regole_versioni').select('*').order('valido_da')
+  async getRegoleVersioni(postazioneId: string): Promise<RegolaVersione[]> {
+    const { data, error } = await supabase.from('regole_versioni').select('*').eq('postazione_id', postazioneId).order('valido_da')
     if (error) throw error
     return (data ?? []) as RegolaVersione[]
   },
@@ -180,13 +224,13 @@ const supaStore = {
     const { error } = await supabase.from('regole_versioni').update({ ore_min_settimana: ore }).eq('id', id)
     if (error) throw error
   },
-  async getTurnistiMese(mese: string): Promise<string[]> {
-    const { data, error } = await supabase.from('turnisti_mese').select('turnista_id').eq('mese', mese)
+  async getTurnistiMese(postazioneId: string, mese: string): Promise<string[]> {
+    const { data, error } = await supabase.from('turnisti_mese').select('turnista_id').eq('postazione_id', postazioneId).eq('mese', mese)
     if (error) throw error
     return (data ?? []).map(r => r.turnista_id as string)
   },
-  async addTurnistaMese(mese: string, turnistaId: string): Promise<void> {
-    const { error } = await supabase.from('turnisti_mese').upsert({ mese, turnista_id: turnistaId }, { onConflict: 'mese,turnista_id' })
+  async addTurnistaMese(postazioneId: string, mese: string, turnistaId: string): Promise<void> {
+    const { error } = await supabase.from('turnisti_mese').upsert({ mese, turnista_id: turnistaId, postazione_id: postazioneId }, { onConflict: 'mese,turnista_id' })
     if (error) throw error
   },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
@@ -195,33 +239,32 @@ const supaStore = {
   },
 
   // ── Desiderata / Indisponibilità ──
-  async getDesiderataMese(anno: number, mese: number): Promise<Desiderata[]> {
+  async getDesiderataMese(postazioneId: string, anno: number, mese: number): Promise<Desiderata[]> {
     const { first, last } = meseRange(anno, mese)
-    const { data, error } = await supabase.from('desiderata').select('*').gte('data', first).lte('data', last)
+    const { data, error } = await supabase.from('desiderata').select('*').eq('postazione_id', postazioneId).gte('data', first).lte('data', last)
     if (error) throw error
     return (data ?? []) as Desiderata[]
   },
-  async setDesiderata(data: string, turnoSchemaId: string, turnistaId: string, tipo: TipoDesiderata | null): Promise<void> {
+  async setDesiderata(postazioneId: string, data: string, turnoSchemaId: string, turnistaId: string, tipo: TipoDesiderata | null): Promise<void> {
     if (tipo === null) {
       const { error } = await supabase.from('desiderata').delete().match({ data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId })
       if (error) throw error
     } else {
-      const { error } = await supabase.from('desiderata').upsert({ data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, tipo }, { onConflict: 'data,turno_schema_id,turnista_id' })
+      const { error } = await supabase.from('desiderata').upsert({ data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, tipo, postazione_id: postazioneId }, { onConflict: 'data,turno_schema_id,turnista_id' })
       if (error) throw error
     }
   },
-  async getDesiderataFinestra(mese: string): Promise<DesiderataFinestra | null> {
-    const { data, error } = await supabase.from('desiderata_finestra').select('*').eq('mese', mese).maybeSingle()
+  async getDesiderataFinestra(postazioneId: string, mese: string): Promise<DesiderataFinestra | null> {
+    const { data, error } = await supabase.from('desiderata_finestra').select('*').eq('postazione_id', postazioneId).eq('mese', mese).maybeSingle()
     if (error) throw error
     return data ? { mese: data.mese as string, aperta_da: data.aperta_da as string | null, aperta_a: data.aperta_a as string | null } : null
   },
-  async setDesiderataFinestra(mese: string, da: string | null, a: string | null): Promise<void> {
-    const { error } = await supabase.from('desiderata_finestra').upsert({ mese, aperta_da: da, aperta_a: a }, { onConflict: 'mese' })
+  async setDesiderataFinestra(postazioneId: string, mese: string, da: string | null, a: string | null): Promise<void> {
+    const { error } = await supabase.from('desiderata_finestra').upsert({ mese, aperta_da: da, aperta_a: a, postazione_id: postazioneId }, { onConflict: 'postazione_id,mese' })
     if (error) throw error
   },
-  async attivaDesiderata(mese: string): Promise<void> {
-    // crea la riga (= raccolta attiva) senza toccare eventuali date già impostate
-    const { error } = await supabase.from('desiderata_finestra').upsert({ mese }, { onConflict: 'mese', ignoreDuplicates: true })
+  async attivaDesiderata(postazioneId: string, mese: string): Promise<void> {
+    const { error } = await supabase.from('desiderata_finestra').upsert({ mese, postazione_id: postazioneId }, { onConflict: 'postazione_id,mese', ignoreDuplicates: true })
     if (error) throw error
   },
 }
@@ -238,7 +281,9 @@ const LS_TURNI            = 'gm_turni'
 const LS_TURNISTI_MESE    = 'gm_turnisti_mese'
 const LS_DESIDERATA       = 'gm_desiderata'
 const LS_DESIDERATA_FIN   = 'gm_desiderata_finestra'
-const LS_SEEDED           = 'gm_seeded_v2'
+const LS_POSTAZIONI       = 'gm_postazioni'
+const LS_SEEDED           = 'gm_seeded_v3'
+const DEV_POSTAZIONE      = 'dev-postazione-1'
 
 function uid(): string { try { return crypto.randomUUID() } catch { return 'id-' + Math.random().toString(36).slice(2) } }
 function read<T>(key: string, fallback: T): T { try { const raw = localStorage.getItem(key); return raw ? (JSON.parse(raw) as T) : fallback } catch { return fallback } }
@@ -249,8 +294,10 @@ function ensureSeed(): void {
   if (read<boolean>(LS_SEEDED, false)) return
   const now = new Date().toISOString()
   const vid = uid()
-  writeLs<ConfigVersione[]>(LS_VERSIONI, [{ id: vid, valido_da: meseCorrente(), valido_fino: null, created_at: now }])
-  writeLs<Turnista[]>(LS_TURNISTI, [{ id: uid(), nome: 'Stefano Marabelli', email: ADMIN_EMAIL, livello: 'admin', created_at: now }])
+  const pid = DEV_POSTAZIONE
+  writeLs<Postazione[]>(LS_POSTAZIONI, [{ id: pid, nome: 'Guidonia - Palombara Giorno', attiva: true, created_at: now }])
+  writeLs<(ConfigVersione & { postazione_id: string })[]>(LS_VERSIONI, [{ id: vid, valido_da: meseCorrente(), valido_fino: null, created_at: now, postazione_id: pid }])
+  writeLs<(Turnista & { postazione_id: string })[]>(LS_TURNISTI, [{ id: uid(), nome: 'Stefano Marabelli', email: ADMIN_EMAIL, livello: 'admin', created_at: now, postazione_id: pid }])
   writeLs<TurnoSchema[]>(LS_SCHEMA, [
     { id: uid(), versione_id: vid, nome: 'Notte',  ora_inizio: '20:00', ora_fine: '08:00', n_turnisti: 1, ricorrenza: 'tutti',   giorni_custom: [], ordine: 10, created_at: now },
     { id: uid(), versione_id: vid, nome: 'Giorno', ora_inizio: '08:00', ora_fine: '20:00', n_turnisti: 1, ricorrenza: 'festivi', giorni_custom: [], ordine: 20, created_at: now },
@@ -258,21 +305,49 @@ function ensureSeed(): void {
   writeLs(LS_SEEDED, true)
 }
 
+type WithPost<T> = T & { postazione_id?: string }
+
 const localStore = {
-  async getTurnisti(): Promise<Turnista[]> {
+  async getPostazioni(): Promise<Postazione[]> {
     ensureSeed()
-    return read<Turnista[]>(LS_TURNISTI, []).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
+    return read<Postazione[]>(LS_POSTAZIONI, [])
   },
-  async addTurnista(input: NuovoTurnista): Promise<void> {
+  async creaPostazione(nome: string): Promise<Postazione> {
+    const p: Postazione = { id: uid(), nome: nome.trim(), attiva: true, created_at: new Date().toISOString() }
+    writeLs(LS_POSTAZIONI, [...read<Postazione[]>(LS_POSTAZIONI, []), p])
+    return p
+  },
+  async updatePostazione(id: string, patch: Partial<Pick<Postazione, 'nome' | 'attiva'>>): Promise<void> {
+    writeLs(LS_POSTAZIONI, read<Postazione[]>(LS_POSTAZIONI, []).map(p => p.id === id ? { ...p, ...patch } : p))
+  },
+  async deletePostazione(id: string): Promise<void> {
+    writeLs(LS_POSTAZIONI, read<Postazione[]>(LS_POSTAZIONI, []).filter(p => p.id !== id))
+  },
+  async getPostazioniGestite(_turnistaId: string): Promise<string[]> {
     ensureSeed()
-    const list = read<Turnista[]>(LS_TURNISTI, [])
+    return read<Postazione[]>(LS_POSTAZIONI, []).map(p => p.id)
+  },
+  async getResponsabiliPostazione(_postazioneId: string): Promise<string[]> { return [] },
+  async setResponsabilePostazione(_postazioneId: string, _turnistaId: string, _on: boolean): Promise<void> {},
+  async getResponsabili(): Promise<Turnista[]> {
+    ensureSeed()
+    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => t.livello === 'admin' || t.livello === 'responsabile').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
+  },
+
+  async getTurnisti(postazioneId: string): Promise<Turnista[]> {
+    ensureSeed()
+    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
+  },
+  async addTurnista(postazioneId: string, input: NuovoTurnista): Promise<void> {
+    ensureSeed()
+    const list = read<WithPost<Turnista>[]>(LS_TURNISTI, [])
     const email = input.email.trim().toLowerCase()
     if (list.some(t => t.email.toLowerCase() === email)) throw new Error('Esiste già un turnista con questa email.')
-    list.push({ id: uid(), nome: input.nome.trim(), email, livello: input.livello, created_at: new Date().toISOString() })
+    list.push({ id: uid(), nome: input.nome.trim(), email, livello: input.livello, created_at: new Date().toISOString(), postazione_id: postazioneId })
     writeLs(LS_TURNISTI, list)
   },
   async updateTurnista(id: string, patch: Partial<NuovoTurnista>): Promise<void> {
-    const list = read<Turnista[]>(LS_TURNISTI, [])
+    const list = read<WithPost<Turnista>[]>(LS_TURNISTI, [])
     writeLs(LS_TURNISTI, list.map(t => t.id === id ? {
       ...t,
       ...(patch.nome    !== undefined ? { nome: patch.nome.trim() } : {}),
@@ -281,24 +356,24 @@ const localStore = {
     } : t))
   },
   async deleteTurnista(id: string): Promise<void> {
-    writeLs(LS_TURNISTI, read<Turnista[]>(LS_TURNISTI, []).filter(t => t.id !== id))
+    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => t.id !== id))
   },
 
-  async getVersioneMese(mese: string): Promise<ConfigVersione | null> {
+  async getVersioneMese(postazioneId: string, mese: string): Promise<ConfigVersione | null> {
     ensureSeed()
-    return pickVersione(read<ConfigVersione[]>(LS_VERSIONI, []), mese)
+    return pickVersione(read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId), mese)
   },
-  async getVersioni(): Promise<ConfigVersione[]> {
+  async getVersioni(postazioneId: string): Promise<ConfigVersione[]> {
     ensureSeed()
-    return read<ConfigVersione[]>(LS_VERSIONI, []).slice().sort((a, b) => a.valido_da.localeCompare(b.valido_da))
+    return read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId).slice().sort((a, b) => a.valido_da.localeCompare(b.valido_da))
   },
-  async creaVersione(mese: string): Promise<ConfigVersione> {
-    const v: ConfigVersione = { id: uid(), valido_da: mese, valido_fino: null, created_at: new Date().toISOString() }
-    writeLs(LS_VERSIONI, [...read<ConfigVersione[]>(LS_VERSIONI, []), v])
+  async creaVersione(postazioneId: string, mese: string): Promise<ConfigVersione> {
+    const v = { id: uid(), valido_da: mese, valido_fino: null, created_at: new Date().toISOString(), postazione_id: postazioneId }
+    writeLs(LS_VERSIONI, [...read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []), v])
     return v
   },
   async setValiditaVersione(id: string, validoFino: string | null): Promise<void> {
-    writeLs(LS_VERSIONI, read<ConfigVersione[]>(LS_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
+    writeLs(LS_VERSIONI, read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
   },
 
   async getSchemaVersione(versioneId: string): Promise<TurnoSchema[]> {
@@ -319,27 +394,27 @@ const localStore = {
     writeLs(LS_SCHEMA, read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => s.id !== id))
   },
 
-  async getTurniMese(anno: number, mese: number): Promise<Turno[]> {
+  async getTurniMese(postazioneId: string, anno: number, mese: number): Promise<Turno[]> {
     const { first, last } = meseRange(anno, mese)
-    return read<Turno[]>(LS_TURNI, []).filter(t => t.data >= first && t.data <= last)
+    return read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId && t.data >= first && t.data <= last)
   },
-  async setAssegnazione(data: string, turnoSchemaId: string, slot: number, turnistaId: string | null): Promise<void> {
-    const list = read<Turno[]>(LS_TURNI, []).filter(t => !(t.data === data && t.turno_schema_id === turnoSchemaId && t.slot === slot))
-    if (turnistaId !== null) list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, created_at: new Date().toISOString() })
+  async setAssegnazione(postazioneId: string, data: string, turnoSchemaId: string, slot: number, turnistaId: string | null): Promise<void> {
+    const list = read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => !(t.data === data && t.turno_schema_id === turnoSchemaId && t.slot === slot))
+    if (turnistaId !== null) list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, created_at: new Date().toISOString(), postazione_id: postazioneId })
     writeLs(LS_TURNI, list)
   },
 
-  async getRegoleVersioneMese(mese: string): Promise<RegolaVersione | null> {
+  async getRegoleVersioneMese(postazioneId: string, mese: string): Promise<RegolaVersione | null> {
     ensureSeed()
-    return pickVersione(read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []), mese)
+    return pickVersione(read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId), mese)
   },
-  async creaRegoleVersione(mese: string): Promise<RegolaVersione> {
-    const v: RegolaVersione = { id: uid(), valido_da: mese, valido_fino: null, ore_min_settimana: null, created_at: new Date().toISOString() }
-    writeLs(LS_REGOLE_VERSIONI, [...read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []), v])
+  async creaRegoleVersione(postazioneId: string, mese: string): Promise<RegolaVersione> {
+    const v = { id: uid(), valido_da: mese, valido_fino: null, ore_min_settimana: null, created_at: new Date().toISOString(), postazione_id: postazioneId }
+    writeLs(LS_REGOLE_VERSIONI, [...read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []), v])
     return v
   },
   async setValiditaRegoleVersione(id: string, validoFino: string | null): Promise<void> {
-    writeLs(LS_REGOLE_VERSIONI, read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
+    writeLs(LS_REGOLE_VERSIONI, read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
   },
   async getRegole(regoleVersioneId: string): Promise<RegolaTurno[]> {
     ensureSeed()
@@ -351,51 +426,51 @@ const localStore = {
     writeLs(LS_REGOLE, list)
   },
   async deleteVersione(id: string): Promise<void> {
-    writeLs(LS_VERSIONI, read<ConfigVersione[]>(LS_VERSIONI, []).filter(v => v.id !== id))
+    writeLs(LS_VERSIONI, read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).filter(v => v.id !== id))
     writeLs(LS_SCHEMA, read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => s.versione_id !== id))
   },
-  async getRegoleVersioni(): Promise<RegolaVersione[]> {
+  async getRegoleVersioni(postazioneId: string): Promise<RegolaVersione[]> {
     ensureSeed()
-    return read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).slice().sort((a, b) => a.valido_da.localeCompare(b.valido_da))
+    return read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId).slice().sort((a, b) => a.valido_da.localeCompare(b.valido_da))
   },
   async deleteRegoleVersione(id: string): Promise<void> {
-    writeLs(LS_REGOLE_VERSIONI, read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).filter(v => v.id !== id))
+    writeLs(LS_REGOLE_VERSIONI, read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).filter(v => v.id !== id))
     writeLs(LS_REGOLE, read<RegolaTurno[]>(LS_REGOLE, []).filter(r => r.regola_versione_id !== id))
   },
   async setOreMinSettimana(id: string, ore: number | null): Promise<void> {
-    writeLs(LS_REGOLE_VERSIONI, read<RegolaVersione[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, ore_min_settimana: ore } : v))
+    writeLs(LS_REGOLE_VERSIONI, read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, ore_min_settimana: ore } : v))
   },
-  async getTurnistiMese(mese: string): Promise<string[]> {
-    return read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => x.mese === mese).map(x => x.turnista_id)
+  async getTurnistiMese(postazioneId: string, mese: string): Promise<string[]> {
+    return read<{ mese: string; turnista_id: string; postazione_id?: string }[]>(LS_TURNISTI_MESE, []).filter(x => x.mese === mese && (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId).map(x => x.turnista_id)
   },
-  async addTurnistaMese(mese: string, turnistaId: string): Promise<void> {
-    const l = read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, [])
-    if (!l.some(x => x.mese === mese && x.turnista_id === turnistaId)) { l.push({ mese, turnista_id: turnistaId }); writeLs(LS_TURNISTI_MESE, l) }
+  async addTurnistaMese(postazioneId: string, mese: string, turnistaId: string): Promise<void> {
+    const l = read<{ mese: string; turnista_id: string; postazione_id?: string }[]>(LS_TURNISTI_MESE, [])
+    if (!l.some(x => x.mese === mese && x.turnista_id === turnistaId)) { l.push({ mese, turnista_id: turnistaId, postazione_id: postazioneId }); writeLs(LS_TURNISTI_MESE, l) }
   },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.mese === mese && x.turnista_id === turnistaId)))
   },
 
-  async getDesiderataMese(anno: number, mese: number): Promise<Desiderata[]> {
+  async getDesiderataMese(postazioneId: string, anno: number, mese: number): Promise<Desiderata[]> {
     const { first, last } = meseRange(anno, mese)
-    return read<Desiderata[]>(LS_DESIDERATA, []).filter(d => d.data >= first && d.data <= last)
+    return read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => (d.postazione_id ?? DEV_POSTAZIONE) === postazioneId && d.data >= first && d.data <= last)
   },
-  async setDesiderata(data: string, turnoSchemaId: string, turnistaId: string, tipo: TipoDesiderata | null): Promise<void> {
-    const list = read<Desiderata[]>(LS_DESIDERATA, []).filter(d => !(d.data === data && d.turno_schema_id === turnoSchemaId && d.turnista_id === turnistaId))
-    if (tipo !== null) list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, tipo, created_at: new Date().toISOString() })
+  async setDesiderata(postazioneId: string, data: string, turnoSchemaId: string, turnistaId: string, tipo: TipoDesiderata | null): Promise<void> {
+    const list = read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => !(d.data === data && d.turno_schema_id === turnoSchemaId && d.turnista_id === turnistaId))
+    if (tipo !== null) list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, tipo, created_at: new Date().toISOString(), postazione_id: postazioneId })
     writeLs(LS_DESIDERATA, list)
   },
-  async getDesiderataFinestra(mese: string): Promise<DesiderataFinestra | null> {
-    return read<DesiderataFinestra[]>(LS_DESIDERATA_FIN, []).find(f => f.mese === mese) ?? null
+  async getDesiderataFinestra(postazioneId: string, mese: string): Promise<DesiderataFinestra | null> {
+    return read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId) ?? null
   },
-  async setDesiderataFinestra(mese: string, da: string | null, a: string | null): Promise<void> {
-    const list = read<DesiderataFinestra[]>(LS_DESIDERATA_FIN, []).filter(f => f.mese !== mese)
-    list.push({ mese, aperta_da: da, aperta_a: a })
+  async setDesiderataFinestra(postazioneId: string, mese: string, da: string | null, a: string | null): Promise<void> {
+    const list = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).filter(f => !(f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId))
+    list.push({ mese, aperta_da: da, aperta_a: a, postazione_id: postazioneId })
     writeLs(LS_DESIDERATA_FIN, list)
   },
-  async attivaDesiderata(mese: string): Promise<void> {
-    const list = read<DesiderataFinestra[]>(LS_DESIDERATA_FIN, [])
-    if (!list.some(f => f.mese === mese)) { list.push({ mese, aperta_da: null, aperta_a: null }); writeLs(LS_DESIDERATA_FIN, list) }
+  async attivaDesiderata(postazioneId: string, mese: string): Promise<void> {
+    const list = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, [])
+    if (!list.some(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)) { list.push({ mese, aperta_da: null, aperta_a: null, postazione_id: postazioneId }); writeLs(LS_DESIDERATA_FIN, list) }
   },
 }
 

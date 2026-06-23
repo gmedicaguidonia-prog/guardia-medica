@@ -5,6 +5,7 @@ import { Plus, Trash2, Pencil, Save, X, Users, Shield, User, UserCog, Lock, Crow
 import { store } from '../../lib/store'
 import { ADMIN_EMAIL } from '../../lib/constants'
 import { LIVELLI } from '../../types'
+import { usePostazione } from '../../contexts/PostazioneContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import type { Turnista, Livello, AuthUser } from '../../types'
@@ -34,11 +35,13 @@ export function TurnistiPage() {
   const qc = useQueryClient()
   const { confirm, confirmState } = useConfirm()
   const { user } = useOutletContext<{ user: AuthUser | null }>()
+  const { postazioneId } = usePostazione()
   const ioSonoPerpetuo = (user?.email ?? '').toLowerCase() === ADMIN_EMAIL
 
   const { data: turnisti = [], isLoading } = useQuery<Turnista[]>({
-    queryKey: ['turnisti'],
-    queryFn: () => store.getTurnisti(),
+    queryKey: ['turnisti', postazioneId],
+    queryFn: () => store.getTurnisti(postazioneId!),
+    enabled: !!postazioneId,
   })
 
   // Ordine: admin permanente per primo, poi per livello (admin→responsabile→turnista→esterno),
@@ -71,7 +74,7 @@ export function TurnistiPage() {
     if (!email.trim()) { setErrore("Inserisci l'email."); return }
     setSaving(true); setErrore('')
     try {
-      await store.addTurnista({ nome, email, livello })
+      await store.addTurnista(postazioneId!, { nome, email, livello })
       setNome(''); setEmail(''); setLivello('turnista')
       await refetch()
     } catch (e) { setErrore((e as Error).message) }
@@ -103,6 +106,8 @@ export function TurnistiPage() {
     await store.deleteTurnista(t.id)
     await refetch()
   }
+
+  if (!postazioneId) return <div className="max-w-3xl mx-auto p-6 text-sm text-stone-500">Caricamento postazione…</div>
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">

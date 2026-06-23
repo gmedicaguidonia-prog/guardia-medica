@@ -115,6 +115,7 @@ export function useAuth() {
       nome:    livello === 'admin' ? 'Admin (DEV)'
              : livello === 'responsabile' ? 'Responsabile (DEV)'
              : livello === 'turnista' ? 'Turnista (DEV)' : 'Esterno (DEV)',
+      postazioneId: 'dev-postazione-1',
     }
     persistDevUser(u); setUser(u)
   }

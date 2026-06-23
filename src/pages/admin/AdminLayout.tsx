@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, MapPin } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 
-const links: { to: string; label: string; Icon: typeof Home; num: number | null }[] = [
+const links: { to: string; label: string; Icon: typeof Home; num: number | null; adminOnly?: boolean }[] = [
+  { to: '/admin/postazioni', label: 'Postazioni',                   Icon: MapPin,        num: null, adminOnly: true },
   { to: '/admin',            label: 'Home',                         Icon: Home,          num: null },
   { to: '/admin/turnisti',   label: 'Turnisti',                     Icon: Users,         num: null },
   { to: '/admin/schema',     label: 'Configurazione Turni',         Icon: CalendarClock, num: 1 },
@@ -27,6 +28,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const location = useLocation()
   const { hasUnsaved } = useUnsaved()
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_COLLAPSED) === '1')
+  const visibleLinks = links.filter(l => !l.adminOnly || user?.livello === 'admin')
 
   function toggle() { setCollapsed(c => { const n = !c; try { localStorage.setItem(LS_COLLAPSED, n ? '1' : '0') } catch { /* ignore */ } return n }) }
   function handleNav(to: string) {
@@ -50,7 +52,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
           </button>
         </div>
 
-        {links.map(({ to, label, Icon, num }) => {
+        {visibleLinks.map(({ to, label, Icon, num }) => {
           const isActive = location.pathname === to || (to !== '/admin' && location.pathname.startsWith(to + '/'))
           return (
             <button
