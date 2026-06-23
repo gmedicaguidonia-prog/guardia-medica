@@ -94,7 +94,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   }, [desiderata])
   // colonne della matrice = solo i turnisti IMPORTATI per il mese (non tutta la postazione)
   const importatiMese = useMemo(() => new Set(turnistiMese), [turnistiMese])
-  const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id)).sort(cmpTurnisti), [personale, importatiMese])
+  const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id) && t.livello !== 'esterno').sort(cmpTurnisti), [personale, importatiMese])
 
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
@@ -271,7 +271,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
           {/* ───── DESIDERATA ───── */}
           {tab === 'desiderata' && (
-            desStato === 'assente' ? (
+            mia?.livello === 'esterno' ? (
+              <Avviso>Come <strong>esterno</strong> non puoi accedere alle desiderata/indisponibilità: sei un sostituto occasionale, senza disponibilità fissa da dichiarare. Puoi però vedere il <strong>Calendario Turni</strong> e candidarti ai turni scoperti.</Avviso>
+            ) : desStato === 'assente' ? (
               <Avviso>La raccolta <strong>desiderata / indisponibilità</strong> di {MESI[mese - 1]} {anno} non è ancora stata pubblicata.</Avviso>
             ) : desStato === 'programmata' ? (
               <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} aprirà il <strong>{itDate(fin!.aperta_da!)}</strong>.</Avviso>

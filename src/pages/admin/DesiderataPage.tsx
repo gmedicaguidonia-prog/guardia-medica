@@ -66,9 +66,10 @@ export function DesiderataPage() {
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const importati = useMemo(() => new Set(turnistiMese), [turnistiMese])
   // palette = solo i turnisti importati per questo mese, divisi per ruolo
-  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id))), [turnisti, importati])
+  // palette/import desiderata = solo turnisti e responsabili (gli esterni non esprimono desiderata)
+  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno')), [turnisti, importati])
   // candidati da importare (non ancora nella palette)
-  const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id))), [turnisti, importati])
+  const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id) && t.livello !== 'esterno')), [turnisti, importati])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
 
   // raggruppa il contenuto delle celle: `data|turnoId|tipo` → [turnistaId]
@@ -106,7 +107,7 @@ export function DesiderataPage() {
   const pickerCandidati = useMemo(() => {
     if (!picker) return []
     const inCella = new Set(byCell.get(`${picker.ds}|${picker.turnoId}|${picker.tipo}`) ?? [])
-    return turnisti.filter(t => importati.has(t.id) && !inCella.has(t.id)).slice().sort(cmpTurnisti)
+    return turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno' && !inCella.has(t.id)).slice().sort(cmpTurnisti)
   }, [picker, byCell, turnisti, importati])
 
   useEffect(() => {
