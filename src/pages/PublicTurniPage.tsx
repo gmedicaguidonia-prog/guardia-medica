@@ -272,7 +272,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           {/* ───── DESIDERATA ───── */}
           {tab === 'desiderata' && (
             mia?.livello === 'esterno' ? (
-              <Avviso>Come <strong>esterno</strong> non puoi accedere alle desiderata/indisponibilità: sei un sostituto occasionale, senza disponibilità fissa da dichiarare. Puoi però vedere il <strong>Calendario Turni</strong> e candidarti ai turni scoperti.</Avviso>
+              <Avviso>Come <strong>esterno</strong> non puoi accedere alle desiderata/indisponibilità. Puoi però vedere il <strong>Calendario Turni</strong> e candidarti ai turni scoperti.</Avviso>
             ) : desStato === 'assente' ? (
               <Avviso>La raccolta <strong>desiderata / indisponibilità</strong> di {MESI[mese - 1]} {anno} non è ancora stata pubblicata.</Avviso>
             ) : desStato === 'programmata' ? (
