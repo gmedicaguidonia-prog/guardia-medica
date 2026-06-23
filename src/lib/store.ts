@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione } from '../types'
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoMembro { nome: string; cognome: string; email: string; livello: Livello; utenteId?: string }
@@ -83,6 +83,16 @@ const supaStore = {
     const { data, error } = await supabase.from('turnisti').select('postazione_id').eq('utente_id', utenteId).eq('livello', 'responsabile')
     if (error) throw error
     return (data ?? []).map(r => r.postazione_id as string)
+  },
+  async getMiePostazioni(utenteId: string): Promise<MiaPostazione[]> {
+    const { data, error } = await supabase.from('turnisti').select('id, livello, postazione_id, postazioni(nome)').eq('utente_id', utenteId)
+    if (error) throw error
+    return (data ?? []).map(r => ({
+      postazioneId: r.postazione_id as string,
+      nome: (r.postazioni as { nome?: string } | null)?.nome ?? '—',
+      membershipId: r.id as string,
+      livello: r.livello as Livello,
+    })).sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
   },
   // ── Personale (appartenenze) ──
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {
@@ -360,6 +370,14 @@ const localStore = {
   async getPostazioniGestite(_turnistaId: string): Promise<string[]> {
     ensureSeed()
     return read<Postazione[]>(LS_POSTAZIONI, []).map(p => p.id)
+  },
+  async getMiePostazioni(utenteId: string): Promise<MiaPostazione[]> {
+    ensureSeed()
+    const posts = read<Postazione[]>(LS_POSTAZIONI, [])
+    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.utente_id ?? t.id) === utenteId).map(t => {
+      const pid = t.postazione_id ?? DEV_POSTAZIONE
+      return { postazioneId: pid, nome: posts.find(p => p.id === pid)?.nome ?? '—', membershipId: t.id, livello: t.livello }
+    }).sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
   },
 
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {

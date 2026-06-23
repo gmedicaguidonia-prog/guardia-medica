@@ -53,7 +53,7 @@ function AppRoutes() {
 
         {/* Pagina pubblica — tutti i loggati autorizzati */}
         <Route path="/turni"
-          element={<ProtectedRoute user={user} loading={loading}><PublicTurniPage /></ProtectedRoute>} />
+          element={<ProtectedRoute user={user} loading={loading}><PublicTurniPage user={user} /></ProtectedRoute>} />
 
         {/* Sezione admin */}
         <Route path="/admin"

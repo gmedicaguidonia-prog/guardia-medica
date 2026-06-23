@@ -40,6 +40,14 @@ export interface Turnista {
 /** Livelli assegnabili nel personale di una postazione (admin è globale, non qui). */
 export const LIVELLI_PERSONALE = LIVELLI.filter(l => l.value !== 'admin')
 
+/** Una postazione a cui l'utente appartiene (per la pagina pubblica). */
+export interface MiaPostazione {
+  postazioneId: string
+  nome: string
+  membershipId: string   // turnisti.id (= turnista_id nelle desiderata/turni)
+  livello: Livello
+}
+
 /** Nominativo completo nella forma "Cognome Nome". */
 export function nomeCompleto(t: { nome?: string | null; cognome?: string | null }): string {
   const c = (t.cognome ?? '').trim()
