@@ -29,20 +29,32 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   // nasconderlo dalla navbar per non confondere.
   const mostraSelettore = puoGestire(user.livello) && postazioni.length > 0 && loc.pathname !== '/turni'
 
-  // Allinea il nome di questa finestra al suo contesto (admin / pubblico).
+  // Allinea il nome di questa finestra al suo contesto e memorizza l'ultima
+  // pagina admin visitata, così riaprendola si torna dove si era rimasti.
   useEffect(() => {
     const target = winName(loc.pathname)
-    try { if (window.name !== target) window.name = target } catch {}
+    try {
+      if (window.name !== target) window.name = target
+      if (target === WIN_ADMIN) localStorage.setItem('gm_last_admin', loc.pathname)
+    } catch {}
   }, [loc.pathname])
 
   // Naviga rispettando le finestre dedicate: se siamo già nella finestra giusta
-  // resta in-page (SPA); altrimenti apri/rifocalizza la finestra del contesto.
+  // resta in-page (SPA); altrimenti apri/rifocalizza la finestra del contesto
+  // (l'amministrazione riparte dall'ultima pagina visitata).
   function vaiA(to: string) {
     const target = winName(to)
     if (window.name === target) { navigate(to); return }
-    const url = import.meta.env.BASE_URL + to.replace(/^\//, '')
+    let path = to
+    if (target === WIN_ADMIN) { try { path = localStorage.getItem('gm_last_admin') || to } catch {} }
+    const url = import.meta.env.BASE_URL + path.replace(/^\//, '')
+    // window.open con lo stesso "nome finestra" riusa la scheda/finestra già
+    // aperta e la porta in primo piano; il doppio focus rafforza la messa in
+    // primo piano (alcuni browser ignorano il primo).
     const w = window.open(url, target)
-    if (w) { try { w.focus() } catch {} } else { navigate(to) }
+    if (!w) { navigate(to); return }
+    try { w.focus() } catch {}
+    setTimeout(() => { try { w.focus() } catch {} }, 80)
   }
 
   const link = (to: string, label: string, Icon: React.ElementType) => {
