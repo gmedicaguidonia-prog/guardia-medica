@@ -1,8 +1,16 @@
+import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw, MapPin } from 'lucide-react'
 import { puoGestire, nomeCompleto } from '../types'
 import { usePostazione } from '../contexts/PostazioneContext'
 import type { AuthUser, Livello } from '../types'
+
+// Finestre dedicate: l'amministrazione vive in una finestra/scheda a parte e le
+// pagine pubbliche tutte nella stessa. Un nome-finestra fisso per contesto fa sì
+// che, riaprendole, si riusi/rifocalizzi quella già aperta anziché duplicarla.
+const WIN_ADMIN = 'gm-admin'
+const WIN_PUBBLICA = 'gm-public'
+const winName = (path: string) => (path.startsWith('/admin') ? WIN_ADMIN : WIN_PUBBLICA)
 
 interface Props {
   user:             AuthUser
@@ -21,11 +29,27 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   // nasconderlo dalla navbar per non confondere.
   const mostraSelettore = puoGestire(user.livello) && postazioni.length > 0 && loc.pathname !== '/turni'
 
+  // Allinea il nome di questa finestra al suo contesto (admin / pubblico).
+  useEffect(() => {
+    const target = winName(loc.pathname)
+    try { if (window.name !== target) window.name = target } catch {}
+  }, [loc.pathname])
+
+  // Naviga rispettando le finestre dedicate: se siamo già nella finestra giusta
+  // resta in-page (SPA); altrimenti apri/rifocalizza la finestra del contesto.
+  function vaiA(to: string) {
+    const target = winName(to)
+    if (window.name === target) { navigate(to); return }
+    const url = import.meta.env.BASE_URL + to.replace(/^\//, '')
+    const w = window.open(url, target)
+    if (w) { try { w.focus() } catch {} } else { navigate(to) }
+  }
+
   const link = (to: string, label: string, Icon: React.ElementType) => {
     const active = loc.pathname === to || loc.pathname.startsWith(to + '/')
     return (
       <button
-        onClick={() => navigate(to)}
+        onClick={() => vaiA(to)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
         style={active ? { background: 'rgba(255,255,255,0.15)', color: '#fff' } : { color: '#9ab488' }}
         onMouseEnter={e => { if (!active) e.currentTarget.style.color = '#fff' }}
