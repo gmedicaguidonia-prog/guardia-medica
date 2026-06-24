@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, ArrowRightLeft, Bell } from 'lucide-react'
 import { store } from '../../lib/store'
 import { usePostazione } from '../../contexts/PostazioneContext'
-import { NOTIFICA_TIPI } from '../../types'
+import { NOTIFICA_CATEGORIE, categoriaNotifica } from '../../types'
 import type { ConfigVersione, DesiderataFinestra, Notifica } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -47,9 +47,16 @@ export function AdminHomePage() {
   useEffect(() => { if (postazioneId) store.cleanupNotifiche(postazioneId).catch(() => {}) }, [postazioneId])
   const meseCorr = meseKeyOffset(0)
   // mostro gli eventi del mese in corso (o futuri) + tutti i non letti; quando un mese
-  // è passato ed è tutto letto, sparisce. NOTIFICA_TIPI dà l'ordine dei sottodiv.
+  // è passato ed è tutto letto, sparisce. Raggruppo per MESE poi per CATEGORIA.
   const notificheVisibili = useMemo(() => notifiche.filter(n => n.mese >= meseCorr || !n.letta), [notifiche, meseCorr])
-  const perTipo = useMemo(() => NOTIFICA_TIPI.map(t => ({ ...t, items: notificheVisibili.filter(n => n.tipo === t.tipo) })).filter(g => g.items.length), [notificheVisibili])
+  const perMese = useMemo(() => {
+    const mesi = [...new Set(notificheVisibili.map(n => n.mese))].sort((a, b) => b.localeCompare(a))
+    return mesi.map(mese => {
+      const dentro = notificheVisibili.filter(n => n.mese === mese)
+      const categorie = NOTIFICA_CATEGORIE.map(c => ({ ...c, items: dentro.filter(n => categoriaNotifica(n.tipo) === c.key) })).filter(g => g.items.length)
+      return { mese, categorie, nonLette: dentro.filter(n => !n.letta).length }
+    }).filter(m => m.categorie.length)
+  }, [notificheVisibili])
   const nonLette = notificheVisibili.filter(n => !n.letta).length
   async function marca(ids: string[]) { if (!ids.length) return; await store.marcaNotificheLette(ids); qc.invalidateQueries({ queryKey: ['notifiche-admin', postazioneId] }) }
   function vai(n: Notifica) { marca([n.id]); if (n.target) navigate(n.target) }
@@ -92,24 +99,33 @@ export function AdminHomePage() {
       <div className="relative max-w-3xl mx-auto p-6 space-y-6">
         <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Riepilogo{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
 
-        {/* Centro Notifiche */}
-        {perTipo.length > 0 && (
-          <section className="space-y-2">
+        {/* Centro Notifiche — per mese, poi per categoria */}
+        {perMese.length > 0 && (
+          <section className="space-y-3">
             <div className="flex items-center gap-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5"><Bell size={13} /> Centro Notifiche{nonLette > 0 ? ` · ${nonLette} non lett${nonLette === 1 ? 'a' : 'e'}` : ''}</h2>
               {nonLette > 0 && <button onClick={() => marca(notificheVisibili.filter(n => !n.letta).map(n => n.id))} className="ml-auto text-[11px] text-stone-500 hover:text-stone-700">Segna tutte lette</button>}
             </div>
-            {perTipo.map(g => (
-              <div key={g.tipo} className="card p-3 space-y-1.5">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#476540' }}>{g.label}</h3>
-                {g.items.map(n => (
-                  <div key={n.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: n.letta ? '#f7f8f4' : '#fff7ed' }}>
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: n.letta ? 'transparent' : '#f59e0b' }} />
-                    <span className="text-sm flex-1" style={{ color: n.letta ? '#78716c' : '#3a3d30', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
-                    <span className="text-[10px] text-stone-400 shrink-0 hidden sm:inline">{fmtDT(n.created_at)}</span>
-                    {n.target
-                      ? <button onClick={() => vai(n)} className="btn-primary text-[11px] py-0.5 px-2 shrink-0">Vai</button>
-                      : !n.letta && <button onClick={() => marca([n.id])} className="text-[11px] text-stone-500 hover:text-stone-700 shrink-0">ok</button>}
+            {perMese.map(m => (
+              <div key={m.mese} className="card p-3 space-y-2.5">
+                <h3 className="text-base font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>{meseLabel(m.mese)}{m.nonLette > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>{m.nonLette} non lett{m.nonLette === 1 ? 'a' : 'e'}</span>}</h3>
+                {m.categorie.map(c => (
+                  <div key={c.key}>
+                    <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: '#476540' }}>{c.label}</p>
+                    <div className="space-y-1">
+                      {c.items.map(n => (
+                        <div key={n.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: n.letta ? '#f7f8f4' : '#fff7ed' }}>
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: n.letta ? 'transparent' : '#f59e0b' }} />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm block leading-tight" style={{ color: n.letta ? '#78716c' : '#3a3d30', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
+                            <span className="text-[10px] text-stone-400">{n.autore ? `${n.autore} · ` : ''}{fmtDT(n.created_at)}</span>
+                          </div>
+                          {n.target
+                            ? <button onClick={() => vai(n)} className="btn-primary text-[11px] py-0.5 px-2 shrink-0">Vai</button>
+                            : !n.letta && <button onClick={() => marca([n.id])} className="text-[11px] text-stone-500 hover:text-stone-700 shrink-0">ok</button>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

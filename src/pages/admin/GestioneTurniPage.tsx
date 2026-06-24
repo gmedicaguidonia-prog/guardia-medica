@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid } from 'lucide-react'
+import { useNavigate, useOutletContext } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
@@ -16,7 +16,7 @@ import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../../types'
+import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -46,6 +46,8 @@ export function GestioneTurniPage() {
   const { setHasUnsaved } = useUnsaved()
   const { confirm, confirmState } = useConfirm()
   const { postazioneId, postazioneAttiva } = usePostazione()
+  const { user: actore } = useOutletContext<{ user: AuthUser | null }>()
+  const nomeAutore = actore ? nomeCompleto(actore) : null
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
   const [mostraRepMesi, setMostraRepMesi] = useState<Set<string>>(new Set())
 
@@ -279,7 +281,9 @@ export function GestioneTurniPage() {
   async function salva() {
     setSaving(true)
     try {
-      for (const c of diff()) { const [data, turnoId, slot] = c.key.split('|'); await store.setAssegnazione(postazioneId!, data, turnoId, +slot, c.value) }
+      const mod = diff()
+      for (const c of mod) { const [data, turnoId, slot] = c.key.split('|'); await store.setAssegnazione(postazioneId!, data, turnoId, +slot, c.value) }
+      if (mod.length) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'turni_salvati', messaggio: `Calendario turni di ${MESI[mese - 1]} ${anno} salvato · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['turni', postazioneId, anno, mese] })
     } catch (e) { console.error('[Turni] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }
@@ -292,6 +296,7 @@ export function GestioneTurniPage() {
     // "aggiungi": mantieni i turnisti già inseriti (slot ≥ 0); "sostituisci": riparti da zero
     const esistenti = aggiungi ? new Map([...local].filter(([k]) => +k.split('|')[2] >= 0)) : undefined
     const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, esistenti })
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'auto_assegnazione', messaggio: `Auto Assegnazione ${aggiungi ? '(aggiunta)' : '(sostituzione)'} di ${MESI[mese - 1]} ${anno}: ${res.coperti} turni su ${res.totali}. Da salvare.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
     // base: in "aggiungi" mantengo tutto; in "sostituisci" tengo solo i reperibili
     const base = new Map<string, string>()
     for (const [k, v] of local) if (aggiungi || +k.split('|')[2] < 0) base.set(k, v)
@@ -306,6 +311,14 @@ export function GestioneTurniPage() {
       const [k, v] = ord[i++]; set(k, v)
       if (i >= ord.length) { if (autoTimer.current) clearInterval(autoTimer.current); autoTimer.current = null; setAutoAnim(false); setAutoRes(res) }
     }, interval)
+  }
+  async function reset() {
+    const ok = await confirm({
+      title: 'Svuota la griglia',
+      message: 'Verranno tolti TUTTI i turnisti dai turni del mese: la griglia resterà vuota. La modifica NON viene salvata in automatico — per renderla definitiva premi Salva (oppure Annulla per ripristinare).',
+      confirmLabel: 'Svuota', danger: true,
+    })
+    if (ok) replaceAll(new Map())
   }
   function chiediAuto() {
     if (autoAnim) return
@@ -332,9 +345,10 @@ export function GestioneTurniPage() {
     setSavingStato(true)
     try {
       await store.setStatoCalendario(postazioneId!, meseKey, statoScelto)
-      if (statoScelto !== 'non_pubblicato') {
-        store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: statoScelto === 'pianificazione' ? 'calendario_pianificazione' : 'calendario_pubblicato', messaggio: statoScelto === 'pianificazione' ? `Calendario di ${MESI[mese - 1]} ${anno} in modalità pianificazione: i turnisti possono candidarsi ai turni scoperti.` : `Calendario turni di ${MESI[mese - 1]} ${anno} pubblicato.`, target: '/admin/turni', perAdmin: true }).catch(() => {})
-      }
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey,
+        tipo: statoScelto === 'pianificazione' ? 'calendario_pianificazione' : statoScelto === 'non_pubblicato' ? 'calendario_nascosto' : 'calendario_pubblicato',
+        messaggio: statoScelto === 'pianificazione' ? `Calendario di ${MESI[mese - 1]} ${anno} in modalità pianificazione: i turnisti possono candidarsi ai turni scoperti.` : statoScelto === 'non_pubblicato' ? `Calendario di ${MESI[mese - 1]} ${anno} nascosto (non pubblicato).` : `Calendario turni di ${MESI[mese - 1]} ${anno} pubblicato.`,
+        target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['turni-stato', postazioneId, meseKey] })
       setShowStatoModal(false)
     } catch (e) { console.error('[Turni] salvataggio stato fallito:', e); alert('Errore nel salvataggio dello stato.') }
@@ -351,7 +365,7 @@ export function GestioneTurniPage() {
     if (cur && cur.stato === 'in_attesa') {
       await store.setRichiestaStato(cur.id, 'rifiutata')
       const tn = schema.find(s => s.id === r.turno_schema_id)?.nome || 'un turno'
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura_rifiutata', messaggio: `La tua candidatura per ${tn} del ${itDate(r.data)} è stata rifiutata.`, target: '/turni', perAdmin: false, turnistaId: r.turnista_id }).catch(() => {})
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura_rifiutata', messaggio: `La tua candidatura per ${tn} del ${itDate(r.data)} è stata rifiutata.`, target: '/turni', perAdmin: false, turnistaId: r.turnista_id, autore: nomeAutore }).catch(() => {})
     }
     qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
   }
@@ -372,7 +386,7 @@ export function GestioneTurniPage() {
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” del ${itDate(r.data)} non ci sono posti liberi.`); return }
     set(`${r.data}|${turno.id}|${free}`, r.turnista_id)   // inserisce (in sospeso): premi Salva per confermare
     await store.setRichiestaStato(cur.id, 'approvata')
-    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura_approvata', messaggio: `La tua candidatura per ${turno.nome || 'un turno'} del ${itDate(r.data)} è stata approvata!`, target: '/turni', perAdmin: false, turnistaId: r.turnista_id }).catch(() => {})
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura_approvata', messaggio: `La tua candidatura per ${turno.nome || 'un turno'} del ${itDate(r.data)} è stata approvata!`, target: '/turni', perAdmin: false, turnistaId: r.turnista_id, autore: nomeAutore }).catch(() => {})
     qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
   }
 
@@ -547,6 +561,7 @@ export function GestioneTurniPage() {
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
           {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
+          <button onClick={reset} title="Svuota la griglia (poi salva)" className="flex items-center gap-1 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors hover:brightness-95" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}><Eraser size={13} /> Reset</button>
           <button onClick={salva} disabled={!dirty || saving}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:cursor-default"
             style={dirty ? { background: '#2e7d32', color: '#fff' } : { background: '#f3f4f6', color: '#9ca3af' }}>

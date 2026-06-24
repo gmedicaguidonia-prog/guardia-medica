@@ -235,22 +235,23 @@ export interface Notifica {
   target: string | null    // es. '/admin/desiderata'
   perAdmin: boolean
   turnistaId: string | null
+  autore: string | null    // nome di chi ha fatto l'operazione
   letta: boolean
   created_at: string
 }
-/** Etichette + ordine dei "sottodiv" del Centro Notifiche admin. */
-export const NOTIFICA_TIPI: { tipo: string; label: string }[] = [
-  { tipo: 'desiderata_creata',          label: 'Creazione raccolta desiderata' },
-  { tipo: 'desiderata_pubblicata',      label: 'Pubblicazione desiderata' },
-  { tipo: 'desiderata_pubbliche',       label: 'Desiderata rese pubbliche' },
-  { tipo: 'desiderata_chiusa',          label: 'Chiusura desiderata' },
-  { tipo: 'calendario_creato',          label: 'Creazione calendario turni' },
-  { tipo: 'calendario_pubblicato',      label: 'Pubblicazione calendario' },
-  { tipo: 'calendario_pianificazione',  label: 'Modalità pianificazione' },
-  { tipo: 'candidatura',                label: 'Candidature ricevute' },
-  { tipo: 'candidatura_ritirata',       label: 'Candidature ritirate' },
+/** Categorie (sottodiv) del Centro Notifiche admin: ordine + etichetta + tipi. */
+export const NOTIFICA_CATEGORIE: { key: string; label: string; tipi: string[] }[] = [
+  { key: 'pianificazione', label: 'Pianificazione turni',     tipi: ['calendario_pianificazione', 'auto_assegnazione'] },
+  { key: 'cambi',          label: 'Cambi turno',              tipi: ['cambio_richiesto', 'cambio_approvato', 'cambio_rifiutato'] },
+  { key: 'candidature',    label: 'Candidature',              tipi: ['candidatura'] },
+  { key: 'cancellazioni',  label: 'Cancellazioni / ritiri',   tipi: ['candidatura_ritirata', 'turno_svuotato'] },
+  { key: 'calendario',     label: 'Modifica del calendario',  tipi: ['calendario_pubblicato', 'calendario_nascosto', 'turni_salvati'] },
+  { key: 'disponibilita',  label: 'Disponibilità',            tipi: ['desiderata_creata', 'desiderata_pubblicata', 'desiderata_pubbliche', 'desiderata_chiusa', 'desiderata_compilate'] },
+  { key: 'configurazione', label: 'Configurazione',           tipi: ['config_turni', 'regole', 'impaginazione', 'personale', 'postazione', 'admin'] },
 ]
-export const NOTIFICA_LABEL: Record<string, string> = Object.fromEntries(NOTIFICA_TIPI.map(n => [n.tipo, n.label]))
+const _NOTIFICA_TIPO_CAT = new Map<string, string>()
+NOTIFICA_CATEGORIE.forEach(c => c.tipi.forEach(t => _NOTIFICA_TIPO_CAT.set(t, c.key)))
+export function categoriaNotifica(tipo: string): string { return _NOTIFICA_TIPO_CAT.get(tipo) ?? 'configurazione' }
 
 /** Candidatura in attesa di un turnista (mostrata nel Centro Messaggi, con "Ritira"). */
 export interface CandidaturaAttesa {
