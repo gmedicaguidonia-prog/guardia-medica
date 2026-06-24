@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Sa
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
+import { autoAssegna, type AutoAssegnaResult } from '../../lib/autoAssegna'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
@@ -70,8 +71,9 @@ export function GestioneTurniPage() {
     turni.forEach(t => { if (t.turnista_id) m.set(`${t.data}|${t.turno_schema_id}|${t.slot}`, t.turnista_id) })
     return m
   }, [turni])
-  const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap)
+  const { local, dirty, set, replaceAll, diff, discard } = useStagedAssignments(serverMap)
   const [saving, setSaving] = useState(false)
+  const [autoRes, setAutoRes] = useState<AutoAssegnaResult | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [showStatoModal, setShowStatoModal] = useState(false)
   const [statoScelto, setStatoScelto] = useState<StatoCalendario>('non_pubblicato')
@@ -238,6 +240,27 @@ export function GestioneTurniPage() {
     } catch (e) { console.error('[Turni] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }
   }
+
+  // ── Auto Assegnazione ──
+  function eseguiAuto() {
+    const poolIds = turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno').map(t => t.id)
+    if (!poolIds.length) { showWarn('Nessun turnista importato per questo mese: importa prima il personale.'); return }
+    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById })
+    // sostituisco i turni veri ma preservo i reperibili già impostati (slot < 0)
+    const nuovo = new Map(res.assegna)
+    for (const [k, v] of local) if (+k.split('|')[2] < 0) nuovo.set(k, v)
+    replaceAll(nuovo)
+    setAutoRes(res)
+  }
+  async function chiediAuto() {
+    const ok = await confirm({
+      title: 'Auto Assegnazione',
+      message: `Tutti i turni di ${MESI[mese - 1]} ${anno} verranno SOSTITUITI da quelli calcolati automaticamente. Potrai rivederli e correggerli prima di salvare. Procedere?`,
+      confirmLabel: 'Calcola',
+    })
+    if (ok) eseguiAuto()
+  }
+
   function apriStatoModal() { setStatoScelto(statoCal); setShowStatoModal(true) }
   async function salvaStato() {
     setSavingStato(true)
@@ -428,10 +451,10 @@ export function GestioneTurniPage() {
         <button onClick={apriImporta} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={coperturaOk ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' } : { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }} title="Turni del mese con tutti i posti assegnati"><CalendarDays size={13} /> Turni coperti {copertura.coperti}/{copertura.totali}</span>
-        <button onClick={() => showWarn('Assegnazione automatica dei turni — funzione in arrivo.')}
+        <button onClick={chiediAuto}
           className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95"
           style={{ background: '#ede9fe', color: '#6d28d9', borderColor: '#c4b5fd' }}
-          title="Genera automaticamente l'assegnazione dei turni (in arrivo)">
+          title="Calcola e proponi l'assegnazione automatica dei turni del mese">
           <Wand2 size={14} /> Auto Assegnazione
         </button>
         {regoleVuote && <button onClick={() => navigate('/admin/regole')} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full hover:brightness-95 transition-all" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }} title="Vai alle Regole Turni"><AlertTriangle size={13} /> Regole del mese non impostate</button>}
@@ -581,6 +604,39 @@ export function GestioneTurniPage() {
             )) : <p className="text-xs text-stone-400 px-1.5 py-1">Nessun turnista importato per il mese.</p>}
           </div>
         </>
+      )}
+
+      {/* Riepilogo Auto Assegnazione */}
+      {autoRes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.5)' }} onClick={() => setAutoRes(null)}>
+          <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-2"><Wand2 size={18} style={{ color: '#6d28d9' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Assegnazione calcolata</h3></div>
+            <p className="text-sm text-stone-600 mb-2">
+              <strong>{autoRes.coperti}</strong> turni assegnati su {autoRes.totali}
+              {autoRes.totali - autoRes.coperti > 0 && <> · <strong style={{ color: '#b45309' }}>{autoRes.totali - autoRes.coperti} ancora scoperti</strong></>}.
+            </p>
+            <div className="max-h-64 overflow-auto rounded-lg" style={{ border: '1px solid #eef0ea' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+                <thead><tr>
+                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'left', fontSize: 11, color: '#476540', fontWeight: 700, position: 'sticky', top: 0 }}>Turnista</th>
+                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'right', fontSize: 11, color: '#476540', fontWeight: 700, position: 'sticky', top: 0 }}>Ore</th>
+                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'right', fontSize: 11, color: '#476540', fontWeight: 700, position: 'sticky', top: 0 }}>Weekend</th>
+                </tr></thead>
+                <tbody>
+                  {autoRes.perTurnista.map(r => (
+                    <tr key={r.id}>
+                      <td style={{ padding: '4px 10px', borderTop: '1px solid #f0f1ec' }}>{nomeTurnista(r.id)}</td>
+                      <td style={{ padding: '4px 10px', borderTop: '1px solid #f0f1ec', textAlign: 'right', fontWeight: 700, color: '#2b3c24' }}>{r.ore}h</td>
+                      <td style={{ padding: '4px 10px', borderTop: '1px solid #f0f1ec', textAlign: 'right', color: '#475569' }}>{r.weekend}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-stone-500 mt-3 mb-4">Rivedi la griglia e premi <strong>Salva</strong> per confermare, oppure <strong>Annulla</strong> per scartare.</p>
+            <div className="flex justify-end"><button onClick={() => setAutoRes(null)} className="btn-primary text-sm py-1.5 px-4">Ok</button></div>
+          </div>
+        </div>
       )}
 
       {warn && (

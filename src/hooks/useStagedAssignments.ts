@@ -25,6 +25,11 @@ export function useStagedAssignments(serverMap: Map<string, string>) {
     editingRef.current = true
     setLocal(prev => { const n = new Map(prev); if (val === null) n.delete(key); else n.set(key, val); return n })
   }
+  /** Rimpiazza in blocco TUTTE le assegnazioni in sospeso (es. Auto Assegnazione). */
+  function replaceAll(next: Map<string, string>) {
+    editingRef.current = true
+    setLocal(new Map(next))
+  }
   function diff(): { key: string; value: string | null }[] {
     const out: { key: string; value: string | null }[] = []
     const keys = new Set<string>([...serverMap.keys(), ...local.keys()])
@@ -33,5 +38,5 @@ export function useStagedAssignments(serverMap: Map<string, string>) {
   }
   function discard() { editingRef.current = false; setLocal(new Map(serverMap)) }
 
-  return { local, dirty, set, diff, discard }
+  return { local, dirty, set, replaceAll, diff, discard }
 }
