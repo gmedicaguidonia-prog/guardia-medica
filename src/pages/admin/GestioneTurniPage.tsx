@@ -91,6 +91,22 @@ export function GestioneTurniPage() {
   const importati = useMemo(() => new Set(turnistiMese), [turnistiMese])
   // palette = solo i turnisti importati per questo mese, divisi per livello
   const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id))), [turnisti, importati])
+  // riepilogo auto-aggiornante (in base a ciò che è in tabella): T turni, N notti, F festivi, PF prefestivi
+  const riepilogo = useMemo(() => {
+    const stat = new Map<string, { T: number; N: number; F: number; PF: number }>()
+    for (const [key, tid] of local) {
+      const [ds, turnoId, slotStr] = key.split('|')
+      if (+slotStr < 0) continue   // esclude il reperibile
+      const turno = schema.find(s => s.id === turnoId); if (!turno) continue
+      const s = stat.get(tid) ?? { T: 0, N: 0, F: 0, PF: 0 }
+      s.T++
+      if (turno.ora_fine <= turno.ora_inizio) s.N++   // notte = attraversa la mezzanotte
+      const [y, m, d] = ds.split('-').map(Number); const date = new Date(y, m - 1, d)
+      if (isFestivo(date)) s.F++; else if (isPrefestivo(date)) s.PF++
+      stat.set(tid, s)
+    }
+    return gruppiPerLivello(turnisti.filter(t => stat.has(t.id))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
+  }, [local, schema, turnisti])
   // candidati da importare (non ancora nella palette), divisi per livello
   const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id))), [turnisti, importati])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
@@ -542,6 +558,40 @@ export function GestioneTurniPage() {
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
           )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista importato. Usa “Importa i turnisti”.</span></div>}
+
+          {/* Riepilogo turni assegnati (auto-aggiornante in base alla tabella) */}
+          {riepilogo.length > 0 && (
+            <div className="card p-2">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: '#476540' }}>Riepilogo turni</h3>
+              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 10.5 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #eef0ea' }}>
+                    <th style={{ textAlign: 'left', padding: '1px 2px' }} />
+                    <th style={{ padding: '1px 2px', textAlign: 'center', color: '#2b3c24', fontWeight: 800 }} title="Turni">T</th>
+                    <th style={{ padding: '1px 2px', textAlign: 'center', color: '#64748b', fontWeight: 800 }} title="Notti">N</th>
+                    <th style={{ padding: '1px 2px', textAlign: 'center', color: '#b91c1c', fontWeight: 800 }} title="Festivi">F</th>
+                    <th style={{ padding: '1px 2px', textAlign: 'center', color: '#b45309', fontWeight: 800 }} title="Prefestivi">PF</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {riepilogo.map(({ t, T, N, F, PF }) => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #f4f5f1' }}>
+                      <td style={{ padding: '2px 2px', lineHeight: 1.15 }} title={nomeCompleto(t)}>
+                        <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: ROLE_COLOR[t.livello].fg, marginRight: 3, verticalAlign: 'middle' }} />{nomeCompleto(t)}
+                      </td>
+                      <td style={{ padding: '2px', textAlign: 'center', fontWeight: 800, color: '#2b3c24' }}>{T}</td>
+                      <td style={{ padding: '2px', textAlign: 'center', color: '#475569' }}>{N || ''}</td>
+                      <td style={{ padding: '2px', textAlign: 'center', color: '#b91c1c' }}>{F || ''}</td>
+                      <td style={{ padding: '2px', textAlign: 'center', color: '#b45309' }}>{PF || ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[9px] leading-snug text-stone-400 mt-1.5 px-1">
+                <strong>T</strong>=turni · <strong>N</strong>=notti · <strong>F</strong>=festivi · <strong>PF</strong>=prefestivi
+              </p>
+            </div>
+          )}
         </aside>
 
         {/* Una griglia per foglio (passo ③ Impaginazione) */}
