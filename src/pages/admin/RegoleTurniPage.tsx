@@ -346,8 +346,7 @@ export function RegoleTurniPage() {
                               className="relative rounded px-2 py-0.5 text-[11px] font-semibold shadow-sm cursor-pointer" style={{ background: '#e5e7eb', color: '#6b7280' }}>
                               {nomeTurnista(tid)}
                               <svg className="absolute inset-0 pointer-events-none rounded" width="100%" height="100%" preserveAspectRatio="none" style={{ overflow: 'hidden' }}>
-                                <line x1="0%" y1="100%" x2="62%" y2="0%" stroke="#64748b" strokeWidth="2" />
-                                <line x1="38%" y1="100%" x2="100%" y2="0%" stroke="#64748b" strokeWidth="2" />
+                                <line x1="0%" y1="100%" x2="100%" y2="0%" stroke="#64748b" strokeWidth="1.8" />
                               </svg>
                               <button onClick={e => { e.stopPropagation(); set(`${g.num}|${c.id}|${slot}`, null) }} title="Togli divieto" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
                             </span>

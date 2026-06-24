@@ -36,6 +36,7 @@ export interface AutoAssegnaResult {
   nFissi: number                     // assegnati dai turni fissi (Regole)
   perDesiderata: number              // assegnati grazie a un «vorrei»
   perRiempimento: number             // assegnati col riempimento (chi era libero, senza preferenza)
+  ordine: [string, string][]         // [chiave, turnista] nell'ordine di assegnazione (per l'animazione)
   perTurnista: { id: string; ore: number; weekend: number }[]
 }
 
@@ -121,6 +122,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   poolIds.forEach(t => { ore.set(t, 0); wknd.set(t, 0); busy.set(t, []) })
   const oreSett = new Map<string, Map<string, number>>()   // tid → (lunedì settimana → ore) [per il max settimanale]
   const assegna = new Map<string, string>()
+  const ordine: [string, string][] = []   // ordine di assegnazione (per l'animazione)
 
   // modalità "aggiungi": semina con le assegnazioni manuali da MANTENERE (vincono)
   if (esistenti) {
@@ -145,7 +147,8 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     return true
   }
   const poni = (tid: string, slot: Slot) => {
-    assegna.set(`${slot.ds}|${slot.t.id}|${slot.slot}`, tid)
+    const key = `${slot.ds}|${slot.t.id}|${slot.slot}`
+    assegna.set(key, tid); ordine.push([key, tid])
     ore.set(tid, ore.get(tid)! + dur(slot.t.id))
     if (slot.weekend) wknd.set(tid, wknd.get(tid)! + 1)
     busy.get(tid)!.push(intervallo(slot.ds, slot.t))
@@ -224,7 +227,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     assegna,
     totali: slots.length,
     coperti: assegna.size,
-    nEsistenti, nFissi, perDesiderata, perRiempimento,
+    nEsistenti, nFissi, perDesiderata, perRiempimento, ordine,
     perTurnista: poolIds.map(id => ({ id, ore: ore.get(id)!, weekend: wknd.get(id)! })).sort((a, b) => b.ore - a.ore),
   }
 }

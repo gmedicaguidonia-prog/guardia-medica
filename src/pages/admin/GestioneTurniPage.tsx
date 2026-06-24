@@ -76,6 +76,9 @@ export function GestioneTurniPage() {
   const [saving, setSaving] = useState(false)
   const [autoRes, setAutoRes] = useState<AutoAssegnaResult | null>(null)
   const [showAuto, setShowAuto] = useState(false)
+  const [autoAnim, setAutoAnim] = useState(false)
+  const autoTimer = useRef<number | null>(null)
+  useEffect(() => () => { if (autoTimer.current) clearInterval(autoTimer.current) }, [])
   const [showImport, setShowImport] = useState(false)
   const [showStatoModal, setShowStatoModal] = useState(false)
   const [statoScelto, setStatoScelto] = useState<StatoCalendario>('non_pubblicato')
@@ -289,12 +292,23 @@ export function GestioneTurniPage() {
     // "aggiungi": mantieni i turnisti già inseriti (slot ≥ 0); "sostituisci": riparti da zero
     const esistenti = aggiungi ? new Map([...local].filter(([k]) => +k.split('|')[2] >= 0)) : undefined
     const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, esistenti })
-    const nuovo = new Map(res.assegna)
-    for (const [k, v] of local) if (+k.split('|')[2] < 0) nuovo.set(k, v)   // reperibili preservati sempre
-    replaceAll(nuovo)
-    setAutoRes(res)
+    // base: in "aggiungi" mantengo tutto; in "sostituisci" tengo solo i reperibili
+    const base = new Map<string, string>()
+    for (const [k, v] of local) if (aggiungi || +k.split('|')[2] < 0) base.set(k, v)
+    replaceAll(base)
+    // i turni compaiono uno alla volta nell'ordine di assegnazione (≥ 4 secondi)
+    const ord = res.ordine
+    if (!ord.length) { setAutoRes(res); return }
+    setAutoAnim(true)
+    const interval = Math.max(15, Math.floor(4000 / ord.length))
+    let i = 0
+    autoTimer.current = window.setInterval(() => {
+      const [k, v] = ord[i++]; set(k, v)
+      if (i >= ord.length) { if (autoTimer.current) clearInterval(autoTimer.current); autoTimer.current = null; setAutoAnim(false); setAutoRes(res) }
+    }, interval)
   }
   function chiediAuto() {
+    if (autoAnim) return
     if (!poolAuto.length) { showWarn('Nessun turnista importato per questo mese: importa prima il personale.'); return }
     setShowAuto(true)
   }
@@ -737,6 +751,15 @@ export function GestioneTurniPage() {
               <button onClick={() => { setShowAuto(false); eseguiAuto(true) }} disabled={!poolAuto.length} className="btn-secondary text-sm py-1.5 px-3" style={{ borderColor: '#c4b5fd', color: '#6d28d9' }}>Aggiungi ai turni</button>
               <button onClick={() => { setShowAuto(false); eseguiAuto(false) }} disabled={!poolAuto.length} className="btn-primary text-sm py-1.5 px-4" style={{ background: '#6d28d9' }}>Sostituisci tutto</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Indicatore: assegnazione automatica in corso (animazione) */}
+      {autoAnim && (
+        <div className="fixed inset-x-0 z-50 flex justify-center pointer-events-none" style={{ top: 64 }}>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl shadow-2xl" style={{ background: '#ede9fe', color: '#6d28d9', border: '1px solid #c4b5fd', animation: 'fadeSlideIn 180ms ease-out' }}>
+            <Wand2 size={16} className="animate-pulse" /> <span className="text-sm font-semibold">Assegnazione in corso…</span>
           </div>
         </div>
       )}
