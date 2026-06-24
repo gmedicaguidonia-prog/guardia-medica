@@ -73,6 +73,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     return { m, rep }
   }, [turni])
   const hasRep = assegn.rep.size > 0   // mostra la colonna Reperibile solo se ce n'è almeno uno
+  // pianificazione: posti ancora scoperti (badge ???) nel calendario pubblicato
+  const turniVacanti = useMemo(() => {
+    let v = 0
+    righePerFoglio.forEach(({ righe }) => righe.forEach(({ ds, turno }) => { v += Math.max(0, turno.n_turnisti - (assegn.m.get(`${ds}|${turno.id}`)?.length ?? 0)) }))
+    return v
+  }, [righePerFoglio, assegn])
 
   // desiderata: la MIA preferenza per turno
   const miaPref = useMemo(() => {
@@ -240,7 +246,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 {pianificazione && (
                   <div className="card p-3 flex items-start gap-2" style={{ background: '#fef2f2' }}>
                     <Info size={16} className="shrink-0 mt-0.5" style={{ color: '#b91c1c' }} />
-                    <p className="text-sm" style={{ color: '#7f1d1d' }}>Calendario in costruzione: dove vedi <strong>???</strong> manca un turnista. Cliccaci sopra per <strong>candidarti</strong>; il responsabile approverà o rifiuterà la richiesta.</p>
+                    <p className="text-sm" style={{ color: '#7f1d1d' }}>Calendario in costruzione: dove vedi <strong>???</strong> manca un turnista. Cliccaci sopra per <strong>candidarti</strong>; il responsabile approverà o rifiuterà la richiesta. <strong>{turniVacanti === 0 ? 'Al momento non è rimasto nessun turno vacante.' : turniVacanti === 1 ? 'Al momento è rimasto 1 turno vacante.' : `Al momento sono rimasti ${turniVacanti} turni vacanti.`}</strong></p>
                   </div>
                 )}
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
