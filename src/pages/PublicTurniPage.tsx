@@ -120,6 +120,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     setInviando(true)
     try {
       await store.addRichiesta(postazioneId!, proposta.ds, proposta.turno.id, mia.membershipId)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura', messaggio: `${(user && nomeCompleto(user)) || 'Un turnista'} si è candidato per ${proposta.turno.nome || 'un turno'} del ${itDate(proposta.ds)}`, target: '/admin/turni', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
       setProposta(null)
     } catch (e) { console.error('[Turni] invio richiesta fallito:', e); alert('Errore nell\'invio della richiesta.') }
@@ -137,7 +138,10 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
       const cur = await store.getRichiestaCorrente(postazioneId!, annulla.ds, annulla.turno.id, mia.membershipId)
       if (!cur || cur.stato === 'in_attesa') {
         // ancora in attesa (o già sparita): la ritiro, il responsabile non la vedrà
-        if (cur) await store.removeRichiesta(cur.id)
+        if (cur) {
+          await store.removeRichiesta(cur.id)
+          store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura_ritirata', messaggio: `${(user && nomeCompleto(user)) || 'Un turnista'} ha ritirato la candidatura per ${annulla.turno.nome || 'un turno'} del ${itDate(annulla.ds)}`, target: '/admin/turni', perAdmin: true }).catch(() => {})
+        }
         await qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
         setAnnulla(null)
       } else if (cur.stato === 'approvata') {

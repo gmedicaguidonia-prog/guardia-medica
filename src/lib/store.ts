@@ -6,7 +6,13 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica } from '../types'
+
+// ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
+export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null }
+function mapNotifica(r: Record<string, unknown>): Notifica {
+  return { id: r.id as string, postazioneId: r.postazione_id as string, mese: r.mese as string, tipo: r.tipo as string, messaggio: r.messaggio as string, target: (r.target as string | null) ?? null, perAdmin: !!r.per_admin, turnistaId: (r.turnista_id as string | null) ?? null, letta: !!r.letta, created_at: r.created_at as string }
+}
 
 const RANK_LIVELLO: Record<string, number> = { responsabile: 3, turnista: 2, esterno: 1 }
 import { ADMIN_EMAIL } from './constants'
@@ -484,6 +490,39 @@ const supaStore = {
     const { error } = await supabase.from('utenti').insert({ nome: nome.trim(), cognome: cognome.trim(), email: em, admin: true })
     if (error) throw error
   },
+
+  // ── Notifiche (eventi della gestione del mese) ──
+  async addNotifica(n: AddNotifica): Promise<void> {
+    const { error } = await supabase.from('notifiche').insert({ postazione_id: n.postazioneId, mese: n.mese, tipo: n.tipo, messaggio: n.messaggio, target: n.target ?? null, per_admin: n.perAdmin ?? false, turnista_id: n.turnistaId ?? null })
+    if (error) console.warn('[Notifiche] insert ignorato:', error.message)
+  },
+  async getNotificheAdmin(postazioneId: string): Promise<Notifica[]> {
+    const limite = new Date(Date.now() - 60 * 86400000).toISOString()
+    const { data, error } = await supabase.from('notifiche').select('*').eq('postazione_id', postazioneId).eq('per_admin', true).gte('created_at', limite).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map(mapNotifica)
+  },
+  async getNotificheUtente(turnistaIds: string[]): Promise<Notifica[]> {
+    if (!turnistaIds.length) return []
+    const limite = new Date(Date.now() - 60 * 86400000).toISOString()
+    const { data, error } = await supabase.from('notifiche').select('*').in('turnista_id', turnistaIds).gte('created_at', limite).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map(mapNotifica)
+  },
+  async marcaNotificheLette(ids: string[]): Promise<void> {
+    if (!ids.length) return
+    const { error } = await supabase.from('notifiche').update({ letta: true }).in('id', ids)
+    if (error) throw error
+  },
+  async eliminaNotifica(id: string): Promise<void> {
+    const { error } = await supabase.from('notifiche').delete().eq('id', id)
+    if (error) throw error
+  },
+  async cleanupNotifiche(postazioneId: string): Promise<void> {
+    const limite = new Date(Date.now() - 30 * 86400000).toISOString()
+    const { error } = await supabase.from('notifiche').delete().eq('postazione_id', postazioneId).eq('letta', true).lt('created_at', limite)
+    if (error) console.warn('[Notifiche] cleanup ignorato:', error.message)
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -859,6 +898,31 @@ const localStore = {
     }
     extra.push({ id: uid(), nome: nome.trim(), cognome: cognome.trim(), email: em, admin: true })
     writeLs('gm_dev_extra_utenti', extra)
+  },
+
+  // ── Notifiche (DEV) ──
+  async addNotifica(n: AddNotifica): Promise<void> {
+    const list = read<Notifica[]>('gm_notifiche', [])
+    list.push({ id: uid(), postazioneId: n.postazioneId, mese: n.mese, tipo: n.tipo, messaggio: n.messaggio, target: n.target ?? null, perAdmin: n.perAdmin ?? false, turnistaId: n.turnistaId ?? null, letta: false, created_at: new Date().toISOString() })
+    writeLs('gm_notifiche', list)
+  },
+  async getNotificheAdmin(postazioneId: string): Promise<Notifica[]> {
+    return read<Notifica[]>('gm_notifiche', []).filter(n => (n.postazioneId ?? DEV_POSTAZIONE) === postazioneId && n.perAdmin).sort((a, b) => b.created_at.localeCompare(a.created_at))
+  },
+  async getNotificheUtente(turnistaIds: string[]): Promise<Notifica[]> {
+    const s = new Set(turnistaIds)
+    return read<Notifica[]>('gm_notifiche', []).filter(n => n.turnistaId && s.has(n.turnistaId)).sort((a, b) => b.created_at.localeCompare(a.created_at))
+  },
+  async marcaNotificheLette(ids: string[]): Promise<void> {
+    const set = new Set(ids)
+    writeLs('gm_notifiche', read<Notifica[]>('gm_notifiche', []).map(n => set.has(n.id) ? { ...n, letta: true } : n))
+  },
+  async eliminaNotifica(id: string): Promise<void> {
+    writeLs('gm_notifiche', read<Notifica[]>('gm_notifiche', []).filter(n => n.id !== id))
+  },
+  async cleanupNotifiche(_postazioneId: string): Promise<void> {
+    const limite = new Date(Date.now() - 30 * 86400000).toISOString()
+    writeLs('gm_notifiche', read<Notifica[]>('gm_notifiche', []).filter(n => !(n.letta && n.created_at < limite)))
   },
 }
 

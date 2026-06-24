@@ -223,6 +223,35 @@ export interface RichiestaTurno {
   created_at: string
 }
 
+// ─── Notifiche (eventi della gestione del mese) ─────────────────────
+//  per_admin=true → Centro Notifiche dell'admin; turnista_id valorizzato →
+//  Centro Messaggi di quel turnista. target = rotta admin per il bottone "Vai".
+export interface Notifica {
+  id: string
+  postazioneId: string
+  mese: string             // 'YYYY-MM' di riferimento
+  tipo: string
+  messaggio: string
+  target: string | null    // es. '/admin/desiderata'
+  perAdmin: boolean
+  turnistaId: string | null
+  letta: boolean
+  created_at: string
+}
+/** Etichette + ordine dei "sottodiv" del Centro Notifiche admin. */
+export const NOTIFICA_TIPI: { tipo: string; label: string }[] = [
+  { tipo: 'desiderata_creata',          label: 'Creazione raccolta desiderata' },
+  { tipo: 'desiderata_pubblicata',      label: 'Pubblicazione desiderata' },
+  { tipo: 'desiderata_pubbliche',       label: 'Desiderata rese pubbliche' },
+  { tipo: 'desiderata_chiusa',          label: 'Chiusura desiderata' },
+  { tipo: 'calendario_creato',          label: 'Creazione calendario turni' },
+  { tipo: 'calendario_pubblicato',      label: 'Pubblicazione calendario' },
+  { tipo: 'calendario_pianificazione',  label: 'Modalità pianificazione' },
+  { tipo: 'candidatura',                label: 'Candidature ricevute' },
+  { tipo: 'candidatura_ritirata',       label: 'Candidature ritirate' },
+]
+export const NOTIFICA_LABEL: Record<string, string> = Object.fromEntries(NOTIFICA_TIPI.map(n => [n.tipo, n.label]))
+
 // ─── Impaginazione (fogli = griglie nominate di turni, versionate) ──
 //  Ogni "foglio" raggruppa un sottoinsieme dei turni del mese; Desiderata,
 //  Turni del Mese e la pagina pubblica generano UNA griglia per foglio.

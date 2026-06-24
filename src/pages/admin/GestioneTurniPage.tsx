@@ -314,6 +314,9 @@ export function GestioneTurniPage() {
     setSavingStato(true)
     try {
       await store.setStatoCalendario(postazioneId!, meseKey, statoScelto)
+      if (statoScelto !== 'non_pubblicato') {
+        store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: statoScelto === 'pianificazione' ? 'calendario_pianificazione' : 'calendario_pubblicato', messaggio: statoScelto === 'pianificazione' ? `Calendario di ${MESI[mese - 1]} ${anno} in modalità pianificazione: i turnisti possono candidarsi ai turni scoperti.` : `Calendario turni di ${MESI[mese - 1]} ${anno} pubblicato.`, target: '/admin/turni', perAdmin: true }).catch(() => {})
+      }
       await qc.invalidateQueries({ queryKey: ['turni-stato', postazioneId, meseKey] })
       setShowStatoModal(false)
     } catch (e) { console.error('[Turni] salvataggio stato fallito:', e); alert('Errore nel salvataggio dello stato.') }
@@ -327,7 +330,11 @@ export function GestioneTurniPage() {
   //  potrebbe averla annullata nel frattempo.
   async function rifiutaRichiesta(r: RichiestaTurno) {
     const cur = await store.getRichiestaCorrente(postazioneId!, r.data, r.turno_schema_id, r.turnista_id)
-    if (cur && cur.stato === 'in_attesa') await store.setRichiestaStato(cur.id, 'rifiutata')
+    if (cur && cur.stato === 'in_attesa') {
+      await store.setRichiestaStato(cur.id, 'rifiutata')
+      const tn = schema.find(s => s.id === r.turno_schema_id)?.nome || 'un turno'
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura_rifiutata', messaggio: `La tua candidatura per ${tn} del ${itDate(r.data)} è stata rifiutata.`, target: '/turni', perAdmin: false, turnistaId: r.turnista_id }).catch(() => {})
+    }
     qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
   }
   async function approvaRichiesta(r: RichiestaTurno) {
@@ -347,6 +354,7 @@ export function GestioneTurniPage() {
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” del ${itDate(r.data)} non ci sono posti liberi.`); return }
     set(`${r.data}|${turno.id}|${free}`, r.turnista_id)   // inserisce (in sospeso): premi Salva per confermare
     await store.setRichiestaStato(cur.id, 'approvata')
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura_approvata', messaggio: `La tua candidatura per ${turno.nome || 'un turno'} del ${itDate(r.data)} è stata approvata!`, target: '/turni', perAdmin: false, turnistaId: r.turnista_id }).catch(() => {})
     qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
   }
 

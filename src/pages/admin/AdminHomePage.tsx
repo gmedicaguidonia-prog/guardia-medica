@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, ArrowRightLeft } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ArrowRightLeft, Bell } from 'lucide-react'
 import { store } from '../../lib/store'
 import { usePostazione } from '../../contexts/PostazioneContext'
-import type { ConfigVersione, DesiderataFinestra } from '../../types'
+import { NOTIFICA_TIPI } from '../../types'
+import type { ConfigVersione, DesiderataFinestra, Notifica } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 function meseKeyOffset(off: number): string {
@@ -39,6 +40,20 @@ export function AdminHomePage() {
   const meseProssimo = meseKeyOffset(1)
   const { data: versioni = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all', postazioneId], queryFn: () => store.getVersioni(postazioneId!), enabled: !!postazioneId })
   const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseProssimo], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseProssimo), enabled: !!postazioneId })
+
+  // ── Centro Notifiche ──
+  const qc = useQueryClient()
+  const { data: notifiche = [] } = useQuery<Notifica[]>({ queryKey: ['notifiche-admin', postazioneId], queryFn: () => store.getNotificheAdmin(postazioneId!), enabled: !!postazioneId })
+  useEffect(() => { if (postazioneId) store.cleanupNotifiche(postazioneId).catch(() => {}) }, [postazioneId])
+  const meseCorr = meseKeyOffset(0)
+  // mostro gli eventi del mese in corso (o futuri) + tutti i non letti; quando un mese
+  // è passato ed è tutto letto, sparisce. NOTIFICA_TIPI dà l'ordine dei sottodiv.
+  const notificheVisibili = useMemo(() => notifiche.filter(n => n.mese >= meseCorr || !n.letta), [notifiche, meseCorr])
+  const perTipo = useMemo(() => NOTIFICA_TIPI.map(t => ({ ...t, items: notificheVisibili.filter(n => n.tipo === t.tipo) })).filter(g => g.items.length), [notificheVisibili])
+  const nonLette = notificheVisibili.filter(n => !n.letta).length
+  async function marca(ids: string[]) { if (!ids.length) return; await store.marcaNotificheLette(ids); qc.invalidateQueries({ queryKey: ['notifiche-admin', postazioneId] }) }
+  function vai(n: Notifica) { marca([n.id]); if (n.target) navigate(n.target) }
+  const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
   const avvisi = useMemo<Avviso[]>(() => {
     const out: Avviso[] = []
@@ -76,6 +91,31 @@ export function AdminHomePage() {
 
       <div className="relative max-w-3xl mx-auto p-6 space-y-6">
         <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Riepilogo{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
+
+        {/* Centro Notifiche */}
+        {perTipo.length > 0 && (
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5"><Bell size={13} /> Centro Notifiche{nonLette > 0 ? ` · ${nonLette} non lett${nonLette === 1 ? 'a' : 'e'}` : ''}</h2>
+              {nonLette > 0 && <button onClick={() => marca(notificheVisibili.filter(n => !n.letta).map(n => n.id))} className="ml-auto text-[11px] text-stone-500 hover:text-stone-700">Segna tutte lette</button>}
+            </div>
+            {perTipo.map(g => (
+              <div key={g.tipo} className="card p-3 space-y-1.5">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#476540' }}>{g.label}</h3>
+                {g.items.map(n => (
+                  <div key={n.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: n.letta ? '#f7f8f4' : '#fff7ed' }}>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: n.letta ? 'transparent' : '#f59e0b' }} />
+                    <span className="text-sm flex-1" style={{ color: n.letta ? '#78716c' : '#3a3d30', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
+                    <span className="text-[10px] text-stone-400 shrink-0 hidden sm:inline">{fmtDT(n.created_at)}</span>
+                    {n.target
+                      ? <button onClick={() => vai(n)} className="btn-primary text-[11px] py-0.5 px-2 shrink-0">Vai</button>
+                      : !n.letta && <button onClick={() => marca([n.id])} className="text-[11px] text-stone-500 hover:text-stone-700 shrink-0">ok</button>}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </section>
+        )}
 
         {/* Promemoria e scadenze */}
         <section className="space-y-2">
