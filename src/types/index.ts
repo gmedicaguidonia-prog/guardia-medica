@@ -252,6 +252,17 @@ export const NOTIFICA_TIPI: { tipo: string; label: string }[] = [
 ]
 export const NOTIFICA_LABEL: Record<string, string> = Object.fromEntries(NOTIFICA_TIPI.map(n => [n.tipo, n.label]))
 
+/** Candidatura in attesa di un turnista (mostrata nel Centro Messaggi, con "Ritira"). */
+export interface CandidaturaAttesa {
+  id: string
+  data: string
+  postazioneId: string
+  turnoSchemaId: string
+  turnistaId: string
+  turnoNome: string
+  postazioneNome: string
+}
+
 // ─── Impaginazione (fogli = griglie nominate di turni, versionate) ──
 //  Ogni "foglio" raggruppa un sottoinsieme dei turni del mese; Desiderata,
 //  Turni del Mese e la pagina pubblica generano UNA griglia per foglio.

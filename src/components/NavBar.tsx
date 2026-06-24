@@ -5,6 +5,7 @@ import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw, M
 import { puoGestire, nomeCompleto } from '../types'
 import { usePostazione } from '../contexts/PostazioneContext'
 import { useDebug } from '../contexts/DebugContext'
+import { CentroMessaggi } from './CentroMessaggi'
 import { store } from '../lib/store'
 import type { AuthUser, Livello, UtenteImpersonabile } from '../types'
 
@@ -168,6 +169,9 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
               </span>
             )}
           </span>
+
+          {/* Centro Messaggi del turnista (icona lettera a destra del nome) */}
+          <CentroMessaggi user={user} />
 
           {/* DEBUG: Modalità Admin + Doppleganger (dopo il nome utente, solo per l'admin reale) */}
           {isRealAdmin && (

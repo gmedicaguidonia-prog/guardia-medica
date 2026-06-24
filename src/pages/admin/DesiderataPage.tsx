@@ -155,6 +155,7 @@ export function DesiderataPage() {
   async function salvaFinestra() {
     try {
       await store.setDesiderataFinestra(postazioneId!, meseKey, finDa || null, finA || null)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Periodo di raccolta desiderata di ${MESI[mese - 1]} ${anno} pubblicato${finDa && finA ? ` (${itDate(finDa)}–${itDate(finA)})` : ''}.`, target: '/admin/desiderata', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
       setFinMsg('Pubblicato'); setTimeout(() => setFinMsg(null), 2500)
     } catch (e) { console.error(e); alert('Errore nella pubblicazione del periodo.') }
@@ -165,6 +166,7 @@ export function DesiderataPage() {
   async function togglePubbliche() {
     try {
       await store.setDesiderataPubbliche(postazioneId!, meseKey, !pubbliche)
+      if (!pubbliche) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubbliche', messaggio: `Desiderata di ${MESI[mese - 1]} ${anno} rese pubbliche (visibili a tutti i turnisti).`, target: '/admin/desiderata', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
     } catch (e) { console.error(e); alert('Errore nel cambio modalità desiderata pubbliche.') }
   }
@@ -190,6 +192,7 @@ export function DesiderataPage() {
     if (!versione || schema.length === 0) { showWarn(`Non ci sono turni configurati per ${MESI[mese - 1]} ${anno}: impostali prima in Configurazione Turni (passo ①), poi potrai attivare la raccolta.`); return }
     try {
       await store.attivaDesiderata(postazioneId!, meseKey)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_creata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} attivata.`, target: '/admin/desiderata', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
     } catch (e) { console.error(e); alert('Errore nell\'attivazione della raccolta.') }
   }

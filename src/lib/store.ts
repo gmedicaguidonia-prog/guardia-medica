@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null }
@@ -509,6 +509,20 @@ const supaStore = {
     if (error) throw error
     return (data ?? []).map(mapNotifica)
   },
+  // candidature ancora "in attesa" dei turnisti dati (per il Centro Messaggi → Ritira)
+  async getRichiesteUtente(turnistaIds: string[]): Promise<CandidaturaAttesa[]> {
+    if (!turnistaIds.length) return []
+    const { data, error } = await supabase.from('richieste_turno')
+      .select('id, data, postazione_id, turno_schema_id, turnista_id, turno:schema_turni(nome), postazione:postazioni(nome)')
+      .in('turnista_id', turnistaIds).eq('stato', 'in_attesa').order('data')
+    if (error) throw error
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string, data: r.data as string, postazioneId: r.postazione_id as string,
+      turnoSchemaId: r.turno_schema_id as string, turnistaId: r.turnista_id as string,
+      turnoNome: (r.turno as { nome?: string } | null)?.nome ?? 'Turno',
+      postazioneNome: (r.postazione as { nome?: string } | null)?.nome ?? '',
+    }))
+  },
   async marcaNotificheLette(ids: string[]): Promise<void> {
     if (!ids.length) return
     const { error } = await supabase.from('notifiche').update({ letta: true }).in('id', ids)
@@ -912,6 +926,13 @@ const localStore = {
   async getNotificheUtente(turnistaIds: string[]): Promise<Notifica[]> {
     const s = new Set(turnistaIds)
     return read<Notifica[]>('gm_notifiche', []).filter(n => n.turnistaId && s.has(n.turnistaId)).sort((a, b) => b.created_at.localeCompare(a.created_at))
+  },
+  async getRichiesteUtente(turnistaIds: string[]): Promise<CandidaturaAttesa[]> {
+    const s = new Set(turnistaIds)
+    const schema = read<TurnoSchema[]>(LS_SCHEMA, []), post = read<Postazione[]>(LS_POSTAZIONI, [])
+    return read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, [])
+      .filter(r => s.has(r.turnista_id) && (r.stato ?? 'in_attesa') === 'in_attesa')
+      .map(r => ({ id: r.id, data: r.data, postazioneId: r.postazione_id ?? DEV_POSTAZIONE, turnoSchemaId: r.turno_schema_id, turnistaId: r.turnista_id, turnoNome: schema.find(x => x.id === r.turno_schema_id)?.nome ?? 'Turno', postazioneNome: post.find(p => p.id === (r.postazione_id ?? DEV_POSTAZIONE))?.nome ?? '' }))
   },
   async marcaNotificheLette(ids: string[]): Promise<void> {
     const set = new Set(ids)
