@@ -212,7 +212,7 @@ export function GestioneTurniPage() {
     }
     return null
   }
-  function handleDrop(ds: string, turno: TurnoSchema, tipo: string) {
+  async function handleDrop(ds: string, turno: TurnoSchema, tipo: string) {
     const tid = dragSource.current; dragSource.current = null; setOverKey(null)
     if (!tid) return
     const sovr = (conf: TurnoSchema) => showWarn(`${nomeTurnista(tid)} è già impegnato in “${conf.nome || 'un turno'}” (${conf.ora_inizio}–${conf.ora_fine}) in sovrapposizione di orario.`)
@@ -236,8 +236,11 @@ export function GestioneTurniPage() {
     if (maxS != null && oreSettimana(local, schema, tid, ds) + (durataById.get(turno.id) ?? 0) > maxS + 2) avvisi.push(`supererà le ${maxS}h settimanali (±2)`)
     const maxC = regoleVer?.ore_max_consecutive ?? null
     if (maxC != null && oreConsecutive(local, schema, tid, ds, turno) > maxC + 2) avvisi.push(`supererà le ${maxC}h consecutive (±2)`)
+    if (avvisi.length) {
+      const ok = await confirm({ title: 'Forzare l’inserimento?', message: `${nomeTurnista(tid)}: ${avvisi.join(' · ')}. Vuoi inserirlo lo stesso (forzatura)?`, confirmLabel: 'Sì, forza', danger: true })
+      if (!ok) return
+    }
     set(`${ds}|${turno.id}|${free}`, tid)
-    if (avvisi.length) showWarn(`${nomeTurnista(tid)}: ${avvisi.join(' · ')}. Inserito comunque (forzato).`)
   }
 
   function cambiaMese(delta: number) {
@@ -280,13 +283,14 @@ export function GestioneTurniPage() {
   }
 
   // ── Auto Assegnazione ──
-  function eseguiAuto() {
+  function eseguiAuto(aggiungi: boolean) {
     const poolIds = turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno').map(t => t.id)
     if (!poolIds.length) { showWarn('Nessun turnista importato per questo mese: importa prima il personale.'); return }
-    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null })
-    // sostituisco i turni veri ma preservo i reperibili già impostati (slot < 0)
+    // "aggiungi": mantieni i turnisti già inseriti (slot ≥ 0); "sostituisci": riparti da zero
+    const esistenti = aggiungi ? new Map([...local].filter(([k]) => +k.split('|')[2] >= 0)) : undefined
+    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, esistenti })
     const nuovo = new Map(res.assegna)
-    for (const [k, v] of local) if (+k.split('|')[2] < 0) nuovo.set(k, v)
+    for (const [k, v] of local) if (+k.split('|')[2] < 0) nuovo.set(k, v)   // reperibili preservati sempre
     replaceAll(nuovo)
     setAutoRes(res)
   }
@@ -713,7 +717,7 @@ export function GestioneTurniPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.5)' }} onClick={() => setShowAuto(false)}>
           <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2"><Wand2 size={18} style={{ color: '#6d28d9' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Auto Assegnazione · {MESI[mese - 1]} {anno}</h3></div>
-            <p className="text-sm text-stone-600 mb-3">Tutti i turni del mese verranno <strong>sostituiti</strong> da quelli calcolati. Potrai rivederli prima di salvare.</p>
+            <p className="text-sm text-stone-600 mb-3">Scegli come calcolare. <strong>Aggiungi</strong> = riempie i posti vuoti mantenendo i turnisti già inseriti a mano (quelli "vincono"). <strong>Sostituisci tutto</strong> = ricalcola da zero. In entrambi i casi potrai rivedere prima di salvare.</p>
             <div className="space-y-1.5 mb-4 text-sm rounded-lg p-3" style={{ background: '#f6f7f3' }}>
               <div className="flex items-center gap-2">
                 {poolAuto.length ? <Check size={15} style={{ color: '#16a34a' }} /> : <AlertTriangle size={15} style={{ color: '#b91c1c' }} />}
@@ -730,7 +734,8 @@ export function GestioneTurniPage() {
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowAuto(false)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
-              <button onClick={() => { setShowAuto(false); eseguiAuto() }} disabled={!poolAuto.length} className="btn-primary text-sm py-1.5 px-4" style={{ background: '#6d28d9' }}>Calcola</button>
+              <button onClick={() => { setShowAuto(false); eseguiAuto(true) }} disabled={!poolAuto.length} className="btn-secondary text-sm py-1.5 px-3" style={{ borderColor: '#c4b5fd', color: '#6d28d9' }}>Aggiungi ai turni</button>
+              <button onClick={() => { setShowAuto(false); eseguiAuto(false) }} disabled={!poolAuto.length} className="btn-primary text-sm py-1.5 px-4" style={{ background: '#6d28d9' }}>Sostituisci tutto</button>
             </div>
           </div>
         </div>
@@ -744,7 +749,7 @@ export function GestioneTurniPage() {
               <strong>{autoRes.coperti}</strong> turni assegnati su {autoRes.totali}
               {autoRes.totali - autoRes.coperti > 0 && <> · <strong style={{ color: '#b45309' }}>{autoRes.totali - autoRes.coperti} ancora scoperti</strong></>}.
             </p>
-            <p className="text-xs text-stone-500 mb-2">di cui <strong>{autoRes.nFissi}</strong> fissi · <strong>{autoRes.perDesiderata}</strong> per desiderata · <strong>{autoRes.perRiempimento}</strong> per riempimento.</p>
+            <p className="text-xs text-stone-500 mb-2">di cui {autoRes.nEsistenti > 0 && <><strong>{autoRes.nEsistenti}</strong> già presenti · </>}<strong>{autoRes.nFissi}</strong> fissi · <strong>{autoRes.perDesiderata}</strong> per desiderata · <strong>{autoRes.perRiempimento}</strong> per riempimento.</p>
             {autoRes.perRiempimento > 0 && <p className="text-xs mb-2" style={{ color: '#b45309' }}>⚠ {autoRes.perRiempimento} post{autoRes.perRiempimento === 1 ? 'o' : 'i'} riempit{autoRes.perRiempimento === 1 ? 'o' : 'i'} con chi era libero: le disponibilità «vorrei» non bastavano a coprire tutto per preferenza.</p>}
             {autoRes.coperti === 0 && <p className="text-sm mb-2" style={{ color: '#b91c1c' }}>Non è stato possibile assegnare nessun turno: controlla disponibilità e indisponibilità.</p>}
             <div className="max-h-64 overflow-auto rounded-lg" style={{ border: '1px solid #eef0ea' }}>

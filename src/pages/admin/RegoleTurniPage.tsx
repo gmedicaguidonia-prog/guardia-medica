@@ -91,6 +91,7 @@ export function RegoleTurniPage() {
   const [overKey, setOverKey] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   useDragAutoScroll(!!draggingId)   // scroll automatico della pagina durante il trascinamento
+  const [picker, setPicker] = useState<{ giorno: number; turno: TurnoSchema; x: number; y: number } | null>(null)
   const [oreMin, setOreMin] = useState('')
   const [oreMaxSett, setOreMaxSett] = useState('')
   const [oreMaxCons, setOreMaxCons] = useState('')
@@ -142,9 +143,11 @@ export function RegoleTurniPage() {
     const free = slots.findIndex(s => s === null)
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” bastano ${turno.n_turnisti} turnist${turno.n_turnisti === 1 ? 'a' : 'i'}.`); return }
     const vietatoQui = cellaVietati(giorno, turno).find(v => v.tid === tid)   // era "mai" qui?
-    if (vietatoQui) set(`${giorno}|${turno.id}|${vietatoQui.slot}`, null)     // forzo: tolgo il divieto
+    if (vietatoQui) {
+      if (!window.confirm(`${nomeTurnista(tid)} è segnato «mai» per questo turno. Metterlo fisso lo stesso (toglie il divieto)?`)) return
+      set(`${giorno}|${turno.id}|${vietatoQui.slot}`, null)   // forzatura: tolgo il divieto
+    }
     set(`${giorno}|${turno.id}|${free}`, tid)
-    if (vietatoQui) showWarn(`${nomeTurnista(tid)} era segnato «mai» qui: l'ho messo fisso comunque (forzato).`)
   }
   // insieme dei "mai" attuali (per evidenziare le celle durante il trascinamento)
   const vietatoLocal = useMemo(() => {
@@ -328,20 +331,21 @@ export function RegoleTurniPage() {
                         onDragOver={e => { e.preventDefault(); setOverKey(key) }}
                         onDragLeave={() => setOverKey(k => (k === key ? null : k))}
                         onDrop={e => { e.preventDefault(); handleDrop(g.num, c) }}
-                        style={cellStyle(g.num, c.id)}>
+                        onClick={e => { if ((e.target as HTMLElement).closest('[data-badge]')) return; setPicker({ giorno: g.num, turno: c, x: e.clientX, y: e.clientY }) }}
+                        style={{ ...cellStyle(g.num, c.id), cursor: 'copy' }}>
                         <div className="flex flex-col gap-1.5 items-start">
                           {slots.map((tid, slot) => tid ? (
-                            <span key={slot} onClick={() => vietaBadge(g.num, c, slot, tid)} title="Clic per vietare (mai questo turno)"
+                            <span key={slot} data-badge onClick={() => vietaBadge(g.num, c, slot, tid)} title="Clic per vietare (mai questo turno)"
                               className="relative rounded px-2 py-0.5 text-[11px] font-medium shadow-sm cursor-pointer" style={{ background: coloreTurnista(tid).bg, color: coloreTurnista(tid).fg }}>
                               {nomeTurnista(tid)}
                               <button onClick={e => { e.stopPropagation(); set(`${g.num}|${c.id}|${slot}`, null) }} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
                             </span>
                           ) : null)}
                           {vietati.map(({ tid, slot }) => (
-                            <span key={slot} onClick={() => fissaBadge(g.num, c, slot, tid)} title="Mai questo turno · clic per rimetterlo fisso"
-                              className="relative rounded px-2 py-0.5 text-[11px] font-semibold shadow-sm cursor-pointer overflow-hidden" style={{ background: '#e5e7eb', color: '#6b7280' }}>
+                            <span key={slot} data-badge onClick={() => fissaBadge(g.num, c, slot, tid)} title="Mai questo turno · clic per rimetterlo fisso"
+                              className="relative rounded px-2 py-0.5 text-[11px] font-semibold shadow-sm cursor-pointer" style={{ background: '#e5e7eb', color: '#6b7280' }}>
                               {nomeTurnista(tid)}
-                              <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%" preserveAspectRatio="none">
+                              <svg className="absolute inset-0 pointer-events-none rounded" width="100%" height="100%" preserveAspectRatio="none" style={{ overflow: 'hidden' }}>
                                 <line x1="0%" y1="100%" x2="62%" y2="0%" stroke="#64748b" strokeWidth="2" />
                                 <line x1="38%" y1="100%" x2="100%" y2="0%" stroke="#64748b" strokeWidth="2" />
                               </svg>
@@ -400,6 +404,28 @@ export function RegoleTurniPage() {
           </div>
         )
       })()}
+
+      {/* Menu a tendina su clic in una cella (in alternativa al trascinamento) */}
+      {picker && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setPicker(null)} />
+          <div className="fixed z-50 card p-1.5 shadow-2xl" style={{ left: Math.max(8, Math.min(picker.x, window.innerWidth - 210)), top: Math.max(8, Math.min(picker.y, window.innerHeight - 300)), width: 200, maxHeight: 290, overflow: 'auto', animation: 'fadeSlideIn 120ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1" style={{ color: '#476540' }}>＋ {picker.turno.nome || 'Turno'} · {GIORNI_SETTIMANA[picker.giorno - 1].nome}</p>
+            {paletteGruppi.length ? paletteGruppi.map(g => (
+              <div key={g.liv}>
+                <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 pt-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</p>
+                {g.items.map(t => (
+                  <button key={t.id} onClick={() => { dragSource.current = t.id; handleDrop(picker.giorno, picker.turno); setPicker(null) }}
+                    className="flex items-center gap-1.5 w-full text-left px-1.5 py-1 rounded hover:bg-stone-100 text-xs">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ROLE_COLOR[t.livello].fg }} />
+                    <span className="truncate flex-1">{nomeCompleto(t)}</span>
+                  </button>
+                ))}
+              </div>
+            )) : <p className="text-xs text-stone-400 px-1.5 py-1">Nessun turnista.</p>}
+          </div>
+        </>
+      )}
 
       {warn && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4" role="alert">

@@ -26,11 +26,13 @@ export interface AutoAssegnaInput {
   durataById: Map<string, number>   // ore di ciascun tipo di turno
   maxSettimana?: number | null      // ore massime a settimana (da non superare)
   maxConsecutive?: number | null    // ore massime consecutive (turni attaccati)
+  esistenti?: Map<string, string>   // modalità "aggiungi": assegnazioni già presenti da MANTENERE (vincono)
 }
 export interface AutoAssegnaResult {
   assegna: Map<string, string>       // `${ds}|${turnoId}|${slot}` → turnistaId
   totali: number                     // slot totali del mese
   coperti: number                    // slot assegnati
+  nEsistenti: number                 // assegnazioni manuali mantenute (modalità "aggiungi")
   nFissi: number                     // assegnati dai turni fissi (Regole)
   perDesiderata: number              // assegnati grazie a un «vorrei»
   perRiempimento: number             // assegnati col riempimento (chi era libero, senza preferenza)
@@ -102,7 +104,7 @@ export function vietatiDaRegole(regole: RegolaTurno[]): Set<string> {
 interface Slot { ds: string; t: TurnoSchema; slot: number; weekend: boolean; g: number }
 
 export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
-  const { giorni, schema, poolIds, regole, desiderata, durataById, maxSettimana = null, maxConsecutive = null } = inp
+  const { giorni, schema, poolIds, regole, desiderata, durataById, maxSettimana = null, maxConsecutive = null, esistenti } = inp
   const pool = new Set(poolIds)
   const dur = (id: string) => durataById.get(id) ?? 0
 
@@ -119,6 +121,22 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   poolIds.forEach(t => { ore.set(t, 0); wknd.set(t, 0); busy.set(t, []) })
   const oreSett = new Map<string, Map<string, number>>()   // tid → (lunedì settimana → ore) [per il max settimanale]
   const assegna = new Map<string, string>()
+
+  // modalità "aggiungi": semina con le assegnazioni manuali da MANTENERE (vincono)
+  if (esistenti) {
+    const byId = new Map(schema.map(s => [s.id, s]))
+    for (const [key, tid] of esistenti) {
+      const [ds, turnoId, slotStr] = key.split('|')
+      if (+slotStr < 0 || !pool.has(tid)) continue
+      const turno = byId.get(turnoId); if (!turno) continue
+      assegna.set(key, tid)
+      ore.set(tid, ore.get(tid)! + dur(turnoId))
+      if (isWeekend(ds)) wknd.set(tid, wknd.get(tid)! + 1)
+      busy.get(tid)!.push(intervallo(ds, turno))
+      const wk = lunediKey(ds); if (!oreSett.has(tid)) oreSett.set(tid, new Map()); const wm = oreSett.get(tid)!; wm.set(wk, (wm.get(wk) ?? 0) + dur(turnoId))
+    }
+  }
+  const nEsistenti = assegna.size
 
   const libero = (tid: string, ds: string, t: TurnoSchema): boolean => {
     if (indispo.has(`${ds}|${t.id}|${tid}`)) return false
@@ -161,7 +179,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     poni(r.turnista_id, slot)
   }
 
-  const nFissi = assegna.size   // quanti assegnati dai turni fissi
+  const nFissi = assegna.size - nEsistenti   // assegnati dai turni fissi (esclusi i manuali mantenuti)
 
   // candidati per uno slot ancora libero
   const candidati = (slot: Slot, soloVuoi: boolean): string[] => {
@@ -173,8 +191,8 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
       if (soloVuoi && !vuoi.has(`${slot.ds}|${slot.t.id}|${tid}`)) return false
       if (!libero(tid, slot.ds, slot.t)) return false
       // limiti orario (Regole): non superare le ore settimanali né le ore consecutive
-      if (maxSettimana != null && (oreSett.get(tid)?.get(lunediKey(slot.ds)) ?? 0) + dur(slot.t.id) > maxSettimana + 2) return false   // tolleranza ±2
-      if (maxConsecutive != null && runContenente(busy.get(tid)!, intervallo(slot.ds, slot.t)) > maxConsecutive + 2) return false
+      if (maxSettimana != null && (oreSett.get(tid)?.get(lunediKey(slot.ds)) ?? 0) + dur(slot.t.id) > maxSettimana + 2) return false   // settimanali: tolleranza ±2
+      if (maxConsecutive != null && runContenente(busy.get(tid)!, intervallo(slot.ds, slot.t)) > maxConsecutive) return false          // consecutive: MAI rotta in auto
       return true
     })
   }
@@ -198,15 +216,15 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   }
 
   riempi(true)    // 2a) prima le desiderata («vorrei»)
-  const perDesiderata = assegna.size - nFissi
+  const perDesiderata = assegna.size - nEsistenti - nFissi
   riempi(false)   // 2b) poi chiunque sia libero (per coprire i buchi)
-  const perRiempimento = assegna.size - nFissi - perDesiderata
+  const perRiempimento = assegna.size - nEsistenti - nFissi - perDesiderata
 
   return {
     assegna,
     totali: slots.length,
     coperti: assegna.size,
-    nFissi, perDesiderata, perRiempimento,
+    nEsistenti, nFissi, perDesiderata, perRiempimento,
     perTurnista: poolIds.map(id => ({ id, ore: ore.get(id)!, weekend: wknd.get(id)! })).sort((a, b) => b.ore - a.ore),
   }
 }
