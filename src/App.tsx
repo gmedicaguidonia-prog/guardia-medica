@@ -18,7 +18,6 @@ import { useVersionCheck } from './hooks/useVersionCheck'
 import { UpdateToast } from './components/UpdateToast'
 import { UnsavedProvider } from './contexts/UnsavedContext'
 import { PostazioneProvider } from './contexts/PostazioneContext'
-import { puoGestire } from './types'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,12 +68,11 @@ function AppRoutes() {
           <Route path="schema"   element={<SchemaTurniPage />} />
         </Route>
 
-        {/* Root → redirect per ruolo */}
+        {/* Root → sempre la pagina pubblica (l'admin si apre dalla navbar) */}
         <Route path="/"
           element={
             loading ? <Spinner />
               : !user ? <Navigate to="/login" replace />
-              : puoGestire(user.livello) ? <Navigate to="/admin" replace />
               : <Navigate to="/turni" replace />
           } />
 
