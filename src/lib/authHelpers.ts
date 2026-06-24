@@ -44,6 +44,22 @@ export function detachedSignOut() {
   }, 0)
 }
 
+// ── Postazione in cui l'utente è "turnista" (per il default al login) ──
+//  REST diretto con il JWT dell'utente (RLS: vede la propria appartenenza).
+//  null se non è turnista da nessuna parte.
+export async function fetchTurnistaPostazione(accessToken: string, userId: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/turnisti?utente_id=eq.${userId}&livello=eq.turnista&select=postazione_id&limit=1`,
+      { headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` } },
+    )
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null) as unknown
+    const row = Array.isArray(data) ? (data[0] as Record<string, unknown> | undefined) : null
+    return (row?.postazione_id as string | undefined) ?? null
+  } catch { return null }
+}
+
 // ── Fetch RPC get_my_profile (REST diretto, bypassa il lock di supabase-js)
 //  - AuthUser   → profilo trovato (utente autorizzato)
 //  - null       → email non in whitelist

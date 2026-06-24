@@ -136,28 +136,6 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
 
         <div className="flex-1" />
 
-        {/* DEBUG: Modalità Admin + Doppleganger (solo per l'admin reale) */}
-        {isRealAdmin && (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button onClick={() => setDebugModal('admin')} title="Modalità admin (debug) — attiva/disattiva i pieni poteri"
-              className={`relative text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${adminMode ? 'animate-pulse' : ''}`}
-              style={adminMode
-                ? { background: '#3a2e0a', color: '#fde68a', border: '2px solid #facc15', boxShadow: '0 0 8px rgba(250,204,21,0.75)' }
-                : { background: '#b91c1c', color: '#fff', border: '2px solid transparent' }}>
-              ADMIN
-              {adminMode && <Crown size={12} className="absolute -top-2.5 -right-1.5" style={{ color: '#facc15' }} fill="#facc15" />}
-            </button>
-            <button onClick={() => { setDgScelto(realUser?.id ?? ''); setDebugModal('doppleganger') }} title="Doppleganger (debug) — fingiti un altro utente"
-              className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded transition-all"
-              style={doppleganger
-                ? { background: '#3a2e0a', color: '#fde68a', border: '2px solid #facc15', boxShadow: '0 0 8px rgba(250,204,21,0.6)' }
-                : { background: '#456b3a', color: '#e0e8d8', border: '2px solid transparent' }}>
-              {doppleganger ? <PackageOpen size={13} style={{ color: '#facc15' }} /> : <Package size={13} />}
-              <span className="hidden md:inline">{doppleganger ? nomeCompleto(doppleganger) : 'Doppleganger'}</span>
-            </button>
-          </div>
-        )}
-
         {/* DEV: switch rapido del ruolo per provare le viste */}
         {isDev && (
           <div className="flex items-center gap-1.5 shrink-0">
@@ -190,6 +168,28 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
               </span>
             )}
           </span>
+
+          {/* DEBUG: Modalità Admin + Doppleganger (dopo il nome utente, solo per l'admin reale) */}
+          {isRealAdmin && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button onClick={() => setDebugModal('admin')} title="Modalità admin (debug) — un di più sopra ai normali poteri da admin"
+                className={`relative text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${adminMode ? 'animate-pulse' : ''}`}
+                style={adminMode
+                  ? { background: '#3a2e0a', color: '#fde68a', border: '2px solid #facc15', boxShadow: '0 0 8px rgba(250,204,21,0.75)' }
+                  : { background: '#b91c1c', color: '#fff', border: '2px solid transparent' }}>
+                ADMIN
+                {adminMode && <Crown size={12} className="absolute -top-2.5 -right-1.5" style={{ color: '#facc15' }} fill="#facc15" />}
+              </button>
+              <button onClick={() => { setDgScelto(realUser?.id ?? ''); setDebugModal('doppleganger') }} title="Doppleganger (debug) — fingiti un altro utente"
+                className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded transition-all"
+                style={doppleganger
+                  ? { background: '#3a2e0a', color: '#fde68a', border: '2px solid #facc15', boxShadow: '0 0 8px rgba(250,204,21,0.6)' }
+                  : { background: '#456b3a', color: '#e0e8d8', border: '2px solid transparent' }}>
+                {doppleganger ? <PackageOpen size={13} style={{ color: '#facc15' }} /> : <Package size={13} />}
+                <span className="hidden md:inline">{doppleganger ? nomeCompleto(doppleganger) : 'Doppleganger'}</span>
+              </button>
+            </div>
+          )}
           <button
             onClick={onSignOut}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
@@ -217,7 +217,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.55)' }} onClick={() => setDebugModal(null)}>
           <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2"><Crown size={20} style={{ color: '#b8860b' }} fill="#facc15" /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Modalità Admin</h3></div>
-            <p className="text-sm text-stone-600 mb-4">{adminMode ? 'Disattivare la modalità admin? Tornerai a vedere l’app come utente normale.' : 'Attivare la modalità admin? Avrai accesso completo a tutto (per il debug).'}</p>
+            <p className="text-sm text-stone-600 mb-4">{adminMode ? 'Disattivare la modalità admin? Resti comunque admin a pieni poteri: si spegne solo l’evidenziazione “god mode”.' : 'Attivare la modalità admin? È un di più di “god mode” (per il debug) sopra ai tuoi normali poteri da admin, che hai sempre.'}</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setDebugModal(null)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
               <button onClick={() => { setAdminMode(!adminMode); setDebugModal(null) }} className="btn-primary text-sm py-1.5 px-4">{adminMode ? 'Disattiva' : 'Attiva'}</button>

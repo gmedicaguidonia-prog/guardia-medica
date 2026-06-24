@@ -40,6 +40,13 @@ export function PostazioneProvider({ user, children }: { user: AuthUser | null; 
 
   const [postazioneId, setPid] = useState<string | null>(() => localStorage.getItem(LS_KEY))
 
+  // Al login (cambio utente) ri-leggi la postazione di default appena impostata
+  // (mese corrente + postazione da turnista) — vedi applyLoginDefaults.
+  useEffect(() => {
+    if (!user) return
+    try { const s = localStorage.getItem(LS_KEY); if (s) setPid(s) } catch { /* ignore */ }
+  }, [user?.id])   // eslint-disable-line react-hooks/exhaustive-deps
+
   // Seleziona/valida la postazione attiva quando arrivano quelle visibili.
   useEffect(() => {
     if (!postazioni.length) return

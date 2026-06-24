@@ -48,9 +48,9 @@ export function DebugProvider({ realUser, children }: { realUser: AuthUser | nul
     if (!realUser) return null
     if (!isRealAdmin) return realUser                 // non-admin: nessun override
     if (doppleganger) return doppleganger             // doppleganger: permessi dell'utente scelto
-    if (adminMode) return realUser                    // modalita' admin: pieni poteri
-    return { ...realUser, livello: 'turnista' }        // default "normale": utente senza poteri admin
-  }, [realUser, isRealAdmin, adminMode, doppleganger])
+    return realUser                                    // admin: pieni poteri SEMPRE (default come prima);
+                                                       // la "modalita' admin" e' un di piu' (visivo) sopra a questi
+  }, [realUser, isRealAdmin, doppleganger])
 
   const value: Ctx = {
     realUser, effectiveUser, isRealAdmin, adminMode, doppleganger,

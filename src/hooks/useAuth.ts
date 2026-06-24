@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import {
   getCachedProfile, setCachedProfile, clearCachedProfile,
-  flagUnauthorized, detachedSignOut, fetchProfile,
+  flagUnauthorized, detachedSignOut, fetchProfile, fetchTurnistaPostazione,
 } from '../lib/authHelpers'
 import { ADMIN_EMAIL } from '../lib/constants'
 import type { AuthUser, Livello } from '../types'
@@ -31,6 +31,24 @@ function persistDevUser(u: AuthUser | null) {
   try {
     if (u) localStorage.setItem(DEV_KEY, JSON.stringify(u))
     else   localStorage.removeItem(DEV_KEY)
+  } catch {}
+}
+
+const SESSION_UID_KEY = 'gm_session_uid'
+
+/** Al PRIMO login di un utente (cambio identità) reimposta le selezioni di
+ *  default: mese corrente e postazione in cui è "turnista". Su reload con la
+ *  stessa identità NON tocca nulla, così la selezione resta memorizzata. */
+async function applyLoginDefaults(accessToken: string, u: AuthUser) {
+  let prev: string | null = null
+  try { prev = localStorage.getItem(SESSION_UID_KEY) } catch {}
+  if (prev === u.id) return   // stessa sessione (reload): mantieni la selezione
+  try {
+    const d = new Date()
+    localStorage.setItem('gm_mese', `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    const post = await fetchTurnistaPostazione(accessToken, u.id)
+    if (post) localStorage.setItem('gm_postazione', post)
+    localStorage.setItem(SESSION_UID_KEY, u.id)
   } catch {}
 }
 
@@ -62,12 +80,15 @@ export function useAuth() {
         flagUnauthorized(email, 'email non in elenco turnisti autorizzati')
         detachedSignOut(); setUser(null); setLoading(false); return
       }
-      setCachedProfile(result); setUser(result); setLoading(false)
+      setCachedProfile(result)
+      await applyLoginDefaults(session.access_token, result)
+      if (cancelled) return
+      setUser(result); setLoading(false)
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return
-      if (event === 'SIGNED_OUT') { clearCachedProfile(); setUser(null); setLoading(false); return }
+      if (event === 'SIGNED_OUT') { clearCachedProfile(); try { localStorage.removeItem(SESSION_UID_KEY) } catch {} setUser(null); setLoading(false); return }
       if (event === 'SIGNED_IN' && session?.user?.email) { await processSession(session); return }
     })
 
@@ -124,6 +145,7 @@ export function useAuth() {
   async function signOut() {
     if (DEV) { persistDevUser(null); setUser(null); return }
     clearCachedProfile()
+    try { localStorage.removeItem(SESSION_UID_KEY) } catch {}
     await supabase.auth.signOut()
     setUser(null)
   }
