@@ -148,7 +148,7 @@ export function SchemaTurniPage() {
   const qc = useQueryClient()
   const { confirm, confirmState } = useConfirm()
   const { setHasUnsaved } = useUnsaved()
-  const { postazioneId } = usePostazione()
+  const { postazioneId, postazioneAttiva } = usePostazione()
 
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
 
@@ -230,12 +230,12 @@ export function SchemaTurniPage() {
       <div className="flex items-start gap-3">
         <CalendarClock size={22} style={{ color: '#476540' }} className="mt-1" />
         <div className="flex-1">
-          <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Configurazione Turni</h1>
+          <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Configurazione Turni{postazioneAttiva ? ` - postazione di ${postazioneAttiva.nome}` : ''}</h1>
           <p className="text-sm text-stone-600">Definisci i turni validi per un periodo. Dopo ogni modifica premi <strong>Salva</strong>.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
-          <span className="font-semibold text-sm text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+          <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1" title="Mese successivo"><ChevronRight size={16} /></button>
         </div>
       </div>

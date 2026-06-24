@@ -43,7 +43,7 @@ export function GestioneTurniPage() {
   const navigate = useNavigate()
   const { setHasUnsaved } = useUnsaved()
   const { confirm, confirmState } = useConfirm()
-  const { postazioneId } = usePostazione()
+  const { postazioneId, postazioneAttiva } = usePostazione()
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
   const [mostraRepMesi, setMostraRepMesi] = useState<Set<string>>(new Set())
 
@@ -287,10 +287,10 @@ export function GestioneTurniPage() {
   const Header = (
     <div className="flex items-center gap-3 flex-wrap">
       <CalendarDays size={22} style={{ color: '#476540' }} />
-      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Turni del Mese</h1>
+      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Turni del Mese{postazioneAttiva ? ` - postazione di ${postazioneAttiva.nome}` : ''}</h1>
       <div className="flex items-center gap-2">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
-        <span className="font-semibold text-sm text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
+        <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
         <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
       </div>
       {/* Stato del calendario turni — apre il modal di scelta */}

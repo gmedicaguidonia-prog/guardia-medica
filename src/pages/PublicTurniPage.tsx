@@ -176,7 +176,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const MeseNav = (
     <div className="flex items-center gap-2">
       <button onClick={() => cambiaMese(-1)} disabled={!canPrev} className="btn-secondary px-2 py-1" style={{ opacity: canPrev ? 1 : 0.35, cursor: canPrev ? 'pointer' : 'not-allowed' }} title={canPrev ? 'Mese precedente' : 'Niente da vedere prima'}><ChevronLeft size={16} /></button>
-      <span className="font-semibold text-sm text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
+      <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
       <button onClick={() => cambiaMese(1)} disabled={!canNext} className="btn-secondary px-2 py-1" style={{ opacity: canNext ? 1 : 0.35, cursor: canNext ? 'pointer' : 'not-allowed' }} title={canNext ? 'Mese successivo' : 'Niente da vedere dopo'}><ChevronRight size={16} /></button>
     </div>
   )
