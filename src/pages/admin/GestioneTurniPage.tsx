@@ -74,6 +74,7 @@ export function GestioneTurniPage() {
   const { local, dirty, set, replaceAll, diff, discard } = useStagedAssignments(serverMap)
   const [saving, setSaving] = useState(false)
   const [autoRes, setAutoRes] = useState<AutoAssegnaResult | null>(null)
+  const [showAuto, setShowAuto] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showStatoModal, setShowStatoModal] = useState(false)
   const [statoScelto, setStatoScelto] = useState<StatoCalendario>('non_pubblicato')
@@ -127,6 +128,12 @@ export function GestioneTurniPage() {
     return { coperti: cop, totali: righe.length }
   }, [righe, local])
   const coperturaOk = copertura.totali > 0 && copertura.coperti >= copertura.totali
+  // pre-controllo Auto Assegnazione
+  const poolAuto = useMemo(() => turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno'), [turnisti, importati])
+  const slotTotali = useMemo(() => righe.reduce((n, r) => n + r.turno.n_turnisti, 0), [righe])
+  const nVorrei = useMemo(() => { const pool = new Set(poolAuto.map(t => t.id)); return desiderataMese.filter(d => d.tipo === 'desiderata' && pool.has(d.turnista_id)).length }, [desiderataMese, poolAuto])
+  const regolePresenti = !!regoleVer && regole.length > 0
+  const dispScarse = slotTotali > 0 && nVorrei < slotTotali
   // Warning (non bloccanti)
   const regoleVuote = !regoleVer || regole.length === 0
   const desNonPub = !finestraDes?.aperta_a
@@ -254,13 +261,9 @@ export function GestioneTurniPage() {
     replaceAll(nuovo)
     setAutoRes(res)
   }
-  async function chiediAuto() {
-    const ok = await confirm({
-      title: 'Auto Assegnazione',
-      message: `Tutti i turni di ${MESI[mese - 1]} ${anno} verranno SOSTITUITI da quelli calcolati automaticamente. Potrai rivederli e correggerli prima di salvare. Procedere?`,
-      confirmLabel: 'Calcola',
-    })
-    if (ok) eseguiAuto()
+  function chiediAuto() {
+    if (!poolAuto.length) { showWarn('Nessun turnista importato per questo mese: importa prima il personale.'); return }
+    setShowAuto(true)
   }
 
   // ── Assegna Reperibilità (solo a colonna attiva e con turni coperti ≥ 80%) ──
@@ -632,6 +635,34 @@ export function GestioneTurniPage() {
       )}
 
       {/* Riepilogo Auto Assegnazione */}
+      {/* Pre-controllo Auto Assegnazione */}
+      {showAuto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.5)' }} onClick={() => setShowAuto(false)}>
+          <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-2"><Wand2 size={18} style={{ color: '#6d28d9' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Auto Assegnazione · {MESI[mese - 1]} {anno}</h3></div>
+            <p className="text-sm text-stone-600 mb-3">Tutti i turni del mese verranno <strong>sostituiti</strong> da quelli calcolati. Potrai rivederli prima di salvare.</p>
+            <div className="space-y-1.5 mb-4 text-sm rounded-lg p-3" style={{ background: '#f6f7f3' }}>
+              <div className="flex items-center gap-2">
+                {poolAuto.length ? <Check size={15} style={{ color: '#16a34a' }} /> : <AlertTriangle size={15} style={{ color: '#b91c1c' }} />}
+                <span><strong>{poolAuto.length}</strong> turnisti importati{poolAuto.length ? '' : ' — importa prima il personale'}</span>
+              </div>
+              <div className="flex items-start gap-2">
+                {dispScarse ? <AlertTriangle size={15} style={{ color: '#b45309' }} className="mt-0.5 shrink-0" /> : <Check size={15} style={{ color: '#16a34a' }} className="mt-0.5 shrink-0" />}
+                <span><strong>{nVorrei}</strong> disponibilità «vorrei» per <strong>{slotTotali}</strong> posti{dispScarse && <span style={{ color: '#b45309' }}> — poche: riempirò il resto con chi è libero</span>}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {regolePresenti ? <Check size={15} style={{ color: '#16a34a' }} /> : <span style={{ color: '#94a3b8', fontWeight: 700, width: 15, textAlign: 'center', fontSize: 14 }}>–</span>}
+                <span style={regolePresenti ? undefined : { color: '#64748b' }}>Regole {regolePresenti ? 'definite (turni fissi rispettati)' : 'non definite (ok, procedo lo stesso)'}</span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowAuto(false)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
+              <button onClick={() => { setShowAuto(false); eseguiAuto() }} disabled={!poolAuto.length} className="btn-primary text-sm py-1.5 px-4" style={{ background: '#6d28d9' }}>Calcola</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {autoRes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.5)' }} onClick={() => setAutoRes(null)}>
           <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
@@ -640,6 +671,9 @@ export function GestioneTurniPage() {
               <strong>{autoRes.coperti}</strong> turni assegnati su {autoRes.totali}
               {autoRes.totali - autoRes.coperti > 0 && <> · <strong style={{ color: '#b45309' }}>{autoRes.totali - autoRes.coperti} ancora scoperti</strong></>}.
             </p>
+            <p className="text-xs text-stone-500 mb-2">di cui <strong>{autoRes.nFissi}</strong> fissi · <strong>{autoRes.perDesiderata}</strong> per desiderata · <strong>{autoRes.perRiempimento}</strong> per riempimento.</p>
+            {autoRes.perRiempimento > 0 && <p className="text-xs mb-2" style={{ color: '#b45309' }}>⚠ {autoRes.perRiempimento} post{autoRes.perRiempimento === 1 ? 'o' : 'i'} riempit{autoRes.perRiempimento === 1 ? 'o' : 'i'} con chi era libero: le disponibilità «vorrei» non bastavano a coprire tutto per preferenza.</p>}
+            {autoRes.coperti === 0 && <p className="text-sm mb-2" style={{ color: '#b91c1c' }}>Non è stato possibile assegnare nessun turno: controlla disponibilità e indisponibilità.</p>}
             <div className="max-h-64 overflow-auto rounded-lg" style={{ border: '1px solid #eef0ea' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
                 <thead><tr>

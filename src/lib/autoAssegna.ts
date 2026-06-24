@@ -29,6 +29,9 @@ export interface AutoAssegnaResult {
   assegna: Map<string, string>       // `${ds}|${turnoId}|${slot}` → turnistaId
   totali: number                     // slot totali del mese
   coperti: number                    // slot assegnati
+  nFissi: number                     // assegnati dai turni fissi (Regole)
+  perDesiderata: number              // assegnati grazie a un «vorrei»
+  perRiempimento: number             // assegnati col riempimento (chi era libero, senza preferenza)
   perTurnista: { id: string; ore: number; weekend: number }[]
 }
 
@@ -100,6 +103,8 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     poni(r.turnista_id, slot)
   }
 
+  const nFissi = assegna.size   // quanti assegnati dai turni fissi
+
   // candidati per uno slot ancora libero
   const candidati = (slot: Slot, soloVuoi: boolean): string[] => {
     if (assegna.has(`${slot.ds}|${slot.t.id}|${slot.slot}`)) return []
@@ -130,12 +135,15 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   }
 
   riempi(true)    // 2a) prima le desiderata («vorrei»)
+  const perDesiderata = assegna.size - nFissi
   riempi(false)   // 2b) poi chiunque sia libero (per coprire i buchi)
+  const perRiempimento = assegna.size - nFissi - perDesiderata
 
   return {
     assegna,
     totali: slots.length,
     coperti: assegna.size,
+    nFissi, perDesiderata, perRiempimento,
     perTurnista: poolIds.map(id => ({ id, ore: ore.get(id)!, weekend: wknd.get(id)! })).sort((a, b) => b.ore - a.ore),
   }
 }
