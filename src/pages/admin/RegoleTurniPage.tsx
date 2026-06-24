@@ -115,6 +115,24 @@ export function RegoleTurniPage() {
   function cellaSlots(giorno: number, turno: TurnoSchema): (string | null)[] {
     return Array.from({ length: turno.n_turnisti }, (_, slot) => local.get(`${giorno}|${turno.id}|${slot}`) ?? null)
   }
+  // "mai questo turno" = badge con slot NEGATIVO (convivono coi posti fissi, illimitati)
+  function cellaVietati(giorno: number, turno: TurnoSchema): { tid: string; slot: number }[] {
+    const out: { tid: string; slot: number }[] = []
+    for (const [k, tid] of local) { const [gg, tt, ss] = k.split('|'); if (+gg === giorno && tt === turno.id && +ss < 0) out.push({ tid, slot: +ss }) }
+    return out.sort((a, b) => b.slot - a.slot)
+  }
+  function vietaBadge(giorno: number, turno: TurnoSchema, slotFisso: number, tid: string) {
+    const usati = new Set(cellaVietati(giorno, turno).map(v => v.slot))
+    let neg = -1; while (usati.has(neg)) neg--
+    set(`${giorno}|${turno.id}|${slotFisso}`, null)   // libera il posto fisso
+    set(`${giorno}|${turno.id}|${neg}`, tid)          // crea il "mai"
+  }
+  function fissaBadge(giorno: number, turno: TurnoSchema, slotNeg: number, tid: string) {
+    const free = cellaSlots(giorno, turno).findIndex(s => s === null)
+    if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” non c'è un posto fisso libero.`); return }
+    set(`${giorno}|${turno.id}|${slotNeg}`, null)
+    set(`${giorno}|${turno.id}|${free}`, tid)
+  }
   function handleDrop(giorno: number, turno: TurnoSchema) {
     const tid = dragSource.current
     dragSource.current = null; setOverKey(null)
@@ -123,7 +141,25 @@ export function RegoleTurniPage() {
     if (slots.includes(tid)) { showWarn(`${nomeTurnista(tid)} è già in questo turno (${GIORNI_SETTIMANA[giorno - 1].nome}).`); return }
     const free = slots.findIndex(s => s === null)
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” bastano ${turno.n_turnisti} turnist${turno.n_turnisti === 1 ? 'a' : 'i'}.`); return }
+    const vietatoQui = cellaVietati(giorno, turno).find(v => v.tid === tid)   // era "mai" qui?
+    if (vietatoQui) set(`${giorno}|${turno.id}|${vietatoQui.slot}`, null)     // forzo: tolgo il divieto
     set(`${giorno}|${turno.id}|${free}`, tid)
+    if (vietatoQui) showWarn(`${nomeTurnista(tid)} era segnato «mai» qui: l'ho messo fisso comunque (forzato).`)
+  }
+  // insieme dei "mai" attuali (per evidenziare le celle durante il trascinamento)
+  const vietatoLocal = useMemo(() => {
+    const s = new Set<string>()
+    for (const [k, v] of local) { const [gg, tt, ss] = k.split('|'); if (+ss < 0) s.add(`${gg}|${tt}|${v}`) }
+    return s
+  }, [local])
+  function cellStyle(giorno: number, turnoId: string): CSSProperties {
+    const key = `${giorno}|${turnoId}`
+    const base: CSSProperties = { padding: '8px', verticalAlign: 'top', minWidth: 110, transition: 'background 0.1s' }
+    if (overKey === key) return { ...base, border: '2px dashed #2e7d32', background: '#dcf5dc', boxShadow: 'inset 0 0 0 2px rgba(46,125,50,0.35)' }
+    if (draggingId) return vietatoLocal.has(`${giorno}|${turnoId}|${draggingId}`)
+      ? { ...base, border: '1px solid #fca5a5', background: '#fee2e2' }   // rosso: "mai" qui
+      : { ...base, border: '1px solid #86efac', background: '#f0fdf4' }   // verde
+    return { ...base, border: '1px solid #e5e7eb', background: '#fff' }
   }
 
   function cambiaMese(delta: number) {
@@ -285,20 +321,33 @@ export function RegoleTurniPage() {
                     if (!turnoApplicabileGiorno(c, g.num)) return <td key={c.id} style={{ border: '1px solid #e5e7eb', background: '#f3f4f6' }} />
                     const key = `${g.num}|${c.id}`
                     const slots = cellaSlots(g.num, c)
-                    const vuota = slots.every(s => s === null)
+                    const vietati = cellaVietati(g.num, c)
+                    const vuota = slots.every(s => s === null) && vietati.length === 0
                     return (
                       <td key={c.id} data-giorno={g.num} data-turno={c.id}
                         onDragOver={e => { e.preventDefault(); setOverKey(key) }}
                         onDragLeave={() => setOverKey(k => (k === key ? null : k))}
                         onDrop={e => { e.preventDefault(); handleDrop(g.num, c) }}
-                        style={{ padding: '8px', verticalAlign: 'top', minWidth: 110, border: overKey === key ? '2px dashed #2e7d32' : '1px solid #e5e7eb', background: overKey === key ? '#eaf6ea' : '#fff', boxShadow: overKey === key ? 'inset 0 0 0 2px rgba(46,125,50,0.25)' : undefined, transition: 'background 0.1s' }}>
-                        <div className="flex flex-col gap-2 items-start">
+                        style={cellStyle(g.num, c.id)}>
+                        <div className="flex flex-col gap-1.5 items-start">
                           {slots.map((tid, slot) => tid ? (
-                            <span key={slot} className="relative rounded px-2 py-0.5 text-[11px] font-medium shadow-sm" style={{ background: coloreTurnista(tid).bg, color: coloreTurnista(tid).fg }}>
+                            <span key={slot} onClick={() => vietaBadge(g.num, c, slot, tid)} title="Clic per vietare (mai questo turno)"
+                              className="relative rounded px-2 py-0.5 text-[11px] font-medium shadow-sm cursor-pointer" style={{ background: coloreTurnista(tid).bg, color: coloreTurnista(tid).fg }}>
                               {nomeTurnista(tid)}
-                              <button onClick={() => set(`${g.num}|${c.id}|${slot}`, null)} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
+                              <button onClick={e => { e.stopPropagation(); set(`${g.num}|${c.id}|${slot}`, null) }} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
                             </span>
                           ) : null)}
+                          {vietati.map(({ tid, slot }) => (
+                            <span key={slot} onClick={() => fissaBadge(g.num, c, slot, tid)} title="Mai questo turno · clic per rimetterlo fisso"
+                              className="relative rounded px-2 py-0.5 text-[11px] font-semibold shadow-sm cursor-pointer overflow-hidden" style={{ background: '#e5e7eb', color: '#6b7280' }}>
+                              {nomeTurnista(tid)}
+                              <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%" preserveAspectRatio="none">
+                                <line x1="0%" y1="100%" x2="62%" y2="0%" stroke="#64748b" strokeWidth="2" />
+                                <line x1="38%" y1="100%" x2="100%" y2="0%" stroke="#64748b" strokeWidth="2" />
+                              </svg>
+                              <button onClick={e => { e.stopPropagation(); set(`${g.num}|${c.id}|${slot}`, null) }} title="Togli divieto" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
+                            </span>
+                          ))}
                           {vuota && <span className="text-[10px] text-stone-300 italic">trascina qui</span>}
                         </div>
                       </td>

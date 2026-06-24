@@ -6,8 +6,8 @@ import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Sa
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
-import { autoAssegna, autoReperibilita, oreSettimana, oreConsecutive, type AutoAssegnaResult } from '../../lib/autoAssegna'
-import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
+import { autoAssegna, autoReperibilita, oreSettimana, oreConsecutive, vietatiDaRegole, type AutoAssegnaResult } from '../../lib/autoAssegna'
+import { isFestivo, isPrefestivo, isoDate, giornoSettimana } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useUnsaved } from '../../contexts/UnsavedContext'
@@ -116,6 +116,7 @@ export function GestioneTurniPage() {
   const durataById = useMemo(() => { const m = new Map<string, number>(); schema.forEach(c => m.set(c.id, oreTurno(c.ora_inizio, c.ora_fine))); return m }, [schema])
   // scelta di ciascun turnista per (giorno|turno) — per evidenziare le celle durante il trascinamento
   const desByKey = useMemo(() => { const m = new Map<string, TipoDesiderata>(); desiderataMese.forEach(d => m.set(`${d.data}|${d.turno_schema_id}|${d.turnista_id}`, d.tipo)); return m }, [desiderataMese])
+  const vietatoSet = useMemo(() => vietatiDaRegole(regole), [regole])   // "mai questo turno": `${giornoSett}|${turnoId}|${tid}`
   const oreByTurnista = useMemo(() => {
     const m = new Map<string, number>()
     local.forEach((tid, key) => { const p = key.split('|'); if (+p[2] >= 0) m.set(tid, (m.get(tid) ?? 0) + (durataById.get(p[1]) ?? 0)) })
@@ -229,6 +230,8 @@ export function GestioneTurniPage() {
     // regole "morbide": lo inserisco comunque ma avviso (forzatura consentita)
     const avvisi: string[] = []
     if (desByKey.get(`${ds}|${turno.id}|${tid}`) === 'indisponibilita') avvisi.push('non voleva stare lì (indisponibile)')
+    const [vy, vm, vd] = ds.split('-').map(Number)
+    if (vietatoSet.has(`${giornoSettimana(new Date(vy, vm - 1, vd))}|${turno.id}|${tid}`)) avvisi.push('«mai questo turno» (Regole)')
     const maxS = regoleVer?.ore_max_settimana ?? null
     if (maxS != null && oreSettimana(local, schema, tid, ds) + (durataById.get(turno.id) ?? 0) > maxS) avvisi.push(`supererà le ${maxS}h settimanali`)
     const maxC = regoleVer?.ore_max_consecutive ?? null
@@ -461,7 +464,9 @@ export function GestioneTurniPage() {
     // è disponibile o non ha detto nulla (vale sia per i turni che per il reperibile)
     if (draggingId) {
       const [ds, turnoId] = key.split('|')
+      const [y, m, d] = ds.split('-').map(Number)
       const indispo = desByKey.get(`${ds}|${turnoId}|${draggingId}`) === 'indisponibilita'
+        || vietatoSet.has(`${giornoSettimana(new Date(y, m - 1, d))}|${turnoId}|${draggingId}`)   // "mai questo turno"
       return indispo
         ? { ...base, border: '1px solid #fca5a5', background: '#fee2e2' }
         : { ...base, border: '1px solid #86efac', background: '#f0fdf4' }

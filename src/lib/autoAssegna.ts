@@ -92,7 +92,14 @@ export function oreConsecutive(ass: Map<string, string>, schema: TurnoSchema[], 
   return runContenente(intervals, intervallo(ds, turno))
 }
 
-interface Slot { ds: string; t: TurnoSchema; slot: number; weekend: boolean }
+/** Insieme dei "mai questo turno" dalle Regole (slot negativo): `${giornoSettimana}|${turnoId}|${tid}`. */
+export function vietatiDaRegole(regole: RegolaTurno[]): Set<string> {
+  const s = new Set<string>()
+  regole.forEach(r => { if (r.turnista_id && r.slot < 0) s.add(`${r.giorno_settimana}|${r.turno_schema_id}|${r.turnista_id}`) })
+  return s
+}
+
+interface Slot { ds: string; t: TurnoSchema; slot: number; weekend: boolean; g: number }
 
 export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   const { giorni, schema, poolIds, regole, desiderata, durataById, maxSettimana = null, maxConsecutive = null } = inp
@@ -105,6 +112,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     const k = `${d.data}|${d.turno_schema_id}|${d.turnista_id}`
     if (d.tipo === 'indisponibilita') indispo.add(k); else vuoi.add(k)
   })
+  const vietato = vietatiDaRegole(regole)   // "mai questo turno" per (giorno settimana, turno, tid)
 
   // stato corrente per turnista
   const ore = new Map<string, number>(), wknd = new Map<string, number>(), busy = new Map<string, [number, number][]>()
@@ -136,12 +144,12 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   // tutti gli slot del mese (escluso il reperibile)
   const slots: Slot[] = []
   for (const d of giorni) {
-    const ds = isoDate(d)
-    for (const t of schema) if (turnoSiApplica(t, d)) for (let s = 0; s < t.n_turnisti; s++) slots.push({ ds, t, slot: s, weekend: isWeekend(ds) })
+    const ds = isoDate(d), g = giornoSettimana(d)
+    for (const t of schema) if (turnoSiApplica(t, d)) for (let s = 0; s < t.n_turnisti; s++) slots.push({ ds, t, slot: s, weekend: isWeekend(ds), g })
   }
 
-  // 1) turni fissi
-  const fissi = regole.filter(r => r.turnista_id && pool.has(r.turnista_id))
+  // 1) turni fissi (slot ≥ 0; gli slot negativi sono i "mai", non assegnazioni)
+  const fissi = regole.filter(r => r.turnista_id && r.slot >= 0 && pool.has(r.turnista_id))
   if (fissi.length) for (const slot of slots) {
     if (assegna.has(`${slot.ds}|${slot.t.id}|${slot.slot}`)) continue
     const [y, m, d] = slot.ds.split('-').map(Number)
@@ -161,6 +169,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     const occ = occupanti(slot)
     return poolIds.filter(tid => {
       if (occ.has(tid)) return false
+      if (vietato.has(`${slot.g}|${slot.t.id}|${tid}`)) return false   // "mai questo turno"
       if (soloVuoi && !vuoi.has(`${slot.ds}|${slot.t.id}|${tid}`)) return false
       if (!libero(tid, slot.ds, slot.t)) return false
       // limiti orario (Regole): non superare le ore settimanali né le ore consecutive
