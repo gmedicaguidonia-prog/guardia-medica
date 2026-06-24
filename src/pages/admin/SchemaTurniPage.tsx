@@ -230,7 +230,7 @@ export function SchemaTurniPage() {
       <div className="flex items-start gap-3">
         <CalendarClock size={22} style={{ color: '#476540' }} className="mt-1" />
         <div className="flex-1">
-          <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Configurazione Turni{postazioneAttiva ? ` - postazione di ${postazioneAttiva.nome}` : ''}</h1>
+          <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Configurazione Turni{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
           <p className="text-sm text-stone-600">Definisci i turni validi per un periodo. Dopo ogni modifica premi <strong>Salva</strong>.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

@@ -197,7 +197,7 @@ export function DesiderataPage() {
   const Header = (
     <div className="flex items-center gap-3">
       <CalendarHeart size={22} style={{ color: '#476540' }} />
-      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Desiderata / Indisponibilità{postazioneAttiva ? ` - postazione di ${postazioneAttiva.nome}` : ''}</h1>
+      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Desiderata / Indisponibilità{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
       <div className="flex items-center gap-2">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
         <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>

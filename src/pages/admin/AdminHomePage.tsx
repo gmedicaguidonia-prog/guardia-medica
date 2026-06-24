@@ -75,7 +75,7 @@ export function AdminHomePage() {
         style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(50%, 320px)', opacity: 0.06 }} />
 
       <div className="relative max-w-3xl mx-auto p-6 space-y-6">
-        <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Riepilogo{postazioneAttiva ? ` - postazione di ${postazioneAttiva.nome}` : ''}</h1>
+        <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Riepilogo{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
 
         {/* Promemoria e scadenze */}
         <section className="space-y-2">

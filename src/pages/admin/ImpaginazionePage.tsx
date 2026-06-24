@@ -168,7 +168,7 @@ export function ImpaginazionePage() {
   const Header = (
     <div className="flex items-center gap-3 flex-wrap">
       <LayoutGrid size={22} style={{ color: '#476540' }} />
-      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Impaginazione{postazioneAttiva ? ` - postazione di ${postazioneAttiva.nome}` : ''}</h1>
+      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Impaginazione{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
       <div className="flex items-center gap-2">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
         <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>

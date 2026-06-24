@@ -91,7 +91,7 @@ export function TurnistiPage() {
 
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>
-          <Users size={22} style={{ color: '#476540' }} className="shrink-0" /> Personale{postazioneAttiva ? ` - postazione di ${postazioneAttiva.nome}` : ''}
+          <Users size={22} style={{ color: '#476540' }} className="shrink-0" /> Personale{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}
         </h1>
         <p className="text-sm text-stone-600 mt-0.5">Le persone abilitate per questa postazione. Cerca un nominativo già esistente o creane uno nuovo.</p>
       </div>
