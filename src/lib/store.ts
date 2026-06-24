@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin } from '../types'
 
 const RANK_LIVELLO: Record<string, number> = { responsabile: 3, turnista: 2, esterno: 1 }
 import { ADMIN_EMAIL } from './constants'
@@ -329,15 +329,27 @@ const supaStore = {
   },
 
   // ── Richieste di turno (candidature in Modalità Pianificazione) ──
+  //  getRichiesteMese restituisce solo quelle IN ATTESA (le altre sono già evase).
   async getRichiesteMese(postazioneId: string, anno: number, mese: number): Promise<RichiestaTurno[]> {
     const { first, last } = meseRange(anno, mese)
-    const { data, error } = await supabase.from('richieste_turno').select('*').eq('postazione_id', postazioneId).gte('data', first).lte('data', last).order('data', { ascending: true }).order('created_at', { ascending: true })
+    const { data, error } = await supabase.from('richieste_turno').select('*').eq('postazione_id', postazioneId).eq('stato', 'in_attesa').gte('data', first).lte('data', last).order('data', { ascending: true }).order('created_at', { ascending: true })
     if (error) throw error
     return (data ?? []) as RichiestaTurno[]
   },
   async addRichiesta(postazioneId: string, data: string, turnoSchemaId: string, turnistaId: string): Promise<void> {
-    const { error } = await supabase.from('richieste_turno').upsert({ postazione_id: postazioneId, data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId }, { onConflict: 'data,turno_schema_id,turnista_id', ignoreDuplicates: true })
+    // ri-proporsi su uno slot già rifiutato lo riporta "in attesa"
+    const { error } = await supabase.from('richieste_turno').upsert({ postazione_id: postazioneId, data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, stato: 'in_attesa' }, { onConflict: 'data,turno_schema_id,turnista_id' })
     if (error) throw error
+  },
+  async setRichiestaStato(id: string, stato: StatoRichiesta): Promise<void> {
+    const { error } = await supabase.from('richieste_turno').update({ stato }).eq('id', id)
+    if (error) throw error
+  },
+  // Stato attuale della richiesta di un candidato per uno slot (per l'annullamento).
+  async getRichiestaCorrente(postazioneId: string, data: string, turnoSchemaId: string, turnistaId: string): Promise<RichiestaTurno | null> {
+    const { data: rows, error } = await supabase.from('richieste_turno').select('*').eq('postazione_id', postazioneId).eq('data', data).eq('turno_schema_id', turnoSchemaId).eq('turnista_id', turnistaId).limit(1)
+    if (error) throw error
+    return (rows && rows[0] ? (rows[0] as RichiestaTurno) : null)
   },
   async removeRichiesta(id: string): Promise<void> {
     const { error } = await supabase.from('richieste_turno').delete().eq('id', id)
@@ -448,6 +460,20 @@ const supaStore = {
   // super-admin possa farlo e protegge il proprietario / l'ultimo admin.
   async setUtenteAdmin(utenteId: string, on: boolean): Promise<void> {
     const { error } = await supabase.from('utenti').update({ admin: on }).eq('id', utenteId)
+    if (error) throw error
+  },
+  // Crea (o promuove, se l'email esiste già) un amministratore "puro", senza
+  // appartenenze a postazioni. L'email è quella del suo login Google.
+  async creaUtenteAdmin(nome: string, cognome: string, email: string): Promise<void> {
+    const em = email.trim().toLowerCase()
+    const { data: ex, error: e1 } = await supabase.from('utenti').select('id').ilike('email', em).limit(1)
+    if (e1) throw e1
+    if (ex && ex[0]) {
+      const { error } = await supabase.from('utenti').update({ admin: true }).eq('id', (ex[0] as { id: string }).id)
+      if (error) throw error
+      return
+    }
+    const { error } = await supabase.from('utenti').insert({ nome: nome.trim(), cognome: cognome.trim(), email: em, admin: true })
     if (error) throw error
   },
 }
@@ -707,14 +733,21 @@ const localStore = {
 
   async getRichiesteMese(postazioneId: string, anno: number, mese: number): Promise<RichiestaTurno[]> {
     const { first, last } = meseRange(anno, mese)
-    return read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => (r.postazione_id ?? DEV_POSTAZIONE) === postazioneId && r.data >= first && r.data <= last)
+    return read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => (r.postazione_id ?? DEV_POSTAZIONE) === postazioneId && (r.stato ?? 'in_attesa') === 'in_attesa' && r.data >= first && r.data <= last)
   },
   async addRichiesta(postazioneId: string, data: string, turnoSchemaId: string, turnistaId: string): Promise<void> {
     const list = read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, [])
-    if (!list.some(r => r.data === data && r.turno_schema_id === turnoSchemaId && r.turnista_id === turnistaId)) {
-      list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, created_at: new Date().toISOString(), postazione_id: postazioneId })
-      writeLs(LS_RICHIESTE, list)
-    }
+    const ex = list.find(r => r.data === data && r.turno_schema_id === turnoSchemaId && r.turnista_id === turnistaId)
+    if (ex) ex.stato = 'in_attesa'
+    else list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, turnista_id: turnistaId, stato: 'in_attesa', created_at: new Date().toISOString(), postazione_id: postazioneId })
+    writeLs(LS_RICHIESTE, list)
+  },
+  async setRichiestaStato(id: string, stato: StatoRichiesta): Promise<void> {
+    const list = read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, [])
+    const r = list.find(x => x.id === id); if (r) { r.stato = stato; writeLs(LS_RICHIESTE, list) }
+  },
+  async getRichiestaCorrente(postazioneId: string, data: string, turnoSchemaId: string, turnistaId: string): Promise<RichiestaTurno | null> {
+    return read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).find(r => (r.postazione_id ?? DEV_POSTAZIONE) === postazioneId && r.data === data && r.turno_schema_id === turnoSchemaId && r.turnista_id === turnistaId) ?? null
   },
   async removeRichiesta(id: string): Promise<void> {
     writeLs(LS_RICHIESTE, read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => r.id !== id))
@@ -793,12 +826,25 @@ const localStore = {
     read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
       if (!map.has(t.utente_id)) map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, admin: t.email === ADMIN_EMAIL || extra.has(t.utente_id) })
     })
+    read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!map.has(u.id)) map.set(u.id, { ...u, admin: u.admin || extra.has(u.id) }) })
     return [...map.values()].sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
   },
   async setUtenteAdmin(utenteId: string, on: boolean): Promise<void> {
     const s = new Set(read<string[]>('gm_dev_admins', []))
     if (on) s.add(utenteId); else s.delete(utenteId)
     writeLs('gm_dev_admins', [...s])
+  },
+  async creaUtenteAdmin(nome: string, cognome: string, email: string): Promise<void> {
+    const em = email.trim().toLowerCase()
+    const inTurnisti = read<WithPost<Turnista>[]>(LS_TURNISTI, []).find(t => t.email.toLowerCase() === em)
+    const extra = read<UtenteAdmin[]>('gm_dev_extra_utenti', [])
+    const inExtra = extra.find(u => u.email.toLowerCase() === em)
+    const existingId = inTurnisti?.utente_id ?? inExtra?.id
+    if (existingId) {
+      const s = new Set(read<string[]>('gm_dev_admins', [])); s.add(existingId); writeLs('gm_dev_admins', [...s]); return
+    }
+    extra.push({ id: uid(), nome: nome.trim(), cognome: cognome.trim(), email: em, admin: true })
+    writeLs('gm_dev_extra_utenti', extra)
   },
 }
 

@@ -118,6 +118,33 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     finally { setInviando(false) }
   }
 
+  // pianificazione: annullamento della propria candidatura (clic sul badge giallo)
+  const [annulla, setAnnulla] = useState<{ ds: string; turno: TurnoSchema } | null>(null)
+  const [annullaMsg, setAnnullaMsg] = useState<string | null>(null)
+  const [annullando, setAnnullando] = useState(false)
+  async function annullaProposta() {
+    if (!annulla || !mia) return
+    setAnnullando(true)
+    try {
+      const cur = await store.getRichiestaCorrente(postazioneId!, annulla.ds, annulla.turno.id, mia.membershipId)
+      if (!cur || cur.stato === 'in_attesa') {
+        // ancora in attesa (o già sparita): la ritiro, il responsabile non la vedrà
+        if (cur) await store.removeRichiesta(cur.id)
+        await qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
+        setAnnulla(null)
+      } else if (cur.stato === 'approvata') {
+        setAnnulla(null)
+        setAnnullaMsg('La tua proposta è stata appena APPROVATA. Per annullarla ora devi contattare il tuo responsabile.')
+      } else {
+        // rifiutata prima della richiesta di annullamento: niente da fare
+        await qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
+        setAnnulla(null)
+        setAnnullaMsg('La tua proposta era già stata RIFIUTATA, prima della tua richiesta di annullamento: non c\'è nulla da annullare.')
+      }
+    } catch (e) { console.error('[Turni] annullamento fallito:', e); alert('Errore durante l\'annullamento.') }
+    finally { setAnnullando(false) }
+  }
+
   // limita la navigazione all'intervallo di mesi con qualcosa da vedere (calendario o
   // desiderata pubblicati), includendo sempre il mese corrente
   const meseCorrente = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`
@@ -243,7 +270,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                                   return <span key={id} className="rounded px-2 py-0.5 text-[11px] font-medium" style={io ? { background: '#2e7d32', color: '#fff' } : { background: '#eef1ea', color: '#3a3d30' }}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</span>
                                 })}
                                 {pianificazione && mancano > 0 && (hoChiesto ? (
-                                  <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }} title="Hai inviato la richiesta: in attesa di approvazione"><Clock size={10} /> Proposta inviata</span>
+                                  <button onClick={() => setAnnulla({ ds, turno })} title="Proposta inviata — clicca per annullarla" className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold transition-transform hover:scale-105" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', cursor: 'pointer' }}><Clock size={10} /> Proposta inviata</button>
                                 ) : (
                                   Array.from({ length: mancano }).map((_, i) => (
                                     <button key={'q' + i} onClick={() => setProposta({ ds, turno })} title="Posto scoperto — clicca per candidarti"
@@ -428,6 +455,32 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   <button onClick={() => setProposta(null)} className="btn-secondary text-sm py-1.5 px-3">No</button>
                   <button onClick={confermaProposta} disabled={inviando} className="btn-primary text-sm py-1.5 px-4">{inviando ? 'Invio…' : 'Sì, proponimi'}</button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: conferma annullamento della propria candidatura */}
+          {annulla && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => !annullando && setAnnulla(null)}>
+              <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2 mb-2"><Clock size={18} style={{ color: '#92400e' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Annullare la proposta?</h3></div>
+                <p className="text-sm font-semibold my-1" style={{ color: '#1f2d18' }}>{itDate(annulla.ds)} · {annulla.turno.nome || 'Turno'} <span className="text-stone-500 font-normal">({annulla.turno.ora_inizio}–{annulla.turno.ora_fine})</span></p>
+                <p className="text-xs text-stone-500 mt-2 mb-4">Se non è ancora stata approvata o rifiutata, la tua candidatura verrà ritirata e il responsabile non la vedrà.</p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setAnnulla(null)} disabled={annullando} className="btn-secondary text-sm py-1.5 px-3">No</button>
+                  <button onClick={annullaProposta} disabled={annullando} className="btn-primary text-sm py-1.5 px-4" style={{ background: '#b45309' }}>{annullando ? 'Verifico…' : 'Sì, annulla'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: esito annullamento (già approvata / già rifiutata) */}
+          {annullaMsg && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setAnnullaMsg(null)}>
+              <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2 mb-2"><Info size={18} style={{ color: '#476540' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Proposta</h3></div>
+                <p className="text-sm text-stone-600 mb-4">{annullaMsg}</p>
+                <div className="flex justify-end"><button onClick={() => setAnnullaMsg(null)} className="btn-primary text-sm py-1.5 px-4">Ok</button></div>
               </div>
             </div>
           )}

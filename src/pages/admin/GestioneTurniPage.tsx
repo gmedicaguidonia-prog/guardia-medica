@@ -250,8 +250,10 @@ export function GestioneTurniPage() {
   }
 
   // ── Richieste di candidatura (Modalità Pianificazione) ──
+  //  Approva/Rifiuta NON cancellano: registrano lo stato, così il candidato che
+  //  prova ad annullare sa se è stata approvata o rifiutata.
   async function rifiutaRichiesta(r: RichiestaTurno) {
-    await store.removeRichiesta(r.id)
+    await store.setRichiestaStato(r.id, 'rifiutata')
     qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
   }
   async function approvaRichiesta(r: RichiestaTurno) {
@@ -260,11 +262,11 @@ export function GestioneTurniPage() {
     const conf = conflittoOrario(r.turnista_id, turno, r.data, '')
     if (conf) { showWarn(`Impossibile approvare: ${nomeTurnista(r.turnista_id)} è già impegnato in “${conf.nome || 'un turno'}” (${conf.ora_inizio}–${conf.ora_fine}) in sovrapposizione di orario.`); return }
     const slots = turnistiSlots(r.data, turno)
-    if (slots.includes(r.turnista_id)) { await rifiutaRichiesta(r); showWarn(`${nomeTurnista(r.turnista_id)} è già in questo turno: richiesta rimossa.`); return }
+    if (slots.includes(r.turnista_id)) { await store.setRichiestaStato(r.id, 'approvata'); qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] }); showWarn(`${nomeTurnista(r.turnista_id)} è già in questo turno: richiesta approvata.`); return }
     const free = slots.findIndex(s => s === null)
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” del ${itDate(r.data)} non ci sono posti liberi.`); return }
     set(`${r.data}|${turno.id}|${free}`, r.turnista_id)   // inserisce (in sospeso): premi Salva per confermare
-    await store.removeRichiesta(r.id)
+    await store.setRichiestaStato(r.id, 'approvata')
     qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
   }
 

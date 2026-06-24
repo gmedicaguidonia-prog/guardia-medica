@@ -208,12 +208,16 @@ export const STATO_CALENDARIO_STILE: Record<StatoCalendario, { bg: string; fg: s
 
 // ─── Richieste di turno (candidature in "Modalità Pianificazione") ──
 //  Un turnista si propone per un turno scoperto. Il responsabile poi approva
-//  (lo inserisce nel turno) o rifiuta (cancella la richiesta).
+//  (lo mette in turno) o rifiuta. Lo stato resta registrato così il candidato,
+//  se prova ad annullare, sa se è ancora in attesa, già approvata o rifiutata.
+export type StatoRichiesta = 'in_attesa' | 'approvata' | 'rifiutata'
+
 export interface RichiestaTurno {
   id: string
   data: string             // 'YYYY-MM-DD'
   turno_schema_id: string
   turnista_id: string      // appartenenza (turnisti.id) di chi si propone
+  stato: StatoRichiesta
   created_at: string
 }
 

@@ -115,6 +115,9 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
   const { data: utenti = [], isLoading } = useQuery<UtenteAdmin[]>({ queryKey: ['utenti'], queryFn: () => store.getUtenti() })
   const [nuovo, setNuovo] = useState('')
   const [busy, setBusy] = useState(false)
+  const [nNome, setNNome] = useState('')
+  const [nCognome, setNCognome] = useState('')
+  const [nEmail, setNEmail] = useState('')
 
   const admins = utenti.filter(u => u.admin)
   const candidati = utenti.filter(u => !u.admin)
@@ -137,6 +140,13 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
     if (!ok) return
     try { await store.setUtenteAdmin(u.id, false); await qc.invalidateQueries({ queryKey: ['utenti'] }) }
     catch (e) { alert(`Impossibile rimuovere l'amministratore.\n${(e as Error).message ?? ''}`) }
+  }
+  async function creaNuovo() {
+    if (!nEmail.trim() || !nNome.trim()) return
+    setBusy(true)
+    try { await store.creaUtenteAdmin(nNome, nCognome, nEmail); setNNome(''); setNCognome(''); setNEmail(''); await qc.invalidateQueries({ queryKey: ['utenti'] }) }
+    catch (e) { alert(`Impossibile creare l'amministratore.\n${(e as Error).message ?? ''}`) }
+    finally { setBusy(false) }
   }
 
   return (
@@ -176,6 +186,18 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
         <button onClick={promuovi} disabled={busy || !nuovo} className="btn-primary text-sm"><UserPlus size={15} /> Rendi admin</button>
       </div>
       {candidati.length === 0 && <p className="text-xs text-stone-400">Tutte le persone in elenco sono già amministratori.</p>}
+
+      {/* Nuovo admin "puro" (persona non ancora nel sistema, senza appartenenze) */}
+      <div className="pt-2 mt-1" style={{ borderTop: '1px solid #eef0ea' }}>
+        <label className="label text-xs">Oppure aggiungi una persona non ancora nel sistema</label>
+        <div className="flex flex-wrap items-end gap-2">
+          <input value={nNome} onChange={e => setNNome(e.target.value)} placeholder="Nome" className="input text-sm" style={{ maxWidth: 120 }} />
+          <input value={nCognome} onChange={e => setNCognome(e.target.value)} placeholder="Cognome" className="input text-sm" style={{ maxWidth: 130 }} />
+          <input value={nEmail} onChange={e => setNEmail(e.target.value)} type="email" placeholder="email del login Google" className="input text-sm flex-1" style={{ minWidth: 170 }} onKeyDown={e => e.key === 'Enter' && creaNuovo()} />
+          <button onClick={creaNuovo} disabled={busy || !nEmail.trim() || !nNome.trim()} className="btn-secondary text-sm"><UserPlus size={14} /> Crea admin</button>
+        </div>
+        <p className="text-[11px] text-stone-400 mt-1">Accederà con quell'account Google. Sarà <strong>solo</strong> amministratore, senza appartenenze a postazioni (a meno che tu non lo aggiunga al personale).</p>
+      </div>
     </div>
   )
 }
