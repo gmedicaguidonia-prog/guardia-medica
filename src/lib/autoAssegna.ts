@@ -24,6 +24,8 @@ export interface AutoAssegnaInput {
   regole: RegolaTurno[]              // turni fissi (con turnista_id)
   desiderata: Desiderata[]           // desiderata/indisponibilità del mese
   durataById: Map<string, number>   // ore di ciascun tipo di turno
+  maxSettimana?: number | null      // ore massime a settimana (da non superare)
+  maxConsecutive?: number | null    // ore massime consecutive (turni attaccati)
 }
 export interface AutoAssegnaResult {
   assegna: Map<string, string>       // `${ds}|${turnoId}|${slot}` → turnistaId
@@ -45,11 +47,55 @@ function intervallo(ds: string, t: TurnoSchema): [number, number] {
   return [base + s, base + e]
 }
 const isWeekend = (ds: string) => { const [y, m, d] = ds.split('-').map(Number); const g = new Date(y, m - 1, d).getDay(); return g === 0 || g === 6 }
+const oreTurnoOf = (t: TurnoSchema): number => { let mn = parseMin(t.ora_fine) - parseMin(t.ora_inizio); if (mn <= 0) mn += 1440; return mn / 60 }
+/** Lunedì (chiave) della settimana che contiene `ds`. */
+const lunediKey = (ds: string): string => {
+  const [y, m, d] = ds.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+  return isoDate(date)
+}
+/** Ore della "catena" di turni attaccati (senza pause) che contiene `nuovo`. */
+function runContenente(intervals: [number, number][], nuovo: [number, number]): number {
+  const all = [...intervals, nuovo].sort((a, b) => a[0] - b[0])
+  let s = all[0][0], e = all[0][1], run = 0
+  for (let i = 1; i < all.length; i++) {
+    if (all[i][0] <= e) e = Math.max(e, all[i][1])
+    else { if (nuovo[0] >= s && nuovo[0] < e) run = Math.max(run, e - s); s = all[i][0]; e = all[i][1] }
+  }
+  if (nuovo[0] >= s && nuovo[0] < e) run = Math.max(run, e - s)
+  return run / 60
+}
+
+// ── Helper riusabili anche dal trascinamento manuale (Turni del Mese) ──
+/** Ore già assegnate a `tid` nella settimana (lun-dom) del giorno `ds`. */
+export function oreSettimana(ass: Map<string, string>, schema: TurnoSchema[], tid: string, ds: string): number {
+  const wk = lunediKey(ds), byId = new Map(schema.map(s => [s.id, s]))
+  let h = 0
+  for (const [key, t] of ass) {
+    if (t !== tid) continue
+    const [d, turnoId, slotStr] = key.split('|')
+    if (+slotStr < 0 || lunediKey(d) !== wk) continue
+    const turno = byId.get(turnoId); if (turno) h += oreTurnoOf(turno)
+  }
+  return h
+}
+/** Ore consecutive (catena di turni attaccati) di `tid` se aggiungo (ds, turno). */
+export function oreConsecutive(ass: Map<string, string>, schema: TurnoSchema[], tid: string, ds: string, turno: TurnoSchema): number {
+  const byId = new Map(schema.map(s => [s.id, s]))
+  const intervals: [number, number][] = []
+  for (const [key, t] of ass) {
+    if (t !== tid) continue
+    const [d, turnoId, slotStr] = key.split('|'); if (+slotStr < 0) continue
+    const tt = byId.get(turnoId); if (tt) intervals.push(intervallo(d, tt))
+  }
+  return runContenente(intervals, intervallo(ds, turno))
+}
 
 interface Slot { ds: string; t: TurnoSchema; slot: number; weekend: boolean }
 
 export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
-  const { giorni, schema, poolIds, regole, desiderata, durataById } = inp
+  const { giorni, schema, poolIds, regole, desiderata, durataById, maxSettimana = null, maxConsecutive = null } = inp
   const pool = new Set(poolIds)
   const dur = (id: string) => durataById.get(id) ?? 0
 
@@ -63,6 +109,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   // stato corrente per turnista
   const ore = new Map<string, number>(), wknd = new Map<string, number>(), busy = new Map<string, [number, number][]>()
   poolIds.forEach(t => { ore.set(t, 0); wknd.set(t, 0); busy.set(t, []) })
+  const oreSett = new Map<string, Map<string, number>>()   // tid → (lunedì settimana → ore) [per il max settimanale]
   const assegna = new Map<string, string>()
 
   const libero = (tid: string, ds: string, t: TurnoSchema): boolean => {
@@ -76,6 +123,9 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     ore.set(tid, ore.get(tid)! + dur(slot.t.id))
     if (slot.weekend) wknd.set(tid, wknd.get(tid)! + 1)
     busy.get(tid)!.push(intervallo(slot.ds, slot.t))
+    const wk = lunediKey(slot.ds)
+    if (!oreSett.has(tid)) oreSett.set(tid, new Map())
+    const wm = oreSett.get(tid)!; wm.set(wk, (wm.get(wk) ?? 0) + dur(slot.t.id))
   }
   const occupanti = (slot: Slot): Set<string> => {
     const set = new Set<string>()
@@ -112,7 +162,11 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     return poolIds.filter(tid => {
       if (occ.has(tid)) return false
       if (soloVuoi && !vuoi.has(`${slot.ds}|${slot.t.id}|${tid}`)) return false
-      return libero(tid, slot.ds, slot.t)
+      if (!libero(tid, slot.ds, slot.t)) return false
+      // limiti orario (Regole): non superare le ore settimanali né le ore consecutive
+      if (maxSettimana != null && (oreSett.get(tid)?.get(lunediKey(slot.ds)) ?? 0) + dur(slot.t.id) > maxSettimana) return false
+      if (maxConsecutive != null && runContenente(busy.get(tid)!, intervallo(slot.ds, slot.t)) > maxConsecutive) return false
+      return true
     })
   }
   // punteggio: più basso = più "indietro" = ha la precedenza

@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Sa
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
-import { autoAssegna, autoReperibilita, type AutoAssegnaResult } from '../../lib/autoAssegna'
+import { autoAssegna, autoReperibilita, oreSettimana, oreConsecutive, type AutoAssegnaResult } from '../../lib/autoAssegna'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
@@ -226,7 +226,15 @@ export function GestioneTurniPage() {
     if (conf) { sovr(conf); return }
     const free = slots.findIndex(s => s === null)
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” bastano ${turno.n_turnisti} turnist${turno.n_turnisti === 1 ? 'a' : 'i'}.`); return }
+    // regole "morbide": lo inserisco comunque ma avviso (forzatura consentita)
+    const avvisi: string[] = []
+    if (desByKey.get(`${ds}|${turno.id}|${tid}`) === 'indisponibilita') avvisi.push('non voleva stare lì (indisponibile)')
+    const maxS = regoleVer?.ore_max_settimana ?? null
+    if (maxS != null && oreSettimana(local, schema, tid, ds) + (durataById.get(turno.id) ?? 0) > maxS) avvisi.push(`supererà le ${maxS}h settimanali`)
+    const maxC = regoleVer?.ore_max_consecutive ?? null
+    if (maxC != null && oreConsecutive(local, schema, tid, ds, turno) > maxC) avvisi.push(`supererà le ${maxC}h consecutive`)
     set(`${ds}|${turno.id}|${free}`, tid)
+    if (avvisi.length) showWarn(`${nomeTurnista(tid)}: ${avvisi.join(' · ')}. Inserito comunque (forzato).`)
   }
 
   function cambiaMese(delta: number) {
@@ -272,7 +280,7 @@ export function GestioneTurniPage() {
   function eseguiAuto() {
     const poolIds = turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno').map(t => t.id)
     if (!poolIds.length) { showWarn('Nessun turnista importato per questo mese: importa prima il personale.'); return }
-    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById })
+    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null })
     // sostituisco i turni veri ma preservo i reperibili già impostati (slot < 0)
     const nuovo = new Map(res.assegna)
     for (const [k, v] of local) if (+k.split('|')[2] < 0) nuovo.set(k, v)

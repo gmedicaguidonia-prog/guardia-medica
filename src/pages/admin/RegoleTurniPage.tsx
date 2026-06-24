@@ -76,6 +76,8 @@ export function RegoleTurniPage() {
     return () => window.removeEventListener('beforeunload', h)
   }, [dirty])
   useEffect(() => { setOreMin(regoleVer?.ore_min_settimana != null ? String(regoleVer.ore_min_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_min_settimana])
+  useEffect(() => { setOreMaxSett(regoleVer?.ore_max_settimana != null ? String(regoleVer.ore_max_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_max_settimana])
+  useEffect(() => { setOreMaxCons(regoleVer?.ore_max_consecutive != null ? String(regoleVer.ore_max_consecutive) : '') }, [regoleVer?.id, regoleVer?.ore_max_consecutive])
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti), [turnisti])
@@ -90,6 +92,8 @@ export function RegoleTurniPage() {
   const [draggingId, setDraggingId] = useState<string | null>(null)
   useDragAutoScroll(!!draggingId)   // scroll automatico della pagina durante il trascinamento
   const [oreMin, setOreMin] = useState('')
+  const [oreMaxSett, setOreMaxSett] = useState('')
+  const [oreMaxCons, setOreMaxCons] = useState('')
   const [warn, setWarn] = useState<string | null>(null)
   const warnTimer = useRef<number | null>(null)
   function showWarn(msg: string) { setWarn(msg); if (warnTimer.current) clearTimeout(warnTimer.current); warnTimer.current = window.setTimeout(() => setWarn(null), 3500) }
@@ -142,6 +146,20 @@ export function RegoleTurniPage() {
     const n = oreMin.trim() === '' ? null : Math.max(0, parseInt(oreMin) || 0)
     if (n === (regoleVer.ore_min_settimana ?? null)) return
     await store.setOreMinSettimana(regoleVer.id, n)
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+  }
+  async function salvaOreMaxSett() {
+    if (!regoleVer) return
+    const n = oreMaxSett.trim() === '' ? null : Math.max(0, parseInt(oreMaxSett) || 0)
+    if (n === (regoleVer.ore_max_settimana ?? null)) return
+    await store.setOreMaxSettimana(regoleVer.id, n)
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+  }
+  async function salvaOreMaxCons() {
+    if (!regoleVer) return
+    const n = oreMaxCons.trim() === '' ? null : Math.max(0, parseInt(oreMaxCons) || 0)
+    if (n === (regoleVer.ore_max_consecutive ?? null)) return
+    await store.setOreMaxConsecutive(regoleVer.id, n)
     await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
   }
   async function salvaCambioAuto(on: boolean) {
@@ -293,13 +311,26 @@ export function RegoleTurniPage() {
         </div>
       </div>
 
-      {/* Impostazione: ore minime settimanali per turnista */}
-      <div className="card p-3 flex flex-wrap items-center gap-2">
-        <label className="text-sm font-medium" htmlFor="ore-min" style={{ color: '#3a3d30' }}>Numero di ore minimo a settimana per un turnista:</label>
-        <input id="ore-min" type="number" min={0} value={oreMin} onChange={e => setOreMin(e.target.value)} onBlur={salvaOreMin}
-          className="input text-sm w-24" placeholder="es. 36" />
-        <span className="text-sm text-stone-500">ore</span>
-        <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
+      {/* Impostazioni sull'orario */}
+      <div className="card p-3 space-y-2.5">
+        <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#476540' }}>Impostazioni sull'orario</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-min">Ore minime a settimana per un turnista:</label>
+          <input id="ore-min" type="number" min={0} value={oreMin} onChange={e => setOreMin(e.target.value)} onBlur={salvaOreMin} className="input text-sm w-24" placeholder="es. 36" />
+          <span className="text-sm text-stone-500">ore</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-max-sett">Ore massime a settimana (da non superare):</label>
+          <input id="ore-max-sett" type="number" min={0} value={oreMaxSett} onChange={e => setOreMaxSett(e.target.value)} onBlur={salvaOreMaxSett} className="input text-sm w-24" placeholder="nessuno" />
+          <span className="text-sm text-stone-500">ore</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-max-cons">Ore massime consecutive (turni attaccati):</label>
+          <input id="ore-max-cons" type="number" min={0} value={oreMaxCons} onChange={e => setOreMaxCons(e.target.value)} onBlur={salvaOreMaxCons} className="input text-sm w-24" placeholder="nessuno" />
+          <span className="text-sm text-stone-500">ore</span>
+        </div>
+        <p className="text-[11px] text-stone-400">Usate dall'<strong>Auto Assegnazione</strong> e segnalate (ma forzabili) quando assegni a mano. Vuoto = nessun limite.</p>
       </div>
 
       {/* Impostazione: cambio turno (approvazione automatica / del responsabile) */}

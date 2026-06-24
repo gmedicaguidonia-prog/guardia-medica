@@ -150,6 +150,8 @@ export interface RegolaVersione {
   valido_da: string
   valido_fino: string | null
   ore_min_settimana: number | null
+  ore_max_settimana: number | null      // ore che i turnisti non dovrebbero superare (auto-assegnazione)
+  ore_max_consecutive: number | null    // massimo di ore consecutive (turni attaccati) per turnista
   cambio_auto: boolean        // true = cambio turno automaticamente approvato
   created_at: string
 }
