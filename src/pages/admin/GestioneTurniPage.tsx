@@ -13,6 +13,7 @@ import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../../types'
@@ -163,6 +164,7 @@ export function GestioneTurniPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  useDragAutoScroll(!!draggingId)   // scroll automatico della pagina durante il trascinamento
   const [picker, setPicker] = useState<{ ds: string; turno: TurnoSchema; tipo: string; x: number; y: number } | null>(null)
   const [warn, setWarn] = useState<string | null>(null)
   const warnTimer = useRef<number | null>(null)

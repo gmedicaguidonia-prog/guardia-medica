@@ -10,6 +10,7 @@ import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, RegolaTurno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -87,6 +88,7 @@ export function RegoleTurniPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  useDragAutoScroll(!!draggingId)   // scroll automatico della pagina durante il trascinamento
   const [oreMin, setOreMin] = useState('')
   const [warn, setWarn] = useState<string | null>(null)
   const warnTimer = useRef<number | null>(null)
