@@ -233,9 +233,9 @@ export function GestioneTurniPage() {
     const [vy, vm, vd] = ds.split('-').map(Number)
     if (vietatoSet.has(`${giornoSettimana(new Date(vy, vm - 1, vd))}|${turno.id}|${tid}`)) avvisi.push('«mai questo turno» (Regole)')
     const maxS = regoleVer?.ore_max_settimana ?? null
-    if (maxS != null && oreSettimana(local, schema, tid, ds) + (durataById.get(turno.id) ?? 0) > maxS) avvisi.push(`supererà le ${maxS}h settimanali`)
+    if (maxS != null && oreSettimana(local, schema, tid, ds) + (durataById.get(turno.id) ?? 0) > maxS + 2) avvisi.push(`supererà le ${maxS}h settimanali (±2)`)
     const maxC = regoleVer?.ore_max_consecutive ?? null
-    if (maxC != null && oreConsecutive(local, schema, tid, ds, turno) > maxC) avvisi.push(`supererà le ${maxC}h consecutive`)
+    if (maxC != null && oreConsecutive(local, schema, tid, ds, turno) > maxC + 2) avvisi.push(`supererà le ${maxC}h consecutive (±2)`)
     set(`${ds}|${turno.id}|${free}`, tid)
     if (avvisi.length) showWarn(`${nomeTurnista(tid)}: ${avvisi.join(' · ')}. Inserito comunque (forzato).`)
   }

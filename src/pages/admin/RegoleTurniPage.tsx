@@ -373,11 +373,13 @@ export function RegoleTurniPage() {
           <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-max-sett">Ore massime a settimana (da non superare):</label>
           <input id="ore-max-sett" type="number" min={0} value={oreMaxSett} onChange={e => setOreMaxSett(e.target.value)} onBlur={salvaOreMaxSett} className="input text-sm w-24" placeholder="nessuno" />
           <span className="text-sm text-stone-500">ore</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-max-cons">Ore massime consecutive (turni attaccati):</label>
           <input id="ore-max-cons" type="number" min={0} value={oreMaxCons} onChange={e => setOreMaxCons(e.target.value)} onBlur={salvaOreMaxCons} className="input text-sm w-24" placeholder="nessuno" />
           <span className="text-sm text-stone-500">ore</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
         </div>
         <p className="text-[11px] text-stone-400">Usate dall'<strong>Auto Assegnazione</strong> e segnalate (ma forzabili) quando assegni a mano. Vuoto = nessun limite.</p>
       </div>

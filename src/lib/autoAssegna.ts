@@ -173,8 +173,8 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
       if (soloVuoi && !vuoi.has(`${slot.ds}|${slot.t.id}|${tid}`)) return false
       if (!libero(tid, slot.ds, slot.t)) return false
       // limiti orario (Regole): non superare le ore settimanali né le ore consecutive
-      if (maxSettimana != null && (oreSett.get(tid)?.get(lunediKey(slot.ds)) ?? 0) + dur(slot.t.id) > maxSettimana) return false
-      if (maxConsecutive != null && runContenente(busy.get(tid)!, intervallo(slot.ds, slot.t)) > maxConsecutive) return false
+      if (maxSettimana != null && (oreSett.get(tid)?.get(lunediKey(slot.ds)) ?? 0) + dur(slot.t.id) > maxSettimana + 2) return false   // tolleranza ±2
+      if (maxConsecutive != null && runContenente(busy.get(tid)!, intervallo(slot.ds, slot.t)) > maxConsecutive + 2) return false
       return true
     })
   }
