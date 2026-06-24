@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { MapPin, Plus, Trash2, Pencil, Save, X } from 'lucide-react'
+import { MapPin, Plus, Trash2, Pencil, Save, X, ShieldCheck, UserPlus, Lock, Crown } from 'lucide-react'
 import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { usePostazione } from '../../contexts/PostazioneContext'
-import type { AuthUser, Postazione } from '../../types'
+import { ADMIN_EMAIL } from '../../lib/constants'
+import { nomeCompleto } from '../../types'
+import type { AuthUser, Postazione, UtenteAdmin } from '../../types'
 
 export function PostazioniPage() {
   const qc = useQueryClient()
@@ -99,6 +101,81 @@ export function PostazioniPage() {
           {postazioni.length === 0 && <div className="card p-5 text-sm text-stone-500">Nessuna postazione. Creane una qui sopra.</div>}
         </div>
       )}
+
+      {/* Gestione amministratori (solo Admin) */}
+      <AmministratoriBox user={user} />
+    </div>
+  )
+}
+
+// ─── Riquadro gestione amministratori globali ───────────────────────
+function AmministratoriBox({ user }: { user: AuthUser | null }) {
+  const qc = useQueryClient()
+  const { confirm, confirmState } = useConfirm()
+  const { data: utenti = [], isLoading } = useQuery<UtenteAdmin[]>({ queryKey: ['utenti'], queryFn: () => store.getUtenti() })
+  const [nuovo, setNuovo] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const admins = utenti.filter(u => u.admin)
+  const candidati = utenti.filter(u => !u.admin)
+  // il proprietario (e te stesso) non sono rimovibili
+  const protetto = (u: UtenteAdmin) => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase() || u.id === user?.id
+
+  async function promuovi() {
+    if (!nuovo) return
+    setBusy(true)
+    try { await store.setUtenteAdmin(nuovo, true); setNuovo(''); await qc.invalidateQueries({ queryKey: ['utenti'] }) }
+    catch (e) { alert(`Impossibile aggiungere l'amministratore.\n${(e as Error).message ?? ''}`) }
+    finally { setBusy(false) }
+  }
+  async function rimuovi(u: UtenteAdmin) {
+    const ok = await confirm({
+      title: 'Rimuovi amministratore',
+      message: `Vuoi togliere i permessi di amministratore a ${nomeCompleto(u)}? Tornerà un utente normale (mantiene le sue appartenenze nelle postazioni). Avrà effetto al suo prossimo accesso.`,
+      confirmLabel: 'Rimuovi admin', danger: true,
+    })
+    if (!ok) return
+    try { await store.setUtenteAdmin(u.id, false); await qc.invalidateQueries({ queryKey: ['utenti'] }) }
+    catch (e) { alert(`Impossibile rimuovere l'amministratore.\n${(e as Error).message ?? ''}`) }
+  }
+
+  return (
+    <div className="card p-4 space-y-3">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      <div>
+        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><ShieldCheck size={15} style={{ color: '#476540' }} /> Amministratori</h2>
+        <p className="text-xs text-stone-500 mt-0.5">Un amministratore vede e gestisce <strong>tutto</strong>, in ogni postazione. Il tuo nominativo è permanente e non rimovibile.</p>
+      </div>
+
+      {isLoading ? <p className="text-sm text-stone-500">Caricamento…</p> : (
+        <div className="space-y-1.5">
+          {admins.map(u => (
+            <div key={u.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: '#f4f6f1' }}>
+              {protetto(u) ? <Crown size={14} style={{ color: '#b8860b' }} fill="#facc15" /> : <ShieldCheck size={14} style={{ color: '#476540' }} />}
+              <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{nomeCompleto(u)}</span>
+              <span className="text-xs text-stone-500 hidden sm:inline">{u.email}</span>
+              <div className="flex-1" />
+              {protetto(u)
+                ? <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#fef9c3', color: '#854d0e' }}><Lock size={10} /> permanente</span>
+                : <button onClick={() => rimuovi(u)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Rimuovi amministratore"><Trash2 size={13} /></button>}
+            </div>
+          ))}
+          {admins.length === 0 && <p className="text-sm text-stone-500">Nessun amministratore.</p>}
+        </div>
+      )}
+
+      {/* Aggiungi (promuove una persona già in elenco) */}
+      <div className="flex items-end gap-2 pt-1">
+        <div className="flex-1">
+          <label className="label text-xs">Aggiungi amministratore</label>
+          <select value={nuovo} onChange={e => setNuovo(e.target.value)} className="input text-sm">
+            <option value="">— scegli una persona —</option>
+            {candidati.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)} — {u.email}</option>)}
+          </select>
+        </div>
+        <button onClick={promuovi} disabled={busy || !nuovo} className="btn-primary text-sm"><UserPlus size={15} /> Rendi admin</button>
+      </div>
+      {candidati.length === 0 && <p className="text-xs text-stone-400">Tutte le persone in elenco sono già amministratori.</p>}
     </div>
   )
 }

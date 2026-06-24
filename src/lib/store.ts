@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin } from '../types'
 
 const RANK_LIVELLO: Record<string, number> = { responsabile: 3, turnista: 2, esterno: 1 }
 import { ADMIN_EMAIL } from './constants'
@@ -436,6 +436,20 @@ const supaStore = {
       return { id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', livello: (i?.livello ?? 'esterno') as Livello, postazioneId: i?.postazioneId ?? null }
     }).sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
   },
+
+  // Tutti gli utenti con il flag admin (per la gestione amministratori).
+  async getUtenti(): Promise<UtenteAdmin[]> {
+    const { data, error } = await supabase.from('utenti').select('id, nome, cognome, email, admin')
+    if (error) throw error
+    return (data ?? []).map(x => ({ id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin: !!x.admin }))
+      .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+  },
+  // Promuove/rimuove un amministratore. Lato DB un trigger garantisce che solo un
+  // super-admin possa farlo e protegge il proprietario / l'ultimo admin.
+  async setUtenteAdmin(utenteId: string, on: boolean): Promise<void> {
+    const { error } = await supabase.from('utenti').update({ admin: on }).eq('id', utenteId)
+    if (error) throw error
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -770,6 +784,21 @@ const localStore = {
       }
     })
     return [...map.values()].sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+  },
+
+  async getUtenti(): Promise<UtenteAdmin[]> {
+    ensureSeed()
+    const extra = new Set(read<string[]>('gm_dev_admins', []))
+    const map = new Map<string, UtenteAdmin>()
+    read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
+      if (!map.has(t.utente_id)) map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, admin: t.email === ADMIN_EMAIL || extra.has(t.utente_id) })
+    })
+    return [...map.values()].sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+  },
+  async setUtenteAdmin(utenteId: string, on: boolean): Promise<void> {
+    const s = new Set(read<string[]>('gm_dev_admins', []))
+    if (on) s.add(utenteId); else s.delete(utenteId)
+    writeLs('gm_dev_admins', [...s])
   },
 }
 

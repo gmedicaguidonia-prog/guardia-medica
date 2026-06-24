@@ -35,6 +35,15 @@ export interface UtenteImpersonabile {
   postazioneId: string | null
 }
 
+/** Utente con il flag amministratore globale (riquadro "Amministratori"). */
+export interface UtenteAdmin {
+  id: string
+  nome: string
+  cognome: string
+  email: string
+  admin: boolean
+}
+
 // ─── Turnista = APPARTENENZA (utente × postazione × livello) ─────────
 //  id = id dell'appartenenza; utente_id = identità globale.
 export interface Turnista {
