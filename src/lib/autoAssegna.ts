@@ -139,3 +139,61 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     perTurnista: poolIds.map(id => ({ id, ore: ore.get(id)!, weekend: wknd.get(id)! })).sort((a, b) => b.ore - a.ore),
   }
 }
+
+// ── Auto Reperibilità ───────────────────────────────────────────────
+const REP = -1
+
+export interface AutoRepInput {
+  giorni: Date[]
+  schema: TurnoSchema[]
+  poolIds: string[]
+  desiderata: Desiderata[]
+  assegnazioni: Map<string, string>   // stato attuale: `${ds}|${turnoId}|${slot}` → tid (slot<0 = reperibile)
+}
+
+/** Riempie le caselle reperibilità (slot -1) ANCORA VUOTE usando le
+ *  disponibilità «vorrei» NON usate: un turnista che voleva quel turno ma non
+ *  è stato messo in turno, se non è già impegnato in sovrapposizione. Bilancia
+ *  il numero di reperibilità. Non tocca i reperibili già presenti. */
+export function autoReperibilita(inp: AutoRepInput): { rep: Map<string, string>; assegnati: number } {
+  const { giorni, schema, poolIds, desiderata, assegnazioni } = inp
+  const schemaById = new Map(schema.map(s => [s.id, s]))
+  const vuoi = new Set<string>(), indispo = new Set<string>()
+  desiderata.forEach(d => { const k = `${d.data}|${d.turno_schema_id}|${d.turnista_id}`; if (d.tipo === 'desiderata') vuoi.add(k); else indispo.add(k) })
+
+  const busy = new Map<string, [number, number][]>(); poolIds.forEach(t => busy.set(t, []))
+  const inTurno = new Map<string, Set<string>>()   // `${ds}|${turnoId}` → tids nei posti regolari
+  const repPresente = new Set<string>()            // `${ds}|${turnoId}` già con reperibile
+  const repCount = new Map<string, number>(); poolIds.forEach(t => repCount.set(t, 0))
+
+  for (const [key, tid] of assegnazioni) {
+    const [ds, turnoId, slotStr] = key.split('|')
+    const turno = schemaById.get(turnoId); if (!turno) continue
+    if (busy.has(tid)) busy.get(tid)!.push(intervallo(ds, turno))
+    if (+slotStr < 0) { repPresente.add(`${ds}|${turnoId}`); if (repCount.has(tid)) repCount.set(tid, repCount.get(tid)! + 1) }
+    else { const k = `${ds}|${turnoId}`; if (!inTurno.has(k)) inTurno.set(k, new Set()); inTurno.get(k)!.add(tid) }
+  }
+
+  const rep = new Map<string, string>()
+  for (const d of giorni) {
+    const ds = isoDate(d)
+    for (const turno of schema) {
+      if (!turnoSiApplica(turno, d)) continue
+      const k = `${ds}|${turno.id}`
+      if (repPresente.has(k)) continue
+      const iv = intervallo(ds, turno)
+      const inReg = inTurno.get(k) ?? new Set<string>()
+      const cand = poolIds.filter(tid => {
+        if (!vuoi.has(`${k}|${tid}`)) return false                                  // solo "vorrei" non usate
+        if (indispo.has(`${k}|${tid}`)) return false
+        if (inReg.has(tid)) return false                                            // già in turno regolare lì
+        return !busy.get(tid)!.some(([s2, e2]) => iv[0] < e2 && s2 < iv[1])         // niente sovrapposizione
+      })
+      if (!cand.length) continue
+      const tid = cand.reduce((a, b) => (repCount.get(b)! < repCount.get(a)! ? b : a))
+      rep.set(`${ds}|${turno.id}|${REP}`, tid)
+      busy.get(tid)!.push(iv); repCount.set(tid, repCount.get(tid)! + 1); repPresente.add(k)
+    }
+  }
+  return { rep, assegnati: rep.size }
+}

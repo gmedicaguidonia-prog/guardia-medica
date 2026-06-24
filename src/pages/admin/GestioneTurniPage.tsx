@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Sa
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
-import { autoAssegna, type AutoAssegnaResult } from '../../lib/autoAssegna'
+import { autoAssegna, autoReperibilita, type AutoAssegnaResult } from '../../lib/autoAssegna'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
@@ -15,7 +15,7 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, StatoCalendario, RichiestaTurno } from '../../types'
+import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -96,6 +96,8 @@ export function GestioneTurniPage() {
   const coloreTurnista = (id: string) => ROLE_COLOR[tById.get(id)?.livello ?? 'turnista']
   // Ore assegnate per turnista nel mese (esclude il reperibile = slot -1)
   const durataById = useMemo(() => { const m = new Map<string, number>(); schema.forEach(c => m.set(c.id, oreTurno(c.ora_inizio, c.ora_fine))); return m }, [schema])
+  // scelta di ciascun turnista per (giorno|turno) — per evidenziare le celle durante il trascinamento
+  const desByKey = useMemo(() => { const m = new Map<string, TipoDesiderata>(); desiderataMese.forEach(d => m.set(`${d.data}|${d.turno_schema_id}|${d.turnista_id}`, d.tipo)); return m }, [desiderataMese])
   const oreByTurnista = useMemo(() => {
     const m = new Map<string, number>()
     local.forEach((tid, key) => { const p = key.split('|'); if (+p[2] >= 0) m.set(tid, (m.get(tid) ?? 0) + (durataById.get(p[1]) ?? 0)) })
@@ -261,6 +263,20 @@ export function GestioneTurniPage() {
     if (ok) eseguiAuto()
   }
 
+  // ── Assegna Reperibilità (solo a colonna attiva e con turni coperti ≥ 80%) ──
+  function eseguiReperibilita() {
+    if (!showRep) { showWarn('Attiva prima la colonna Reperibile.'); return }
+    if (copertura.totali === 0 || copertura.coperti / copertura.totali < 0.8) {
+      showWarn('Per assegnare le reperibilità i turni devono essere coperti almeno all’80% del totale.'); return
+    }
+    const poolIds = turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno').map(t => t.id)
+    const { rep, assegnati } = autoReperibilita({ giorni: giorniDelMese(anno, mese), schema, poolIds, desiderata: desiderataMese, assegnazioni: local })
+    if (!assegnati) { showWarn('Nessuna reperibilità assegnabile: nessuna disponibilità libera e compatibile.'); return }
+    const nuovo = new Map(local); rep.forEach((v, k) => nuovo.set(k, v))
+    replaceAll(nuovo)
+    showWarn(`${assegnati} reperibilità assegnate dalle disponibilità libere. Rivedi e premi Salva.`)
+  }
+
   function apriStatoModal() { setStatoScelto(statoCal); setShowStatoModal(true) }
   async function salvaStato() {
     setSavingStato(true)
@@ -409,12 +425,20 @@ export function GestioneTurniPage() {
       <button onClick={onX} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
     </span>
   )
-  const dropStyle = (key: string): CSSProperties => ({
-    ...tdBase, minWidth: 150,
-    border: overKey === key ? '2px dashed #2e7d32' : '1px solid #e5e7eb',
-    background: overKey === key ? '#eaf6ea' : '#fff',
-    boxShadow: overKey === key ? 'inset 0 0 0 2px rgba(46,125,50,0.25)' : undefined,
-  })
+  const dropStyle = (key: string): CSSProperties => {
+    const base: CSSProperties = { ...tdBase, minWidth: 150 }
+    if (overKey === key) return { ...base, border: '2px dashed #2e7d32', background: '#dcf5dc', boxShadow: 'inset 0 0 0 2px rgba(46,125,50,0.35)' }
+    // durante il trascinamento: rosso dove il turnista è indisponibile, verde dove
+    // è disponibile o non ha detto nulla (vale sia per i turni che per il reperibile)
+    if (draggingId) {
+      const [ds, turnoId] = key.split('|')
+      const indispo = desByKey.get(`${ds}|${turnoId}|${draggingId}`) === 'indisponibilita'
+      return indispo
+        ? { ...base, border: '1px solid #fca5a5', background: '#fee2e2' }
+        : { ...base, border: '1px solid #86efac', background: '#f0fdf4' }
+    }
+    return { ...base, border: '1px solid #e5e7eb', background: '#fff' }
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
@@ -450,6 +474,7 @@ export function GestioneTurniPage() {
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={apriImporta} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
+        {showRep && <button onClick={eseguiReperibilita} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95" style={{ background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }} title="Riempi le reperibilità con le disponibilità libere (richiede turni coperti almeno all’80%)"><Phone size={14} /> Assegna Reperibilità</button>}
         <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={coperturaOk ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' } : { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }} title="Turni del mese con tutti i posti assegnati"><CalendarDays size={13} /> Turni coperti {copertura.coperti}/{copertura.totali}</span>
         <button onClick={chiediAuto}
           className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95"
