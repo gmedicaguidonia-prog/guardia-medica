@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid } from 'lucide-react'
+import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, UserCog } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
@@ -97,6 +97,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   // colonne della matrice = solo i turnisti IMPORTATI per il mese (non tutta la postazione)
   const importatiMese = useMemo(() => new Set(turnistiMese), [turnistiMese])
   const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id) && t.livello !== 'esterno').sort(cmpTurnisti), [personale, importatiMese])
+  // responsabili della postazione (mostrati nel div postazione)
+  const responsabili = useMemo(() => personale.filter(t => t.livello === 'responsabile').sort(cmpTurnisti), [personale])
 
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
@@ -200,6 +202,17 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               </select>
             ) : <span className="text-sm" style={{ color: '#3a3d30' }}>{mie[0].nome}</span>}
             {mia && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#eef3ea', color: '#476540' }}>sei {mia.livello}</span>}
+
+            {/* Responsabile/i della postazione (allineati a destra) */}
+            <div className="flex items-center gap-1.5 ml-auto">
+              <UserCog size={15} style={{ color: '#476540' }} />
+              <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Responsabile/i:</span>
+              {responsabili.length > 0 ? (
+                <select className="input text-sm w-auto" defaultValue={responsabili[0].id} title="Responsabili della postazione">
+                  {responsabili.map(r => <option key={r.id} value={r.id}>{nomeCompleto(r)}</option>)}
+                </select>
+              ) : <span className="text-sm text-stone-500">nessuno</span>}
+            </div>
           </div>
 
           {/* Schede */}
