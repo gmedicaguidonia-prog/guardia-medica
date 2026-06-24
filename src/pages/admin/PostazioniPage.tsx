@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { MapPin, Plus, Trash2, Pencil, Save, X, ShieldCheck, UserPlus, Lock, Crown } from 'lucide-react'
+import { MapPin, Plus, Trash2, Pencil, Save, X, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal } from 'lucide-react'
 import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
@@ -47,7 +47,7 @@ export function PostazioniPage() {
   if (user?.livello !== 'admin') {
     return (
       <div className="max-w-3xl mx-auto p-6">
-        <div className="card p-5 text-sm text-stone-600">Solo l'<strong>Admin</strong> può creare e gestire le postazioni.</div>
+        <div className="card p-5 text-sm text-stone-600">Solo l'<strong>Admin</strong> può accedere al <strong>Centro di Controllo</strong>.</div>
       </div>
     )
   }
@@ -58,51 +58,57 @@ export function PostazioniPage() {
 
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>
-          <MapPin size={22} style={{ color: '#476540' }} /> Postazioni
+          <SlidersHorizontal size={22} style={{ color: '#476540' }} /> Centro di Controllo
         </h1>
-        <p className="text-sm text-stone-600 mt-0.5">Ogni postazione ha il suo personale, turni, regole e desiderata. Seleziona quella attiva dal menu in alto; i <strong>Responsabili</strong> si assegnano dalla pagina <strong>Personale</strong> (livello Responsabile).</p>
+        <p className="text-sm text-stone-600 mt-0.5">Le impostazioni generali del programma, divise per funzione.</p>
       </div>
 
-      {/* Crea */}
+      {/* Blocco: Postazioni */}
       <div className="card p-4 space-y-3">
-        <h2 className="font-semibold text-stone-700 text-sm">Nuova postazione</h2>
-        <div className="flex items-end gap-3">
+        <div>
+          <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><MapPin size={15} style={{ color: '#476540' }} /> Postazioni</h2>
+          <p className="text-xs text-stone-500 mt-0.5">Ogni postazione ha il suo personale, turni, regole e desiderata. Seleziona quella attiva dal menu in alto; i <strong>Responsabili</strong> si assegnano dalla pagina <strong>Personale</strong>.</p>
+        </div>
+
+        {/* crea */}
+        <div className="flex items-end gap-2">
           <div className="flex-1">
-            <label className="label text-xs">Nome postazione</label>
+            <label className="label text-xs">Nuova postazione</label>
             <input value={nuovoNome} onChange={e => setNuovoNome(e.target.value)} placeholder="Es. Tivoli" className="input text-sm" onKeyDown={e => e.key === 'Enter' && crea()} />
           </div>
-          <button onClick={crea} disabled={saving || !nuovoNome.trim()} className="btn-primary text-sm"><Plus size={15} /> Crea postazione</button>
+          <button onClick={crea} disabled={saving || !nuovoNome.trim()} className="btn-primary text-sm"><Plus size={15} /> Crea</button>
         </div>
+
+        {/* elenco */}
+        {isLoading ? <p className="text-sm text-stone-500">Caricamento…</p> : (
+          <div className="space-y-1.5">
+            {postazioni.map(p => (
+              <div key={p.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: '#f4f6f1', boxShadow: p.id === postazioneId ? 'inset 0 0 0 2px #476540' : undefined }}>
+                <MapPin size={15} style={{ color: '#476540' }} className="shrink-0" />
+                {editId === p.id ? (
+                  <>
+                    <input value={editNome} onChange={e => setEditNome(e.target.value)} className="input py-0.5 text-sm flex-1" autoFocus onKeyDown={e => e.key === 'Enter' && salvaNome(p.id)} />
+                    <button onClick={() => salvaNome(p.id)} className="btn-primary py-0.5 px-2 text-xs"><Save size={12} /> Salva</button>
+                    <button onClick={() => setEditId(null)} className="btn-secondary py-0.5 px-1.5 text-xs"><X size={12} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold text-sm flex-1" style={{ color: '#2b3c24' }}>{p.nome}</span>
+                    {p.id === postazioneId
+                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#dcfce7', color: '#166534' }}>attiva</span>
+                      : <button onClick={() => setPostazioneId(p.id)} className="text-xs px-2 py-0.5 rounded border" style={{ borderColor: '#d6d3cc', color: '#476540' }}>Attiva</button>}
+                    <button onClick={() => { setEditId(p.id); setEditNome(p.nome) }} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Rinomina"><Pencil size={13} /></button>
+                    <button onClick={() => elimina(p)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Elimina postazione"><Trash2 size={13} /></button>
+                  </>
+                )}
+              </div>
+            ))}
+            {postazioni.length === 0 && <p className="text-sm text-stone-500">Nessuna postazione. Creane una qui sopra.</p>}
+          </div>
+        )}
       </div>
 
-      {/* Elenco */}
-      {isLoading ? <p className="text-sm text-stone-500">Caricamento…</p> : (
-        <div className="space-y-3">
-          {postazioni.map(p => (
-            <div key={p.id} className="card p-4 flex items-center gap-2" style={p.id === postazioneId ? { boxShadow: 'inset 0 0 0 2px #476540' } : undefined}>
-              <MapPin size={16} style={{ color: '#476540' }} className="shrink-0" />
-              {editId === p.id ? (
-                <>
-                  <input value={editNome} onChange={e => setEditNome(e.target.value)} className="input py-0.5 text-sm flex-1" autoFocus onKeyDown={e => e.key === 'Enter' && salvaNome(p.id)} />
-                  <button onClick={() => salvaNome(p.id)} className="btn-primary py-0.5 px-2 text-xs"><Save size={12} /> Salva</button>
-                  <button onClick={() => setEditId(null)} className="btn-secondary py-0.5 px-1.5 text-xs"><X size={12} /></button>
-                </>
-              ) : (
-                <>
-                  <span className="font-bold text-sm flex-1" style={{ color: '#2b3c24' }}>{p.nome}</span>
-                  {p.id === postazioneId && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#dcfce7', color: '#166534' }}>attiva</span>}
-                  {p.id !== postazioneId && <button onClick={() => setPostazioneId(p.id)} className="text-xs px-2 py-0.5 rounded border" style={{ borderColor: '#d6d3cc', color: '#476540' }}>Attiva</button>}
-                  <button onClick={() => { setEditId(p.id); setEditNome(p.nome) }} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Rinomina"><Pencil size={13} /></button>
-                  <button onClick={() => elimina(p)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Elimina postazione"><Trash2 size={13} /></button>
-                </>
-              )}
-            </div>
-          ))}
-          {postazioni.length === 0 && <div className="card p-5 text-sm text-stone-500">Nessuna postazione. Creane una qui sopra.</div>}
-        </div>
-      )}
-
-      {/* Gestione amministratori (solo Admin) */}
+      {/* Blocco: Amministratori */}
       <AmministratoriBox user={user} />
     </div>
   )

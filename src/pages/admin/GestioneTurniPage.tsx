@@ -251,22 +251,31 @@ export function GestioneTurniPage() {
 
   // ── Richieste di candidatura (Modalità Pianificazione) ──
   //  Approva/Rifiuta NON cancellano: registrano lo stato, così il candidato che
-  //  prova ad annullare sa se è stata approvata o rifiutata.
+  //  prova ad annullare sa se è stata approvata o rifiutata. Prima di agire si
+  //  ricontrolla che la candidatura sia ancora "in attesa": il candidato
+  //  potrebbe averla annullata nel frattempo.
   async function rifiutaRichiesta(r: RichiestaTurno) {
-    await store.setRichiestaStato(r.id, 'rifiutata')
+    const cur = await store.getRichiestaCorrente(postazioneId!, r.data, r.turno_schema_id, r.turnista_id)
+    if (cur && cur.stato === 'in_attesa') await store.setRichiestaStato(cur.id, 'rifiutata')
     qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
   }
   async function approvaRichiesta(r: RichiestaTurno) {
+    const cur = await store.getRichiestaCorrente(postazioneId!, r.data, r.turno_schema_id, r.turnista_id)
+    if (!cur || cur.stato !== 'in_attesa') {
+      showWarn(`La candidatura di ${nomeTurnista(r.turnista_id)} non è più in attesa: è stata annullata dal candidato o già gestita.`)
+      qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
+      return
+    }
     const turno = schema.find(s => s.id === r.turno_schema_id)
     if (!turno) return
     const conf = conflittoOrario(r.turnista_id, turno, r.data, '')
     if (conf) { showWarn(`Impossibile approvare: ${nomeTurnista(r.turnista_id)} è già impegnato in “${conf.nome || 'un turno'}” (${conf.ora_inizio}–${conf.ora_fine}) in sovrapposizione di orario.`); return }
     const slots = turnistiSlots(r.data, turno)
-    if (slots.includes(r.turnista_id)) { await store.setRichiestaStato(r.id, 'approvata'); qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] }); showWarn(`${nomeTurnista(r.turnista_id)} è già in questo turno: richiesta approvata.`); return }
+    if (slots.includes(r.turnista_id)) { await store.setRichiestaStato(cur.id, 'approvata'); qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] }); showWarn(`${nomeTurnista(r.turnista_id)} è già in questo turno: richiesta approvata.`); return }
     const free = slots.findIndex(s => s === null)
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” del ${itDate(r.data)} non ci sono posti liberi.`); return }
     set(`${r.data}|${turno.id}|${free}`, r.turnista_id)   // inserisce (in sospeso): premi Salva per confermare
-    await store.setRichiestaStato(r.id, 'approvata')
+    await store.setRichiestaStato(cur.id, 'approvata')
     qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
   }
 

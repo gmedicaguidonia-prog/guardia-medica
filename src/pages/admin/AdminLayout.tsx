@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, MapPin, LayoutGrid } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 
 const links: { to: string; label: string; Icon: typeof Home; num: number | null; adminOnly?: boolean }[] = [
-  { to: '/admin/postazioni', label: 'Postazioni',                   Icon: MapPin,        num: null, adminOnly: true },
+  { to: '/admin/postazioni', label: 'Centro di Controllo',          Icon: SlidersHorizontal, num: null, adminOnly: true },
   { to: '/admin',            label: 'Home',                         Icon: Home,          num: null },
   { to: '/admin/turnisti',   label: 'Personale',                    Icon: Users,         num: null },
   { to: '/admin/schema',        label: 'Configurazione Turni',         Icon: CalendarClock, num: 1 },
