@@ -8,6 +8,7 @@ import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
 import { nomeCompleto, cmpTurnisti } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
+import { useDebug } from '../contexts/DebugContext'
 import type { AuthUser, TurnoSchema, Turno, Turnista, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -30,6 +31,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const qc = useQueryClient()
   const oggi = new Date()
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
+  const { adminMode } = useDebug()   // "god mode": l'admin reale bypassa i controlli di autorizzazione lato vista
   const oggiStr = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
   const [tab, setTab] = useState<'turni' | 'desiderata'>('turni')
 
@@ -271,7 +273,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
           {/* ───── DESIDERATA ───── */}
           {tab === 'desiderata' && (
-            mia?.livello === 'esterno' ? (
+            mia?.livello === 'esterno' && !adminMode ? (
               <Avviso>Come <strong>esterno</strong> non puoi accedere alle desiderata/indisponibilità. Puoi però vedere il <strong>Calendario Turni</strong> e candidarti ai turni scoperti.</Avviso>
             ) : desStato === 'assente' ? (
               <Avviso>La raccolta <strong>desiderata / indisponibilità</strong> di {MESI[mese - 1]} {anno} non è ancora stata pubblicata.</Avviso>
@@ -279,8 +281,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} aprirà il <strong>{itDate(fin!.aperta_da!)}</strong>.</Avviso>
             ) : !versione || schema.length === 0 || !impaginazioneOk ? (
               <Avviso>Non ci sono turni configurati per {MESI[mese - 1]} {anno}.</Avviso>
-            ) : pubblicheMode ? (
-              /* ── DESIDERATA PUBBLICHE: una colonna per turnista, modifichi la tua ── */
+            ) : (pubblicheMode || adminMode) ? (
+              /* ── DESIDERATA PUBBLICHE (o god mode admin): una colonna per turnista, modifichi la tua ── */
               <>
                 <p className="text-xs text-stone-500">
                   {desEditabile

@@ -217,7 +217,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.55)' }} onClick={() => setDebugModal(null)}>
           <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2"><Crown size={20} style={{ color: '#b8860b' }} fill="#facc15" /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Modalità Admin</h3></div>
-            <p className="text-sm text-stone-600 mb-4">{adminMode ? 'Disattivare la modalità admin? Resti comunque admin a pieni poteri: si spegne solo l’evidenziazione “god mode”.' : 'Attivare la modalità admin? È un di più di “god mode” (per il debug) sopra ai tuoi normali poteri da admin, che hai sempre.'}</p>
+            <p className="text-sm text-stone-600 mb-4">{adminMode ? 'Disattivare la god mode? Resti admin a pieni poteri, ma tornano i normali controlli di autorizzazione (vedi l’app come gli altri utenti).' : 'Attivare la god mode? Vedrai TUTTO bypassando i controlli di autorizzazione — es. le desiderata anche di una postazione dove sei esterno.'}</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setDebugModal(null)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
               <button onClick={() => { setAdminMode(!adminMode); setDebugModal(null) }} className="btn-primary text-sm py-1.5 px-4">{adminMode ? 'Disattiva' : 'Attiva'}</button>
