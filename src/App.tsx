@@ -18,6 +18,8 @@ import { useVersionCheck } from './hooks/useVersionCheck'
 import { UpdateToast } from './components/UpdateToast'
 import { UnsavedProvider } from './contexts/UnsavedContext'
 import { PostazioneProvider } from './contexts/PostazioneContext'
+import { DebugProvider, useDebug } from './contexts/DebugContext'
+import type { Livello } from './types'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,6 +41,17 @@ function Spinner() {
 
 function AppRoutes() {
   const { user, loading, signInWithGoogle, signOut, devLogin, isDev } = useAuth()
+  return (
+    <DebugProvider realUser={user}>
+      <AppShell loading={loading} signInWithGoogle={signInWithGoogle} signOut={signOut} devLogin={devLogin} isDev={isDev} />
+    </DebugProvider>
+  )
+}
+
+function AppShell({ loading, signInWithGoogle, signOut, devLogin, isDev }: {
+  loading: boolean; signInWithGoogle: () => void; signOut: () => void; devLogin: (l: Livello) => void; isDev: boolean
+}) {
+  const { effectiveUser: user } = useDebug()
   const { updateAvailable, applyUpdate } = useVersionCheck()
 
   return (

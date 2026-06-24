@@ -25,6 +25,16 @@ export interface Utente {
   email: string
 }
 
+/** Utente impersonabile (debug "doppleganger"): livello = max dalle appartenenze. */
+export interface UtenteImpersonabile {
+  id: string
+  nome: string
+  cognome: string
+  email: string
+  livello: Livello
+  postazioneId: string | null
+}
+
 // ─── Turnista = APPARTENENZA (utente × postazione × livello) ─────────
 //  id = id dell'appartenenza; utente_id = identità globale.
 export interface Turnista {
