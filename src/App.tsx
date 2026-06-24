@@ -19,6 +19,9 @@ import { UpdateToast } from './components/UpdateToast'
 import { UnsavedProvider } from './contexts/UnsavedContext'
 import { PostazioneProvider } from './contexts/PostazioneContext'
 import { DebugProvider, useDebug } from './contexts/DebugContext'
+import { useEffect } from 'react'
+import { setAutoreCorrente } from './lib/store'
+import { nomeCompleto } from './types'
 import type { Livello } from './types'
 
 const queryClient = new QueryClient({
@@ -53,6 +56,7 @@ function AppShell({ loading, signInWithGoogle, signOut, devLogin, isDev }: {
 }) {
   const { effectiveUser: user } = useDebug()
   const { updateAvailable, applyUpdate } = useVersionCheck()
+  useEffect(() => { setAutoreCorrente(user ? nomeCompleto(user) : null) }, [user])
 
   return (
     <PostazioneProvider user={user}>

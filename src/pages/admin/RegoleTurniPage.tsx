@@ -210,7 +210,9 @@ export function RegoleTurniPage() {
     if (!regoleVer) return
     setSaving(true)
     try {
-      for (const c of diff()) { const [giorno, turnoId, slot] = c.key.split('|'); await store.setRegola(regoleVer.id, +giorno, turnoId, +slot, c.value) }
+      const mod = diff()
+      for (const c of mod) { const [giorno, turnoId, slot] = c.key.split('|'); await store.setRegola(regoleVer.id, +giorno, turnoId, +slot, c.value) }
+      if (mod.length) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole turni (turni fissi / «mai») aggiornate · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['regole', regoleVer.id] })
     } catch (e) { console.error('[Regole] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }

@@ -9,6 +9,8 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import type { Turnista, Livello, Utente, AuthUser } from '../../types'
 
+const meseCorrenteKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+
 const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType }> = {
   admin:        { bg: '#fee2e2', fg: '#b91c1c', Icon: Crown },
   responsabile: { bg: '#fef3c7', fg: '#92400e', Icon: UserCog },
@@ -56,6 +58,7 @@ export function TurnistiPage() {
     setSaving(true); setErrore('')
     try {
       await store.addMembro(postazioneId!, { nome, cognome, email, livello, utenteId: utenteId ?? undefined })
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseCorrenteKey(), tipo: 'personale', messaggio: `${cognome} ${nome} aggiunto al personale (${livello}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
       resetForm(); await qc.invalidateQueries({ queryKey: ['turnisti'] })
     } catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
@@ -69,7 +72,7 @@ export function TurnistiPage() {
   async function salvaEdit() {
     if (!eNome.trim() || !eCognome.trim() || !eEmail.trim()) { setErrore('Nome, cognome ed email obbligatori.'); return }
     setSaving(true); setErrore('')
-    try { await store.updateMembro(editId!, eUtente, { nome: eNome, cognome: eCognome, email: eEmail, livello: eLiv }); setEditId(null); await qc.invalidateQueries({ queryKey: ['turnisti'] }) }
+    try { await store.updateMembro(editId!, eUtente, { nome: eNome, cognome: eCognome, email: eEmail, livello: eLiv }); store.addNotifica({ postazioneId: postazioneId!, mese: meseCorrenteKey(), tipo: 'personale', messaggio: `${eCognome} ${eNome}: dati aggiornati (livello ${eLiv}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {}); setEditId(null); await qc.invalidateQueries({ queryKey: ['turnisti'] }) }
     catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
   }
@@ -80,7 +83,9 @@ export function TurnistiPage() {
       confirmLabel: 'Togli', danger: true,
     })
     if (!ok) return
-    await store.removeMembro(t.id); await qc.invalidateQueries({ queryKey: ['turnisti'] })
+    await store.removeMembro(t.id)
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseCorrenteKey(), tipo: 'personale', messaggio: `${nomeCompleto(t)} rimosso dal personale.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+    await qc.invalidateQueries({ queryKey: ['turnisti'] })
   }
 
   if (!postazioneId) return <div className="max-w-3xl mx-auto p-6 text-sm text-stone-500">Caricamento postazione…</div>

@@ -10,6 +10,9 @@ import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
+// nome dell'utente loggato: usato come autore di default quando non passato esplicitamente
+let _autoreCorrente: string | null = null
+export function setAutoreCorrente(n: string | null) { _autoreCorrente = n }
 function mapNotifica(r: Record<string, unknown>): Notifica {
   return { id: r.id as string, postazioneId: r.postazione_id as string, mese: r.mese as string, tipo: r.tipo as string, messaggio: r.messaggio as string, target: (r.target as string | null) ?? null, perAdmin: !!r.per_admin, turnistaId: (r.turnista_id as string | null) ?? null, autore: (r.autore as string | null) ?? null, letta: !!r.letta, created_at: r.created_at as string }
 }
@@ -493,7 +496,7 @@ const supaStore = {
 
   // ── Notifiche (eventi della gestione del mese) ──
   async addNotifica(n: AddNotifica): Promise<void> {
-    const { error } = await supabase.from('notifiche').insert({ postazione_id: n.postazioneId, mese: n.mese, tipo: n.tipo, messaggio: n.messaggio, target: n.target ?? null, per_admin: n.perAdmin ?? false, turnista_id: n.turnistaId ?? null, autore: n.autore ?? null })
+    const { error } = await supabase.from('notifiche').insert({ postazione_id: n.postazioneId, mese: n.mese, tipo: n.tipo, messaggio: n.messaggio, target: n.target ?? null, per_admin: n.perAdmin ?? false, turnista_id: n.turnistaId ?? null, autore: n.autore ?? _autoreCorrente })
     if (error) console.warn('[Notifiche] insert ignorato:', error.message)
   },
   async getNotificheAdmin(postazioneId: string): Promise<Notifica[]> {
@@ -917,7 +920,7 @@ const localStore = {
   // ── Notifiche (DEV) ──
   async addNotifica(n: AddNotifica): Promise<void> {
     const list = read<Notifica[]>('gm_notifiche', [])
-    list.push({ id: uid(), postazioneId: n.postazioneId, mese: n.mese, tipo: n.tipo, messaggio: n.messaggio, target: n.target ?? null, perAdmin: n.perAdmin ?? false, turnistaId: n.turnistaId ?? null, autore: n.autore ?? null, letta: false, created_at: new Date().toISOString() })
+    list.push({ id: uid(), postazioneId: n.postazioneId, mese: n.mese, tipo: n.tipo, messaggio: n.messaggio, target: n.target ?? null, perAdmin: n.perAdmin ?? false, turnistaId: n.turnistaId ?? null, autore: n.autore ?? _autoreCorrente, letta: false, created_at: new Date().toISOString() })
     writeLs('gm_notifiche', list)
   },
   async getNotificheAdmin(postazioneId: string): Promise<Notifica[]> {

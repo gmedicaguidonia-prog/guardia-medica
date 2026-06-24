@@ -159,6 +159,7 @@ export function ImpaginazionePage() {
       }
       if (attivo && idMap.has(attivo)) setAttivo(idMap.get(attivo)!)
       editing.current = false
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'impaginazione', messaggio: `Impaginazione (fogli) di ${meseLabel(meseKey)} aggiornata · ${draftFogli.length} fogl${draftFogli.length === 1 ? 'io' : 'i'}.`, target: '/admin/impaginazione', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['fogli', impagVer.id] })
       await qc.invalidateQueries({ queryKey: ['foglio-turni', impagVer.id] })
     } catch (e) { console.error('[Impaginazione] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
