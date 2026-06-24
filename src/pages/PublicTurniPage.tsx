@@ -203,9 +203,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 )}
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
                 <div key={foglio.id} className="card overflow-auto">
-                  <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
                     <LayoutGrid size={14} style={{ color: '#476540' }} />
-                    <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
+                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', tableLayout: 'fixed' }}>
                     <colgroup>
@@ -289,9 +289,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 </p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
                 <div key={foglio.id} className="card overflow-auto">
-                  <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
                     <LayoutGrid size={14} style={{ color: '#476540' }} />
-                    <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
+                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
@@ -355,9 +355,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 <p className="text-xs text-stone-500">Per ogni turno indica se lo <strong style={{ color: '#166534' }}>vorresti</strong> o se <strong style={{ color: '#b91c1c' }}>non puoi</strong>. Raccolta aperta fino al {itDate(fin!.aperta_a!)}.</p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
                 <div key={foglio.id} className="card overflow-auto">
-                  <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
                     <LayoutGrid size={14} style={{ color: '#476540' }} />
-                    <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
+                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
                     <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={{ ...thStyle, textAlign: 'center' }}>La tua scelta</th></tr></thead>

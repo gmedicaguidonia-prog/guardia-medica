@@ -486,10 +486,9 @@ export function GestioneTurniPage() {
         <div className="flex-1 min-w-0 space-y-4">
           {righePerFoglio.map(({ foglio, righe: righeF }) => (
           <div key={foglio.id} className="card overflow-auto">
-            <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
+            <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
               <LayoutGrid size={14} style={{ color: '#476540' }} />
-              <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>{foglio.nome}</h3>
-              <span className="text-xs text-stone-400">· {MESI[mese - 1]} {anno}</span>
+              <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
             </div>
           <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
