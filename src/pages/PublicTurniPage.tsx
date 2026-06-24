@@ -346,6 +346,20 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         )
                       })}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#eef3ea', borderTop: '2px solid #cdd8c4' }}>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: '#eef3ea', zIndex: 1, fontWeight: 700, color: '#2b3c24' }}>
+                          <span className="inline-flex items-center gap-1"><Check size={12} style={{ color: '#16a34a' }} /> Disponibilità</span>
+                        </td>
+                        {colonne.map(t => {
+                          const tot = righeF.reduce((n, r) => n + (desByKey.get(`${r.ds}|${r.turno.id}|${t.id}`) === 'desiderata' ? 1 : 0), 0)
+                          const io = t.id === mia?.membershipId
+                          return (
+                            <td key={t.id} style={{ ...tdBase, textAlign: 'center', fontWeight: 800, fontSize: 14, background: io ? 'rgba(22,163,74,0.12)' : '#eef3ea', color: tot > 0 ? '#166534' : '#94a3b8' }} title={`${nomeCompleto(t)}: ${tot} disponibilità in questo foglio`}>{tot}</td>
+                          )
+                        })}
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
                 ))}
