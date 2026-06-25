@@ -69,7 +69,20 @@ export function RegoleTurniPage() {
   // Validità del periodo (per sempre / fino a) — staged, niente auto-save (hook condiviso)
   const [salvandoVal, setSalvandoVal] = useState(false)
   const valid = useValiditaStaged(regoleVer, meseKey)
-  const anyDirty = dirty || valid.dirty
+  // Impostazioni orario / cambio turno — STAGED (niente auto-save onBlur, che creava scorpori
+  // a metà editing → versioni duplicate e turnisti che sparivano): si applicano col pulsante Salva.
+  const [oreMin, setOreMin] = useState('')
+  const [oreMaxSett, setOreMaxSett] = useState('')
+  const [oreMaxCons, setOreMaxCons] = useState('')
+  const [cambioAuto, setCambioAuto] = useState(true)
+  const normOre = (s: string) => s.trim() === '' ? null : Math.max(0, parseInt(s) || 0)
+  const oreDirty =
+    normOre(oreMin) !== (regoleVer?.ore_min_settimana ?? null) ||
+    normOre(oreMaxSett) !== (regoleVer?.ore_max_settimana ?? null) ||
+    normOre(oreMaxCons) !== (regoleVer?.ore_max_consecutive ?? null) ||
+    cambioAuto !== (regoleVer?.cambio_auto ?? true)
+  const salvaDirty = dirty || oreDirty       // barra Salva principale (regole + impostazioni)
+  const anyDirty = salvaDirty || valid.dirty
 
   useEffect(() => { setHasUnsaved(anyDirty); return () => setHasUnsaved(false) }, [anyDirty, setHasUnsaved])
   useEffect(() => {
@@ -81,6 +94,7 @@ export function RegoleTurniPage() {
   useEffect(() => { setOreMin(regoleVer?.ore_min_settimana != null ? String(regoleVer.ore_min_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_min_settimana])
   useEffect(() => { setOreMaxSett(regoleVer?.ore_max_settimana != null ? String(regoleVer.ore_max_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_max_settimana])
   useEffect(() => { setOreMaxCons(regoleVer?.ore_max_consecutive != null ? String(regoleVer.ore_max_consecutive) : '') }, [regoleVer?.id, regoleVer?.ore_max_consecutive])
+  useEffect(() => { setCambioAuto(regoleVer?.cambio_auto ?? true) }, [regoleVer?.id, regoleVer?.cambio_auto])
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti), [turnisti])
@@ -95,9 +109,6 @@ export function RegoleTurniPage() {
   const [draggingId, setDraggingId] = useState<string | null>(null)
   useDragAutoScroll(!!draggingId)   // scroll automatico della pagina durante il trascinamento
   const [picker, setPicker] = useState<{ giorno: number; turno: TurnoSchema; x: number; y: number } | null>(null)
-  const [oreMin, setOreMin] = useState('')
-  const [oreMaxSett, setOreMaxSett] = useState('')
-  const [oreMaxCons, setOreMaxCons] = useState('')
   const [warn, setWarn] = useState<string | null>(null)
   const warnTimer = useRef<number | null>(null)
   function showWarn(msg: string) { setWarn(msg); if (warnTimer.current) clearTimeout(warnTimer.current); warnTimer.current = window.setTimeout(() => setWarn(null), 3500) }
@@ -170,7 +181,7 @@ export function RegoleTurniPage() {
 
   async function cambiaMese(delta: number) {
     if (anyDirty && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Cambiare mese senza salvarle?', confirmLabel: 'Sì, cambia', danger: true }))) return
-    if (dirty) discard()
+    annullaTutto()
     if (valid.dirty) valid.reset()
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
@@ -257,35 +268,13 @@ export function RegoleTurniPage() {
     await store.deleteRegoleVersione(regoleVer.id)
     await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
   }
-  async function salvaOreMin() {
-    if (!regoleVer) return
-    const n = oreMin.trim() === '' ? null : Math.max(0, parseInt(oreMin) || 0)
-    if (n === (regoleVer.ore_min_settimana ?? null)) return
-    const verId = await assicuraRegoleDelMese()
-    await store.setOreMinSettimana(verId, n)
-    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }); await qc.invalidateQueries({ queryKey: ['regole'] })
-  }
-  async function salvaOreMaxSett() {
-    if (!regoleVer) return
-    const n = oreMaxSett.trim() === '' ? null : Math.max(0, parseInt(oreMaxSett) || 0)
-    if (n === (regoleVer.ore_max_settimana ?? null)) return
-    const verId = await assicuraRegoleDelMese()
-    await store.setOreMaxSettimana(verId, n)
-    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }); await qc.invalidateQueries({ queryKey: ['regole'] })
-  }
-  async function salvaOreMaxCons() {
-    if (!regoleVer) return
-    const n = oreMaxCons.trim() === '' ? null : Math.max(0, parseInt(oreMaxCons) || 0)
-    if (n === (regoleVer.ore_max_consecutive ?? null)) return
-    const verId = await assicuraRegoleDelMese()
-    await store.setOreMaxConsecutive(verId, n)
-    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }); await qc.invalidateQueries({ queryKey: ['regole'] })
-  }
-  async function salvaCambioAuto(on: boolean) {
-    if (!regoleVer) return
-    const verId = await assicuraRegoleDelMese()
-    await store.setCambioAuto(verId, on)
-    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }); await qc.invalidateQueries({ queryKey: ['regole'] })
+  // Annulla TUTTE le modifiche in sospeso (regole fisse + impostazioni orario/cambio turno)
+  function annullaTutto() {
+    discard()
+    setOreMin(regoleVer?.ore_min_settimana != null ? String(regoleVer.ore_min_settimana) : '')
+    setOreMaxSett(regoleVer?.ore_max_settimana != null ? String(regoleVer.ore_max_settimana) : '')
+    setOreMaxCons(regoleVer?.ore_max_consecutive != null ? String(regoleVer.ore_max_consecutive) : '')
+    setCambioAuto(regoleVer?.cambio_auto ?? true)
   }
   // ── Isolamento per mese (copy-on-write a "scorporo") ──
   // Se la versione regole copre più mesi (è ereditata da un periodo precedente o
@@ -293,11 +282,15 @@ export function RegoleTurniPage() {
   //   versione "prima" (capata) | versione di QUESTO mese | versione "dopo" (col contenuto originale).
   // Ritorna l'id della versione su cui scrivere (quella di questo mese).
   async function assicuraRegoleDelMese(): Promise<string> {
-    const V = regoleVer!
+    // Rileggo lo stato FRESCO dal DB: rende lo scorporo idempotente anche con salvataggi
+    // ravvicinati (niente più versioni duplicate / turnisti che spariscono dalla griglia).
+    const V = await store.getRegoleVersioneMese(postazioneId!, meseKey)
+    if (!V) return regoleVer!.id
     if (V.valido_da === meseKey && V.valido_fino === meseKey) return V.id   // già isolata a questo mese
+    const regoleV = await store.getRegole(V.id)
     const finoOrig = V.valido_fino
     const copiaIn = async (verId: string) => {
-      for (const r of regole) await store.setRegola(verId, r.giorno_settimana, r.turno_schema_id, r.slot, r.turnista_id)
+      for (const r of regoleV) await store.setRegola(verId, r.giorno_settimana, r.turno_schema_id, r.slot, r.turnista_id)
       if (V.ore_min_settimana != null) await store.setOreMinSettimana(verId, V.ore_min_settimana)
       if (V.ore_max_settimana != null) await store.setOreMaxSettimana(verId, V.ore_max_settimana)
       if (V.ore_max_consecutive != null) await store.setOreMaxConsecutive(verId, V.ore_max_consecutive)
@@ -329,7 +322,12 @@ export function RegoleTurniPage() {
       const verId = await assicuraRegoleDelMese()   // isola il mese se necessario
       const mod = diff()
       for (const c of mod) { const [giorno, turnoId, slot] = c.key.split('|'); await store.setRegola(verId, +giorno, turnoId, +slot, c.value) }
-      if (mod.length) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole turni (turni fissi / «mai») di ${meseLabel(meseKey)} aggiornate · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
+      // impostazioni orario / cambio turno (staged: applicate QUI col Salva, niente più autosave onBlur)
+      await store.setOreMinSettimana(verId, normOre(oreMin))
+      await store.setOreMaxSettimana(verId, normOre(oreMaxSett))
+      await store.setOreMaxConsecutive(verId, normOre(oreMaxCons))
+      await store.setCambioAuto(verId, cambioAuto)
+      if (mod.length || oreDirty) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole turni di ${meseLabel(meseKey)} aggiornate${mod.length ? ` · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}` : ''}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['regole'] })
       await qc.invalidateQueries({ queryKey: ['regole-versione'] })
       await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
@@ -422,12 +420,12 @@ export function RegoleTurniPage() {
 
       {/* Barra salvataggio */}
       <div className="flex items-center gap-2 flex-wrap">
-        {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
+        {salvaDirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
-          {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
-          <button onClick={salva} disabled={!dirty || saving}
+          {salvaDirty && <button onClick={annullaTutto} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
+          <button onClick={salva} disabled={!salvaDirty || saving}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:cursor-default"
-            style={dirty ? { background: '#2e7d32', color: '#fff' } : { background: '#f3f4f6', color: '#9ca3af' }}>
+            style={salvaDirty ? { background: '#2e7d32', color: '#fff' } : { background: '#f3f4f6', color: '#9ca3af' }}>
             <Save size={15} /> {saving ? 'Salvo…' : 'Salva'}
           </button>
         </div>
@@ -512,19 +510,19 @@ export function RegoleTurniPage() {
         <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#476540' }}>Impostazioni sull'orario</h3>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-min">Ore minime a settimana per un turnista:</label>
-          <input id="ore-min" type="number" min={0} value={oreMin} onChange={e => setOreMin(e.target.value)} onBlur={salvaOreMin} className="input text-sm w-24" placeholder="es. 36" />
+          <input id="ore-min" type="number" min={0} value={oreMin} onChange={e => setOreMin(e.target.value)} className="input text-sm w-24" placeholder="es. 36" />
           <span className="text-sm text-stone-500">ore</span>
           <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-max-sett">Ore massime a settimana (da non superare):</label>
-          <input id="ore-max-sett" type="number" min={0} value={oreMaxSett} onChange={e => setOreMaxSett(e.target.value)} onBlur={salvaOreMaxSett} className="input text-sm w-24" placeholder="nessuno" />
+          <input id="ore-max-sett" type="number" min={0} value={oreMaxSett} onChange={e => setOreMaxSett(e.target.value)} className="input text-sm w-24" placeholder="nessuno" />
           <span className="text-sm text-stone-500">ore</span>
           <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-max-cons">Ore massime consecutive (turni attaccati):</label>
-          <input id="ore-max-cons" type="number" min={0} value={oreMaxCons} onChange={e => setOreMaxCons(e.target.value)} onBlur={salvaOreMaxCons} className="input text-sm w-24" placeholder="nessuno" />
+          <input id="ore-max-cons" type="number" min={0} value={oreMaxCons} onChange={e => setOreMaxCons(e.target.value)} className="input text-sm w-24" placeholder="nessuno" />
           <span className="text-sm text-stone-500">ore</span>
           <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
         </div>
@@ -533,10 +531,10 @@ export function RegoleTurniPage() {
 
       {/* Impostazione: cambio turno (approvazione automatica / del responsabile) */}
       {(() => {
-        const auto = regoleVer?.cambio_auto ?? true
+        const auto = cambioAuto
         return (
           <div className="card p-3 flex items-start gap-3">
-            <button onClick={() => salvaCambioAuto(!auto)} role="switch" aria-checked={auto} title="Attiva/disattiva l'approvazione automatica"
+            <button onClick={() => setCambioAuto(c => !c)} role="switch" aria-checked={auto} title="Attiva/disattiva l'approvazione automatica"
               className="relative shrink-0 rounded-full transition-colors mt-0.5" style={{ width: 44, height: 24, background: auto ? '#2e7d32' : '#cbd5e1' }}>
               <span className="absolute top-0.5 rounded-full bg-white shadow transition-all" style={{ width: 20, height: 20, left: auto ? 22 : 2 }} />
             </button>
