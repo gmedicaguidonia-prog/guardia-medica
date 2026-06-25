@@ -8,6 +8,7 @@ import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
 import { nomeCompleto, cmpTurnisti } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
+import { useRealtimePostazione } from '../hooks/useRealtime'
 import { useDebug } from '../contexts/DebugContext'
 import type { AuthUser, TurnoSchema, Turno, Turnista, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
@@ -55,6 +56,17 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
   const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneId], queryFn: () => store.getMesiConContenuto(postazioneId!), enabled: !!postazioneId })
+
+  // ── Tempo reale: le modifiche del responsabile (calendario pubblicato, turni
+  //    riempiti, candidature, desiderata pubbliche) si vedono senza ricaricare ──
+  useRealtimePostazione(postazioneId, [
+    { tabella: 'turni',               invalida: [['turni', postazioneId]] },
+    { tabella: 'turni_stato',         invalida: [['turni-stato', postazioneId]] },
+    { tabella: 'richieste_turno',     invalida: [['richieste', postazioneId]] },
+    { tabella: 'desiderata',          invalida: [['desiderata', postazioneId]] },
+    { tabella: 'desiderata_finestra', invalida: [['desiderata-finestra', postazioneId]] },
+    { tabella: 'turnisti_mese',       invalida: [['turnisti-mese', postazioneId]] },
+  ])
 
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
   const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])

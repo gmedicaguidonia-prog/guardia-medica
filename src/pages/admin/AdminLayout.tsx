@@ -1,8 +1,13 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
+import { usePostazione } from '../../contexts/PostazioneContext'
+import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+
+const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
+const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 
 const links: { to: string; label: string; Icon: typeof Home; num: number | null; adminOnly?: boolean }[] = [
   { to: '/admin/postazioni', label: 'Centro di Controllo',          Icon: SlidersHorizontal, num: null, adminOnly: true },
@@ -28,8 +33,11 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { hasUnsaved } = useUnsaved()
+  const { postazioneAttiva } = usePostazione()
+  const { meseKey, mese, anno } = useMeseSelezionato()
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_COLLAPSED) === '1')
   const visibleLinks = links.filter(l => !l.adminOnly || user?.livello === 'admin')
+  const postNome = postazioneAttiva?.nome ?? null
 
   function toggle() { setCollapsed(c => { const n = !c; try { localStorage.setItem(LS_COLLAPSED, n ? '1' : '0') } catch { /* ignore */ } return n }) }
   function handleNav(to: string) {
@@ -77,6 +85,29 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
             </button>
           )
         })}
+
+        {/* Reminder in fondo: postazione + mese attivi, separati da una riga */}
+        <div className="mt-auto pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-1" title={`${postNome ?? 'Nessuna postazione'} · ${meseLabel(meseKey)}`}>
+              <MapPin size={14} style={{ color: '#9ab488' }} />
+              <CalendarDays size={14} style={{ color: '#9ab488' }} />
+              <span className="text-[10px] font-bold leading-none" style={{ color: '#fff' }}>{String(mese).padStart(2, '0')}/{String(anno).slice(2)}</span>
+            </div>
+          ) : (
+            <div className="px-4">
+              <p className="text-[9px] uppercase tracking-widest font-semibold mb-1.5" style={{ color: '#577a45' }}>Stai gestendo</p>
+              <div className="flex items-center gap-1.5 mb-1" title={postNome ?? undefined}>
+                <MapPin size={13} className="shrink-0" style={{ color: '#9ab488' }} />
+                <span className="text-xs font-semibold truncate" style={{ color: '#e7efe0' }}>{postNome ?? '—'}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CalendarDays size={13} className="shrink-0" style={{ color: '#9ab488' }} />
+                <span className="text-xs font-bold" style={{ color: '#fff' }}>{meseLabel(meseKey)}</span>
+              </div>
+            </div>
+          )}
+        </div>
       </aside>
 
       {/* Contenuto */}

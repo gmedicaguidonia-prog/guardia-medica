@@ -16,6 +16,7 @@ import {
   flagUnauthorized, detachedSignOut, fetchProfile, fetchTurnistaPostazione,
 } from '../lib/authHelpers'
 import { ADMIN_EMAIL } from '../lib/constants'
+import { setMeseKey } from './useMeseSelezionato'
 import type { AuthUser, Livello } from '../types'
 import type { Session } from '@supabase/supabase-js'
 
@@ -45,7 +46,9 @@ async function applyLoginDefaults(accessToken: string, u: AuthUser) {
   if (prev === u.id) return   // stessa sessione (reload): mantieni la selezione
   try {
     const d = new Date()
-    localStorage.setItem('gm_mese', `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    const cur = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    localStorage.setItem('gm_mese', cur)
+    setMeseKey(cur)   // sincronizza anche lo store in memoria (sidebar/viste)
     const post = await fetchTurnistaPostazione(accessToken, u.id)
     if (post) localStorage.setItem('gm_postazione', post)
     localStorage.setItem(SESSION_UID_KEY, u.id)

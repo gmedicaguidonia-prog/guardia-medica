@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, ArrowRightLeft, Bell } from 'lucide-react'
 import { store } from '../../lib/store'
 import { usePostazione } from '../../contexts/PostazioneContext'
+import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { NOTIFICA_CATEGORIE, categoriaNotifica } from '../../types'
 import type { ConfigVersione, DesiderataFinestra, Notifica } from '../../types'
 
@@ -45,6 +46,8 @@ export function AdminHomePage() {
   const qc = useQueryClient()
   const { data: notifiche = [] } = useQuery<Notifica[]>({ queryKey: ['notifiche-admin', postazioneId], queryFn: () => store.getNotificheAdmin(postazioneId!), enabled: !!postazioneId })
   useEffect(() => { if (postazioneId) store.cleanupNotifiche(postazioneId).catch(() => {}) }, [postazioneId])
+  // tempo reale: nuovi eventi compaiono nel Centro Notifiche senza ricaricare
+  useRealtimePostazione(postazioneId, [{ tabella: 'notifiche', invalida: [['notifiche-admin', postazioneId]] }])
   const meseCorr = meseKeyOffset(0)
   // mostro gli eventi del mese in corso (o futuri) + tutti i non letti; quando un mese
   // è passato ed è tutto letto, sparisce. Raggruppo per MESE poi per CATEGORIA.
