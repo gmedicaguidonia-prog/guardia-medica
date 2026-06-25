@@ -19,7 +19,7 @@ import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser, BackupTurni } from '../../types'
+import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser, BackupTurni } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -62,6 +62,7 @@ export function GestioneTurniPage() {
   const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: regoleVer } = useQuery<RegolaVersione | null>({ queryKey: ['regole-versione', postazioneId, meseKey], queryFn: () => store.getRegoleVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: regole = [] } = useQuery<RegolaTurno[]>({ queryKey: ['regole', regoleVer?.id], queryFn: () => store.getRegole(regoleVer!.id), enabled: !!regoleVer })
+  const { data: regoleSpeciali = [] } = useQuery<RegolaTurnista[]>({ queryKey: ['regole-turnista', regoleVer?.id], queryFn: () => store.getRegoleTurnista(regoleVer!.id), enabled: !!regoleVer })
   const { data: finestraDes } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: desiderataMese = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
@@ -236,6 +237,16 @@ export function GestioneTurniPage() {
     }
     return null
   }
+  // ── Regole speciali per turnista (max turni/sett e /mese): per Auto Assegnazione + avvisi manuali ──
+  const limitiTurnista = useMemo(() => {
+    const m = new Map<string, { maxSett?: number; maxMese?: number }>()
+    regoleSpeciali.forEach(r => { const cur = m.get(r.turnista_id) ?? {}; if (r.tipo === 'max_sett') cur.maxSett = r.valore; else cur.maxMese = r.valore; m.set(r.turnista_id, cur) })
+    return m
+  }, [regoleSpeciali])
+  const lunediDi = (ds: string) => { const [y, mo, d] = ds.split('-').map(Number); const dt = new Date(y, mo - 1, d); dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7)); return isoDate(dt) }
+  const turniTurnistaMese = (tid: string) => { let n = 0; for (const [k, v] of local) if (v === tid && +k.split('|')[2] >= 0) n++; return n }
+  const turniTurnistaSett = (tid: string, ds: string) => { const wk = lunediDi(ds); let n = 0; for (const [k, v] of local) { if (v !== tid) continue; const p = k.split('|'); if (+p[2] < 0) continue; if (lunediDi(p[0]) === wk) n++ } return n }
+
   async function handleDrop(ds: string, turno: TurnoSchema, tipo: string) {
     const tid = dragSource.current; dragSource.current = null; setOverKey(null)
     if (!tid) return
@@ -260,6 +271,10 @@ export function GestioneTurniPage() {
     if (maxS != null && oreSettimana(local, schema, tid, ds) + (durataById.get(turno.id) ?? 0) > maxS + 2) avvisi.push(`supererà le ${maxS}h settimanali (±2)`)
     const maxC = regoleVer?.ore_max_consecutive ?? null
     if (maxC != null && oreConsecutive(local, schema, tid, ds, turno) > maxC + 2) avvisi.push(`supererà le ${maxC}h consecutive (±2)`)
+    // regole speciali per turnista (limiti personali): si sommano e vanno segnalate, ogni volta
+    const lim = limitiTurnista.get(tid)
+    if (lim?.maxSett != null && turniTurnistaSett(tid, ds) + 1 > lim.maxSett) avvisi.push(`supererà il limite personale di ${lim.maxSett} turni a settimana`)
+    if (lim?.maxMese != null && turniTurnistaMese(tid) + 1 > lim.maxMese) avvisi.push(`supererà il limite personale di ${lim.maxMese} turni nel mese`)
     if (avvisi.length) {
       const ok = await confirm({ title: 'Forzare l’inserimento?', message: `${nomeTurnista(tid)}: ${avvisi.join(' · ')}. Vuoi inserirlo lo stesso (forzatura)?`, confirmLabel: 'Sì, forza', danger: true })
       if (!ok) return
@@ -318,7 +333,7 @@ export function GestioneTurniPage() {
     if (!poolIds.length) { showWarn('Nessun turnista importato per questo mese: importa prima il personale.'); return }
     // "aggiungi": mantieni i turnisti già inseriti (slot ≥ 0); "sostituisci": riparti da zero
     const esistenti = aggiungi ? new Map([...local].filter(([k]) => +k.split('|')[2] >= 0)) : undefined
-    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, esistenti })
+    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, limitiTurnista, esistenti })
     store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'auto_assegnazione', messaggio: `Auto Assegnazione ${aggiungi ? '(aggiunta)' : '(sostituzione)'} di ${MESI[mese - 1]} ${anno}: ${res.coperti} turni su ${res.totali}. Da salvare.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
     // base: in "aggiungi" mantengo tutto; in "sostituisci" tengo solo i reperibili
     const base = new Map<string, string>()

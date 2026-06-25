@@ -26,6 +26,7 @@ export interface AutoAssegnaInput {
   durataById: Map<string, number>   // ore di ciascun tipo di turno
   maxSettimana?: number | null      // ore massime a settimana (da non superare)
   maxConsecutive?: number | null    // ore massime consecutive (turni attaccati)
+  limitiTurnista?: Map<string, { maxSett?: number; maxMese?: number }>  // regole speciali: max turni/sett e /mese per turnista
   esistenti?: Map<string, string>   // modalità "aggiungi": assegnazioni già presenti da MANTENERE (vincono)
 }
 export interface AutoAssegnaResult {
@@ -105,7 +106,7 @@ export function vietatiDaRegole(regole: RegolaTurno[]): Set<string> {
 interface Slot { ds: string; t: TurnoSchema; slot: number; weekend: boolean; g: number }
 
 export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
-  const { giorni, schema, poolIds, regole, desiderata, durataById, maxSettimana = null, maxConsecutive = null, esistenti } = inp
+  const { giorni, schema, poolIds, regole, desiderata, durataById, maxSettimana = null, maxConsecutive = null, limitiTurnista, esistenti } = inp
   const pool = new Set(poolIds)
   const dur = (id: string) => durataById.get(id) ?? 0
 
@@ -121,6 +122,14 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   const ore = new Map<string, number>(), wknd = new Map<string, number>(), busy = new Map<string, [number, number][]>()
   poolIds.forEach(t => { ore.set(t, 0); wknd.set(t, 0); busy.set(t, []) })
   const oreSett = new Map<string, Map<string, number>>()   // tid → (lunedì settimana → ore) [per il max settimanale]
+  const turniSett = new Map<string, Map<string, number>>() // tid → (lunedì → n. turni) [regole speciali: max turni/sett]
+  const turniMese = new Map<string, number>()              // tid → n. turni del mese  [regole speciali: max turni/mese]
+  const contaTurno = (tid: string, ds: string) => {
+    const wk = lunediKey(ds)
+    if (!turniSett.has(tid)) turniSett.set(tid, new Map())
+    const tm = turniSett.get(tid)!; tm.set(wk, (tm.get(wk) ?? 0) + 1)
+    turniMese.set(tid, (turniMese.get(tid) ?? 0) + 1)
+  }
   const assegna = new Map<string, string>()
   const ordine: [string, string][] = []   // ordine di assegnazione (per l'animazione)
 
@@ -136,6 +145,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
       if (isWeekend(ds)) wknd.set(tid, wknd.get(tid)! + 1)
       busy.get(tid)!.push(intervallo(ds, turno))
       const wk = lunediKey(ds); if (!oreSett.has(tid)) oreSett.set(tid, new Map()); const wm = oreSett.get(tid)!; wm.set(wk, (wm.get(wk) ?? 0) + dur(turnoId))
+      contaTurno(tid, ds)
     }
   }
   const nEsistenti = assegna.size
@@ -155,6 +165,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
     const wk = lunediKey(slot.ds)
     if (!oreSett.has(tid)) oreSett.set(tid, new Map())
     const wm = oreSett.get(tid)!; wm.set(wk, (wm.get(wk) ?? 0) + dur(slot.t.id))
+    contaTurno(tid, slot.ds)
   }
   const occupanti = (slot: Slot): Set<string> => {
     const set = new Set<string>()
@@ -196,6 +207,10 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
       // limiti orario (Regole): non superare le ore settimanali né le ore consecutive
       if (maxSettimana != null && (oreSett.get(tid)?.get(lunediKey(slot.ds)) ?? 0) + dur(slot.t.id) > maxSettimana + 2) return false   // settimanali: tolleranza ±2
       if (maxConsecutive != null && runContenente(busy.get(tid)!, intervallo(slot.ds, slot.t)) > maxConsecutive) return false          // consecutive: MAI rotta in auto
+      // regole speciali per turnista: massimo turni a settimana / nel mese (limiti DURI in auto)
+      const lim = limitiTurnista?.get(tid)
+      if (lim?.maxSett != null && (turniSett.get(tid)?.get(lunediKey(slot.ds)) ?? 0) + 1 > lim.maxSett) return false
+      if (lim?.maxMese != null && (turniMese.get(tid) ?? 0) + 1 > lim.maxMese) return false
       return true
     })
   }
