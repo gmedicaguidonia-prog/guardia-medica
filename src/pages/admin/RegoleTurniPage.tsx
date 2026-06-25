@@ -12,7 +12,6 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useValiditaStaged } from '../../hooks/useValiditaStaged'
 import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
-import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, RegolaTurno } from '../../types'
 
@@ -208,9 +207,21 @@ export function RegoleTurniPage() {
     const sorgente = await store.ultimaRegoleConContenuto(postazioneId!, meseKey)
     const nuova = await store.creaRegoleVersione(postazioneId!, meseKey)
     if (sorgente) {
-      const validi = new Set(schema.map(s => s.id))   // copia solo le regole sui turni esistenti in questo mese
       const src = await store.getRegole(sorgente.id)
-      for (const r of src) if (validi.has(r.turno_schema_id)) await store.setRegola(nuova.id, r.giorno_settimana, r.turno_schema_id, r.slot, r.turnista_id)
+      // mappa i turni della sorgente → turni di QUESTO mese per NOME (gli id cambiano se la
+      // config è stata ricreata); fallback all'id se è la stessa config (condivisa)
+      const srcConfig = await store.getVersioneMese(postazioneId!, sorgente.valido_da)
+      const srcTurni = srcConfig ? await store.getSchemaVersione(srcConfig.id) : []
+      const norm = (n: string | null) => (n || '').trim().toLowerCase()
+      const srcNome = new Map(srcTurni.map(t => [t.id, norm(t.nome)]))
+      const curPerNome = new Map(schema.map(t => [norm(t.nome), t.id]))
+      const curIds = new Set(schema.map(s => s.id))
+      for (const r of src) {
+        const nome = srcNome.get(r.turno_schema_id)
+        let curTurnoId = nome ? curPerNome.get(nome) : undefined
+        if (!curTurnoId && curIds.has(r.turno_schema_id)) curTurnoId = r.turno_schema_id
+        if (curTurnoId) await store.setRegola(nuova.id, r.giorno_settimana, curTurnoId, r.slot, r.turnista_id)
+      }
     }
     await store.attivaPasso(postazioneId!, meseKey, 2)
     logRegoleAtt(`attivate (copiate da ${sorgente ? meseLabel(sorgente.valido_da) : 'periodo precedente'})`)
@@ -291,9 +302,7 @@ export function RegoleTurniPage() {
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
             <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
-            <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
-            <CancellaMeseButton postazioneId={postazioneId} meseKey={meseKey} anno={anno} mese={mese} />
-          </div>
+            <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>          </div>
         </div>
         <p className="text-sm text-stone-600">Trascina i turnisti dalla colonna sinistra nelle celle. Ricordati di premere <strong>Salva</strong>.</p>
       </div>

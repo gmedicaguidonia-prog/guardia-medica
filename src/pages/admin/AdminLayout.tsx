@@ -5,6 +5,10 @@ import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+import { CancellaMeseButton } from '../../components/CancellaMeseButton'
+
+// Pagine numerate (1-5): in fondo mostrano "Cancella/Ripristina impostazioni mese"
+const ROTTE_NUMERATE = new Set(['/admin/schema', '/admin/regole', '/admin/impaginazione', '/admin/desiderata', '/admin/turni'])
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
@@ -113,6 +117,11 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
       {/* Contenuto */}
       <main className="flex-1 min-w-0 overflow-auto" style={{ background: '#f4f1ea' }}>
         <Outlet context={{ user }} />
+        {ROTTE_NUMERATE.has(location.pathname) && postazioneAttiva && (
+          <div className="px-4 sm:px-6 pb-6 pt-2 flex gap-2">
+            <CancellaMeseButton postazioneId={postazioneAttiva.id} meseKey={meseKey} anno={anno} mese={mese} />
+          </div>
+        )}
       </main>
     </div>
   )

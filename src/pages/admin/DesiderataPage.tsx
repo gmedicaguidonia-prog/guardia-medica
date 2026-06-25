@@ -14,7 +14,6 @@ import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
-import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata, AuthUser } from '../../types'
 
@@ -222,9 +221,7 @@ export function DesiderataPage() {
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
         <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
-        <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
-        <CancellaMeseButton postazioneId={postazioneId} meseKey={meseKey} anno={anno} mese={mese} />
-      </div>
+        <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>      </div>
     </div>
   )
 

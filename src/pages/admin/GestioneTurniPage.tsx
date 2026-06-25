@@ -13,7 +13,6 @@ import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
-import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
@@ -425,10 +424,13 @@ export function GestioneTurniPage() {
     if (slots.includes(r.turnista_id)) { await store.setRichiestaStato(cur.id, 'approvata'); qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] }); showWarn(`${nomeTurnista(r.turnista_id)} è già in questo turno: richiesta approvata.`); return }
     const free = slots.findIndex(s => s === null)
     if (free === -1) { showWarn(`Per il turno “${turno.nome || 'senza nome'}” del ${itDate(r.data)} non ci sono posti liberi.`); return }
-    set(`${r.data}|${turno.id}|${free}`, r.turnista_id)   // inserisce (in sospeso): premi Salva per confermare
+    set(`${r.data}|${turno.id}|${free}`, r.turnista_id)                                  // mostra subito nella griglia admin
+    await store.setAssegnazione(postazioneId!, r.data, turno.id, free, r.turnista_id)     // PERSISTE subito: niente "???" intermedi sulla pagina pubblica
     await store.setRichiestaStato(cur.id, 'approvata')
+    await store.snapshotTurni(postazioneId!, meseKey, `Candidatura approvata (${nomeTurnista(r.turnista_id)})`, nomeAutore)
     store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura_approvata', messaggio: `La tua candidatura per ${turno.nome || 'un turno'} del ${itDate(r.data)} è stata approvata!`, target: '/turni', perAdmin: false, turnistaId: r.turnista_id, autore: nomeAutore }).catch(() => {})
-    qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
+    await qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
+    await qc.invalidateQueries({ queryKey: ['turni', postazioneId, anno, mese] })
   }
 
   // Pulsante di stato (accanto al selettore mese) + descrittori
@@ -443,9 +445,7 @@ export function GestioneTurniPage() {
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
         <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
-        <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
-        <CancellaMeseButton postazioneId={postazioneId} meseKey={meseKey} anno={anno} mese={mese} />
-      </div>
+        <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>      </div>
       {/* Stato del calendario turni — apre il modal di scelta */}
       <button onClick={apriStatoModal}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border transition-all hover:brightness-95"

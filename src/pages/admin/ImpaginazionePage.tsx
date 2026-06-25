@@ -9,7 +9,6 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useValiditaStaged } from '../../hooks/useValiditaStaged'
 import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
-import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import type { TurnoSchema, ConfigVersione, ImpaginazioneVersione, Foglio, FoglioTurno } from '../../types'
 
@@ -123,13 +122,25 @@ export function ImpaginazionePage() {
     store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'impaginazione', messaggio: `Impaginazione di ${meseLabel(meseKey)} ${testo}.`, target: '/admin/impaginazione', perAdmin: true }).catch(() => {})
   }
   // copia fogli + assegnazioni turno→foglio da una versione sorgente (solo turni esistenti nel mese)
-  async function copiaContenutoImpag(sorgenteId: string, destId: string) {
-    const validi = new Set(schema.map(s => s.id))
-    const fogliSrc = await store.getFogli(sorgenteId)
-    const assegnSrc = await store.getFoglioTurni(sorgenteId)
+  async function copiaContenutoImpag(sorgente: ImpaginazioneVersione, destId: string) {
+    const fogliSrc = await store.getFogli(sorgente.id)
+    const assegnSrc = await store.getFoglioTurni(sorgente.id)
+    // mappa i turni della sorgente → turni di QUESTO mese per NOME (gli id cambiano se la config è stata ricreata)
+    const srcConfig = await store.getVersioneMese(postazioneId!, sorgente.valido_da)
+    const srcTurni = srcConfig ? await store.getSchemaVersione(srcConfig.id) : []
+    const norm = (n: string | null) => (n || '').trim().toLowerCase()
+    const srcNome = new Map(srcTurni.map(t => [t.id, norm(t.nome)]))
+    const curPerNome = new Map(schema.map(t => [norm(t.nome), t.id]))
+    const curIds = new Set(schema.map(s => s.id))
     const mapFoglio = new Map<string, string>()
     for (const f of fogliSrc) { const nf = await store.addFoglio(destId, f.nome); mapFoglio.set(f.id, nf.id) }
-    for (const a of assegnSrc) { const nf = mapFoglio.get(a.foglio_id); if (nf && validi.has(a.turno_schema_id)) await store.setFoglioTurno(destId, a.turno_schema_id, nf) }
+    for (const a of assegnSrc) {
+      const nf = mapFoglio.get(a.foglio_id)
+      const nome = srcNome.get(a.turno_schema_id)
+      let curTurnoId = nome ? curPerNome.get(nome) : undefined
+      if (!curTurnoId && curIds.has(a.turno_schema_id)) curTurnoId = a.turno_schema_id
+      if (nf && curTurnoId) await store.setFoglioTurno(destId, curTurnoId, nf)
+    }
   }
   async function attivaIdenticaImpag() {
     if (!(await assicuraContinuitaImpag())) return
@@ -150,7 +161,7 @@ export function ImpaginazionePage() {
     if (!(await assicuraContinuitaImpag())) return
     const sorgente = await store.ultimaImpaginazioneConContenuto(postazioneId!, meseKey)
     const nuova = await store.creaImpaginazioneVersione(postazioneId!, meseKey)
-    if (sorgente) await copiaContenutoImpag(sorgente.id, nuova.id)
+    if (sorgente) await copiaContenutoImpag(sorgente, nuova.id)
     await store.attivaPasso(postazioneId!, meseKey, 3)
     logImpagAtt(`attivata (copiata da ${sorgente ? meseLabel(sorgente.valido_da) : 'periodo precedente'})`)
     await ricaricaAttImpag()
@@ -246,9 +257,7 @@ export function ImpaginazionePage() {
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
         <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
-        <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
-        <CancellaMeseButton postazioneId={postazioneId} meseKey={meseKey} anno={anno} mese={mese} />
-      </div>
+        <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>      </div>
     </div>
   )
   const wrap = (children: ReactNode) => <div className="p-4 sm:p-6 space-y-4">{Header}{children}</div>
