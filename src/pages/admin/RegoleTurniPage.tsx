@@ -26,26 +26,6 @@ const thStyle = (corner: boolean): CSSProperties => ({
   border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: corner ? 3 : 2, left: corner ? 0 : undefined,
 })
 
-function ValiditaControls({ versione, onChange }: { versione: RegolaVersione; onChange: (v: string | null) => void }) {
-  const perSempre = versione.valido_fino === null
-  const [ey, em] = (versione.valido_fino ?? versione.valido_da).split('-').map(Number)
-  const anni = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() + i)
-  return (
-    <div className="card p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Validità regole:</span>
-      <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" checked={perSempre} onChange={() => onChange(null)} style={{ accentColor: '#476540' }} /><InfinityIcon size={14} /> Per sempre</label>
-      <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" checked={!perSempre} onChange={() => onChange(`${ey}-${String(em).padStart(2, '0')}`)} style={{ accentColor: '#476540' }} /> Fino a</label>
-      {!perSempre && (
-        <div className="flex items-center gap-1.5">
-          <select value={em} onChange={e => onChange(`${ey}-${String(+e.target.value).padStart(2, '0')}`)} className="input text-sm py-1 w-32">{MESI.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
-          <select value={ey} onChange={e => onChange(`${+e.target.value}-${String(em).padStart(2, '0')}`)} className="input text-sm py-1 w-24">{anni.map(a => <option key={a} value={a}>{a}</option>)}</select>
-          <span className="text-xs text-stone-500">(compreso)</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function RegoleTurniPage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
@@ -67,14 +47,21 @@ export function RegoleTurniPage() {
   }, [regole])
   const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap)
   const [saving, setSaving] = useState(false)
+  // Validità del periodo (per sempre / fino a) — modifica STAGED, niente auto-save
+  const [valFino, setValFino] = useState(false)
+  const [valMese, setValMese] = useState('')   // 'YYYY-MM' quando "fino a"
+  const [salvandoVal, setSalvandoVal] = useState(false)
+  const validitaDirty = useMemo(() => !!regoleVer && (valFino ? valMese : null) !== (regoleVer.valido_fino ?? null), [regoleVer, valFino, valMese])
+  const anyDirty = dirty || validitaDirty
 
-  useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
+  useEffect(() => { setHasUnsaved(anyDirty); return () => setHasUnsaved(false) }, [anyDirty, setHasUnsaved])
   useEffect(() => {
-    if (!dirty) return
+    if (!anyDirty) return
     const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
     window.addEventListener('beforeunload', h)
     return () => window.removeEventListener('beforeunload', h)
-  }, [dirty])
+  }, [anyDirty])
+  useEffect(() => { setValFino(regoleVer?.valido_fino != null); setValMese(regoleVer?.valido_fino ?? '') }, [regoleVer?.id, regoleVer?.valido_fino])
   useEffect(() => { setOreMin(regoleVer?.ore_min_settimana != null ? String(regoleVer.ore_min_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_min_settimana])
   useEffect(() => { setOreMaxSett(regoleVer?.ore_max_settimana != null ? String(regoleVer.ore_max_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_max_settimana])
   useEffect(() => { setOreMaxCons(regoleVer?.ore_max_consecutive != null ? String(regoleVer.ore_max_consecutive) : '') }, [regoleVer?.id, regoleVer?.ore_max_consecutive])
@@ -166,14 +153,29 @@ export function RegoleTurniPage() {
   }
 
   function cambiaMese(delta: number) {
-    if (dirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
+    if (anyDirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
     if (dirty) discard()
+    if (validitaDirty && regoleVer) { setValFino(regoleVer.valido_fino != null); setValMese(regoleVer.valido_fino ?? '') }
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
     setMeseAnno(a, m)
   }
   async function configuraRegole() { await store.creaRegoleVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }) }
-  async function cambiaValidita(v: string | null) { if (!regoleVer) return; await store.setValiditaRegoleVersione(regoleVer.id, v); await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }) }
+  // Salvataggio ESPLICITO della validità (niente più auto-save al clic sui radio)
+  async function salvaValidita() {
+    if (!regoleVer) return
+    const fino = valFino ? valMese : null
+    if (fino != null && fino < regoleVer.valido_da) { showWarn(`La scadenza non può precedere l'inizio del periodo (${meseLabel(regoleVer.valido_da)}).`); return }
+    if (fino === (regoleVer.valido_fino ?? null)) return
+    setSalvandoVal(true)
+    try {
+      await store.setValiditaRegoleVersione(regoleVer.id, fino)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Validità delle regole ${fino ? `impostata fino a ${meseLabel(fino)} compreso` : 'impostata su «per sempre»'}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
+      await qc.invalidateQueries({ queryKey: ['regole-versione'] })
+      await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+    } catch (e) { console.error('[Regole] salvataggio validità fallito:', e); alert('Errore nel salvataggio della validità.') }
+    finally { setSalvandoVal(false) }
+  }
   async function cancellaRegole() {
     if (!regoleVer) return
     if (!window.confirm(`Cancellare le regole valide da ${meseLabel(regoleVer.valido_da)}? Non è reversibile.`)) return
@@ -255,6 +257,10 @@ export function RegoleTurniPage() {
 
   const eff = fineEffettiva(regoleVer, tutteVer)
   const nxt = prossimoInizio(regoleVer, tutteVer)
+  // valori dei select "fino a" (mese/anno) derivati dalla bozza
+  const anniSel = Array.from({ length: 6 }, (_, i) => oggi.getFullYear() + i)
+  const vmRef = valMese || meseKey
+  const vmY = +vmRef.slice(0, 4), vmM = +vmRef.slice(5, 7)
   const PaletteBadge = (t: Turnista) => (
     <div key={t.id} draggable={true}
       onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
@@ -268,7 +274,34 @@ export function RegoleTurniPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4">
       {Header}
-      <ValiditaControls versione={regoleVer} onChange={cambiaValidita} />
+      {/* Validità del periodo di regole — modifica esplicita: appare "Salva" qui dentro */}
+      <div className="card p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Validità regole:</span>
+        <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+          <input type="radio" checked={!valFino} onChange={() => setValFino(false)} style={{ accentColor: '#476540' }} />
+          <InfinityIcon size={14} /> Per sempre
+        </label>
+        <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+          <input type="radio" checked={valFino} onChange={() => {
+            setValFino(true)
+            const def = meseKey >= regoleVer.valido_da ? meseKey : regoleVer.valido_da
+            if (!valMese || valMese < regoleVer.valido_da) setValMese(def)
+          }} style={{ accentColor: '#476540' }} /> Fino a
+        </label>
+        {valFino && (
+          <div className="flex items-center gap-1.5">
+            <select value={vmM} onChange={e => setValMese(`${vmY}-${String(+e.target.value).padStart(2, '0')}`)} className="input text-sm py-1 w-32">{MESI.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
+            <select value={vmY} onChange={e => setValMese(`${+e.target.value}-${String(vmM).padStart(2, '0')}`)} className="input text-sm py-1 w-24">{anniSel.map(a => <option key={a} value={a}>{a}</option>)}</select>
+            <span className="text-xs text-stone-500">(compreso)</span>
+          </div>
+        )}
+        {validitaDirty && (
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={12} /> Da salvare</span>
+            <button onClick={salvaValidita} disabled={salvandoVal} className="flex items-center gap-1 text-xs font-semibold py-1.5 px-3 rounded-lg transition-colors" style={{ background: '#2e7d32', color: '#fff' }}><Save size={14} /> {salvandoVal ? 'Salvo…' : 'Salva validità'}</button>
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs text-stone-500 flex-1">

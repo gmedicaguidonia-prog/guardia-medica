@@ -34,9 +34,14 @@ function meseRange(anno: number, mese: number): { first: string; last: string } 
 /** Versione che copre il mese (valido_da ≤ mese ≤ valido_fino|∞), preferendo
  *  quella con valido_da più recente. `mese` = 'YYYY-MM'. */
 function pickVersione<T extends { valido_da: string; valido_fino: string | null }>(versioni: T[], mese: string): T | null {
-  const cov = versioni.filter(v => v.valido_da <= mese && (v.valido_fino == null || mese <= v.valido_fino))
-  if (!cov.length) return null
-  return cov.slice().sort((a, b) => b.valido_da.localeCompare(a.valido_da))[0]
+  // La versione che "governa" il mese = quella col valido_da più recente ≤ mese:
+  // un periodo più recente SOVRASCRIVE i precedenti dal suo inizio in poi.
+  const gov = versioni.filter(v => v.valido_da <= mese).sort((a, b) => b.valido_da.localeCompare(a.valido_da))[0]
+  if (!gov) return null
+  // Se la sua validità è già scaduta prima del mese → scoperto: NON si torna a un
+  // periodo più vecchio ancora "valido" (il più recente ha la precedenza assoluta).
+  if (gov.valido_fino != null && mese > gov.valido_fino) return null
+  return gov
 }
 
 // ════════════════════════════════════════════════════════════════
