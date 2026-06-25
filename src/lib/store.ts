@@ -473,6 +473,16 @@ const supaStore = {
     const { error } = await supabase.from('impaginazione_versioni').update({ valido_fino: validoFino }).eq('id', id)
     if (error) throw error
   },
+  // ultima impaginazione (più recente PRIMA del mese) con almeno un foglio → sorgente per la copia
+  async ultimaImpaginazioneConContenuto(postazioneId: string, primaDelMese: string): Promise<ImpaginazioneVersione | null> {
+    const { data: vers, error } = await supabase.from('impaginazione_versioni').select('*').eq('postazione_id', postazioneId).lt('valido_da', primaDelMese).order('valido_da', { ascending: false })
+    if (error) throw error
+    for (const v of (vers ?? []) as ImpaginazioneVersione[]) {
+      const { count } = await supabase.from('fogli').select('id', { count: 'exact', head: true }).eq('versione_id', v.id)
+      if ((count ?? 0) > 0) return v
+    }
+    return null
+  },
   async deleteImpaginazioneVersione(id: string): Promise<void> {
     const { error } = await supabase.from('impaginazione_versioni').delete().eq('id', id)
     if (error) throw error
@@ -984,6 +994,13 @@ const localStore = {
   },
   async setValiditaImpaginazioneVersione(id: string, validoFino: string | null): Promise<void> {
     writeLs(LS_IMPAG_VERSIONI, read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
+  },
+  async ultimaImpaginazioneConContenuto(postazioneId: string, primaDelMese: string): Promise<ImpaginazioneVersione | null> {
+    const fogli = read<Foglio[]>(LS_FOGLI, [])
+    const vers = read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, [])
+      .filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId && v.valido_da < primaDelMese)
+      .sort((a, b) => b.valido_da.localeCompare(a.valido_da))
+    return vers.find(v => fogli.some(f => f.versione_id === v.id)) ?? null
   },
   async deleteImpaginazioneVersione(id: string): Promise<void> {
     writeLs(LS_IMPAG_VERSIONI, read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).filter(v => v.id !== id))

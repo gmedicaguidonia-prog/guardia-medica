@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus, X, Trash2, Moon, Sun, Save, RotateCcw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus, X, Trash2, Moon, Sun, Save, RotateCcw, Check, Copy, Info } from 'lucide-react'
 import { store } from '../../lib/store'
+import { ATTIVAZIONE_DA } from '../../lib/constants'
 import { fineEffettiva, prossimoInizio } from '../../lib/turniLogic'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
@@ -13,6 +14,8 @@ import type { TurnoSchema, ConfigVersione, ImpaginazioneVersione, Foglio, Foglio
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
+const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
+const meseSucc = (k: string) => { let [a, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; a++ } return `${a}-${String(m).padStart(2, '0')}` }
 const FOGLIO_COLORI = [
   { bg: '#dbeafe', fg: '#1e40af', br: '#93c5fd' },
   { bg: '#dcfce7', fg: '#166534', br: '#86efac' },
@@ -38,6 +41,13 @@ export function ImpaginazionePage() {
   const { data: tutteVer = [] } = useQuery<ImpaginazioneVersione[]>({ queryKey: ['impag-versioni-all', postazioneId], queryFn: () => store.getImpaginazioneVersioni(postazioneId!), enabled: !!postazioneId })
   const { data: fogli = [] } = useQuery<Foglio[]>({ queryKey: ['fogli', impagVer?.id], queryFn: () => store.getFogli(impagVer!.id), enabled: !!impagVer })
   const { data: foglioTurni = [] } = useQuery<FoglioTurno[]>({ queryKey: ['foglio-turni', impagVer?.id], queryFn: () => store.getFoglioTurni(impagVer!.id), enabled: !!impagVer })
+  // Procedura sequenziale: passo 3 (impaginazione). Richiede passi 1 e 2 attivati.
+  const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
+  const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: sorgenteCopia } = useQuery<ImpaginazioneVersione | null>({ queryKey: ['ultima-impaginazione-con-contenuto', postazioneId, meseKey], queryFn: () => store.ultimaImpaginazioneConContenuto(postazioneId!, meseKey), enabled: !!postazioneId && nuovaProcedura })
+  const config1Attivo = attivazioni.includes(1)
+  const regole2Attivo = attivazioni.includes(2)
+  const impag3Attivo = attivazioni.includes(3)
 
   // ── bozza locale (salvataggio ESPLICITO, niente autosave) ──
   const [draftFogli, setDraftFogli] = useState<FoglioBozza[]>([])
@@ -91,6 +101,66 @@ export function ImpaginazionePage() {
   }
   // operazioni sulla VERSIONE (immediate: creare/cancellare la versione)
   async function configura() { await store.creaImpaginazioneVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] }) }
+
+  // ── Attivazione del mese — passo 3 (impaginazione) ──
+  async function ricaricaAttImpag() {
+    await qc.invalidateQueries({ queryKey: ['impag-versione'] })
+    await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] })
+    await qc.invalidateQueries({ queryKey: ['attivazioni'] })
+    await qc.invalidateQueries({ queryKey: ['ultima-impaginazione-con-contenuto'] })
+  }
+  async function assicuraContinuitaImpag(): Promise<boolean> {
+    const attivati = new Set(await store.getMesiAttivati(postazioneId!, 3))
+    const buchi: string[] = []
+    for (let m = ATTIVAZIONE_DA; m < meseKey; m = meseSucc(m)) if (!attivati.has(m)) buchi.push(m)
+    if (!buchi.length) return true
+    if (!window.confirm(`${buchi.map(meseLabel).join(', ')}: impaginazione non attivata. ${buchi.length === 1 ? 'Verrà attivata in bianco' : 'Verranno attivate in bianco'} per continuità, poi si procede. Procedere?`)) return false
+    for (const b of buchi) { await store.creaImpaginazioneVersione(postazioneId!, b); await store.attivaPasso(postazioneId!, b, 3) }
+    return true
+  }
+  function logImpagAtt(testo: string) {
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'impaginazione', messaggio: `Impaginazione di ${meseLabel(meseKey)} ${testo}.`, target: '/admin/impaginazione', perAdmin: true }).catch(() => {})
+  }
+  // copia fogli + assegnazioni turno→foglio da una versione sorgente (solo turni esistenti nel mese)
+  async function copiaContenutoImpag(sorgenteId: string, destId: string) {
+    const validi = new Set(schema.map(s => s.id))
+    const fogliSrc = await store.getFogli(sorgenteId)
+    const assegnSrc = await store.getFoglioTurni(sorgenteId)
+    const mapFoglio = new Map<string, string>()
+    for (const f of fogliSrc) { const nf = await store.addFoglio(destId, f.nome); mapFoglio.set(f.id, nf.id) }
+    for (const a of assegnSrc) { const nf = mapFoglio.get(a.foglio_id); if (nf && validi.has(a.turno_schema_id)) await store.setFoglioTurno(destId, a.turno_schema_id, nf) }
+  }
+  async function attivaIdenticaImpag() {
+    if (!(await assicuraContinuitaImpag())) return
+    await store.attivaPasso(postazioneId!, meseKey, 3)
+    logImpagAtt('attivata (identica al periodo precedente)')
+    await ricaricaAttImpag()
+  }
+  async function attivaNuovaImpag() {
+    if (!(await assicuraContinuitaImpag())) return
+    if (!window.confirm(`Verrà impostata la scadenza dell'impaginazione precedente a ${meseLabel(mesePrec(meseKey))} e creata una NUOVA impaginazione vuota da ${meseLabel(meseKey)}. Procedere?`)) return
+    if (impagVer) await store.setValiditaImpaginazioneVersione(impagVer.id, mesePrec(meseKey))
+    await store.creaImpaginazioneVersione(postazioneId!, meseKey)
+    await store.attivaPasso(postazioneId!, meseKey, 3)
+    logImpagAtt('attivata (nuova impaginazione)')
+    await ricaricaAttImpag()
+  }
+  async function copiaImpagPrecedente() {
+    if (!(await assicuraContinuitaImpag())) return
+    const sorgente = await store.ultimaImpaginazioneConContenuto(postazioneId!, meseKey)
+    const nuova = await store.creaImpaginazioneVersione(postazioneId!, meseKey)
+    if (sorgente) await copiaContenutoImpag(sorgente.id, nuova.id)
+    await store.attivaPasso(postazioneId!, meseKey, 3)
+    logImpagAtt(`attivata (copiata da ${sorgente ? meseLabel(sorgente.valido_da) : 'periodo precedente'})`)
+    await ricaricaAttImpag()
+  }
+  async function attivaImpagVuota() {
+    if (!(await assicuraContinuitaImpag())) return
+    await store.creaImpaginazioneVersione(postazioneId!, meseKey)
+    await store.attivaPasso(postazioneId!, meseKey, 3)
+    logImpagAtt('attivata (nuova, vuota)')
+    await ricaricaAttImpag()
+  }
   // Validità impaginazione — salvataggio ESPLICITO (niente più auto-save)
   async function salvaValidita() {
     if (!impagVer) return
@@ -184,7 +254,38 @@ export function ImpaginazionePage() {
   if (!postazioneId) return wrap(<p className="text-sm text-stone-500">Caricamento postazione…</p>)
   if (loadingConfig) return wrap(<p className="text-sm text-stone-500">Caricamento…</p>)
   if (!configVer || schema.length === 0) return wrap(<div className="card p-5 flex items-start gap-3"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} /><p className="text-sm text-stone-600">Nessun turno configurato per <strong>{MESI[mese - 1]} {anno}</strong>. Imposta prima i turni in <strong>Configurazione Turni</strong> (passo ①).</p></div>)
+  if (nuovaProcedura && !config1Attivo) return wrap(<div className="card p-5 flex items-start gap-3"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} /><p className="text-sm text-stone-600">La <strong>Configurazione Turni</strong> di {MESI[mese - 1]} {anno} non è ancora stata <strong>attivata</strong>. Attivala prima (passo ①).</p></div>)
+  if (nuovaProcedura && !regole2Attivo) return wrap(<div className="card p-5 flex items-start gap-3"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} /><p className="text-sm text-stone-600">Le <strong>Regole Turni</strong> di {MESI[mese - 1]} {anno} non sono ancora state <strong>attivate</strong>. Attivale prima (passo ②).</p></div>)
   if (loadingImpag) return wrap(<p className="text-sm text-stone-500">Caricamento…</p>)
+  if (nuovaProcedura && !impag3Attivo) {
+    /* ── Gate di attivazione dell'impaginazione (passo 3) ── */
+    return wrap(
+      <div className="card p-8 text-center space-y-4">
+        <LayoutGrid size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+        <div>
+          <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva l'impaginazione di {MESI[mese - 1]} {anno}</h3>
+          {impagVer ? (
+            <p className="text-sm text-stone-600 mt-1">Per questo mese è già valida l'impaginazione iniziata a <strong>{meseLabel(impagVer.valido_da)}</strong>. Attivala identica, oppure creane una nuova.</p>
+          ) : (
+            <p className="text-sm text-stone-600 mt-1">Non c'è un'impaginazione valida per questo mese.{sorgenteCopia ? <> Puoi copiarla da <strong>{meseLabel(sorgenteCopia.valido_da)}</strong>, oppure crearne una nuova.</> : ' Crea una nuova impaginazione (dividi i turni in fogli).'}</p>
+          )}
+        </div>
+        <div className="flex gap-2 justify-center flex-wrap">
+          {impagVer ? (
+            <>
+              <button onClick={attivaIdenticaImpag} className="btn-primary text-sm"><Check size={16} /> Attiva identica al mese precedente</button>
+              <button onClick={attivaNuovaImpag} className="btn-secondary text-sm"><Plus size={16} /> Attiva una nuova impaginazione</button>
+            </>
+          ) : (
+            <>
+              {sorgenteCopia && <button onClick={copiaImpagPrecedente} className="btn-primary text-sm"><Copy size={16} /> Copia dall'impaginazione precedente</button>}
+              <button onClick={attivaImpagVuota} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva una nuova impaginazione</button>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
   if (!impagVer) {
     return wrap(
       <div className="card p-8 text-center">
@@ -204,10 +305,16 @@ export function ImpaginazionePage() {
   return (
     <div className="p-4 sm:p-6 space-y-4">
       {Header}
+      {nuovaProcedura && impagVer.valido_da < meseKey && (
+        <div className="card p-3 flex items-start gap-2" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+          <Info size={16} className="shrink-0 mt-0.5" style={{ color: '#1d4ed8' }} />
+          <p className="text-xs" style={{ color: '#1e3a5f' }}>Questa impaginazione è <strong>condivisa</strong> con i mesi che la ereditano (da {meseLabel(impagVer.valido_da)}): modificandola cambi <strong>anche quelli</strong>. Per renderla indipendente da {MESI[mese - 1]}, ripartila con «Attiva nuova impaginazione».</p>
+        </div>
+      )}
       <ValiditaRiquadro etichetta="Validità impaginazione:" val={valid} salvando={salvandoVal} onSalva={salvaValidita} />
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs text-stone-500 flex-1">Valida da <strong>{meseLabel(impagVer.valido_da)}</strong>{eff ? <> a <strong>{meseLabel(eff)}</strong></> : <> in poi (per sempre)</>}{nxt && <span className="text-amber-700"> · dal {meseLabel(nxt)} subentra un periodo più recente</span>}.</p>
-        <button onClick={cancella} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella impaginazione</button>
+        {!nuovaProcedura && <button onClick={cancella} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella impaginazione</button>}
       </div>
 
       {/* Barra salvataggio */}
