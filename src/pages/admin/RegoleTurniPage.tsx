@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Check, Copy, Info } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Check, Copy } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
 import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
@@ -259,36 +259,78 @@ export function RegoleTurniPage() {
     if (!regoleVer) return
     const n = oreMin.trim() === '' ? null : Math.max(0, parseInt(oreMin) || 0)
     if (n === (regoleVer.ore_min_settimana ?? null)) return
-    await store.setOreMinSettimana(regoleVer.id, n)
-    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+    const verId = await assicuraRegoleDelMese()
+    await store.setOreMinSettimana(verId, n)
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }); await qc.invalidateQueries({ queryKey: ['regole'] })
   }
   async function salvaOreMaxSett() {
     if (!regoleVer) return
     const n = oreMaxSett.trim() === '' ? null : Math.max(0, parseInt(oreMaxSett) || 0)
     if (n === (regoleVer.ore_max_settimana ?? null)) return
-    await store.setOreMaxSettimana(regoleVer.id, n)
-    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+    const verId = await assicuraRegoleDelMese()
+    await store.setOreMaxSettimana(verId, n)
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }); await qc.invalidateQueries({ queryKey: ['regole'] })
   }
   async function salvaOreMaxCons() {
     if (!regoleVer) return
     const n = oreMaxCons.trim() === '' ? null : Math.max(0, parseInt(oreMaxCons) || 0)
     if (n === (regoleVer.ore_max_consecutive ?? null)) return
-    await store.setOreMaxConsecutive(regoleVer.id, n)
-    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+    const verId = await assicuraRegoleDelMese()
+    await store.setOreMaxConsecutive(verId, n)
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }); await qc.invalidateQueries({ queryKey: ['regole'] })
   }
   async function salvaCambioAuto(on: boolean) {
     if (!regoleVer) return
-    await store.setCambioAuto(regoleVer.id, on)
-    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+    const verId = await assicuraRegoleDelMese()
+    await store.setCambioAuto(verId, on)
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }); await qc.invalidateQueries({ queryKey: ['regole'] })
+  }
+  // ── Isolamento per mese (copy-on-write a "scorporo") ──
+  // Se la versione regole copre più mesi (è ereditata da un periodo precedente o
+  // si estende oltre questo mese), la SCORPORO così l'edit tocca SOLO questo mese:
+  //   versione "prima" (capata) | versione di QUESTO mese | versione "dopo" (col contenuto originale).
+  // Ritorna l'id della versione su cui scrivere (quella di questo mese).
+  async function assicuraRegoleDelMese(): Promise<string> {
+    const V = regoleVer!
+    if (V.valido_da === meseKey && V.valido_fino === meseKey) return V.id   // già isolata a questo mese
+    const finoOrig = V.valido_fino
+    const copiaIn = async (verId: string) => {
+      for (const r of regole) await store.setRegola(verId, r.giorno_settimana, r.turno_schema_id, r.slot, r.turnista_id)
+      if (V.ore_min_settimana != null) await store.setOreMinSettimana(verId, V.ore_min_settimana)
+      if (V.ore_max_settimana != null) await store.setOreMaxSettimana(verId, V.ore_max_settimana)
+      if (V.ore_max_consecutive != null) await store.setOreMaxConsecutive(verId, V.ore_max_consecutive)
+      await store.setCambioAuto(verId, V.cambio_auto ?? true)
+    }
+    const creaDopo = async () => {
+      if (finoOrig != null && finoOrig <= meseKey) return
+      const V2 = await store.creaRegoleVersione(postazioneId!, meseSucc(meseKey))
+      await store.setValiditaRegoleVersione(V2.id, finoOrig)
+      await copiaIn(V2.id)
+    }
+    if (V.valido_da === meseKey) {
+      await store.setValiditaRegoleVersione(V.id, meseKey)   // limita a questo mese
+      await creaDopo()
+      return V.id
+    }
+    await store.setValiditaRegoleVersione(V.id, mesePrec(meseKey))   // chiudi la versione "prima"
+    const W = await store.creaRegoleVersione(postazioneId!, meseKey)
+    await store.setValiditaRegoleVersione(W.id, meseKey)
+    await copiaIn(W.id)
+    await creaDopo()
+    if (meseKey >= ATTIVAZIONE_DA) await store.attivaPasso(postazioneId!, meseKey, 2)
+    return W.id
   }
   async function salva() {
     if (!regoleVer) return
     setSaving(true)
     try {
+      const verId = await assicuraRegoleDelMese()   // isola il mese se necessario
       const mod = diff()
-      for (const c of mod) { const [giorno, turnoId, slot] = c.key.split('|'); await store.setRegola(regoleVer.id, +giorno, turnoId, +slot, c.value) }
-      if (mod.length) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole turni (turni fissi / «mai») aggiornate · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
-      await qc.invalidateQueries({ queryKey: ['regole', regoleVer.id] })
+      for (const c of mod) { const [giorno, turnoId, slot] = c.key.split('|'); await store.setRegola(verId, +giorno, turnoId, +slot, c.value) }
+      if (mod.length) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole turni (turni fissi / «mai») di ${meseLabel(meseKey)} aggiornate · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
+      await qc.invalidateQueries({ queryKey: ['regole'] })
+      await qc.invalidateQueries({ queryKey: ['regole-versione'] })
+      await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
     } catch (e) { console.error('[Regole] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }
   }
@@ -374,12 +416,6 @@ export function RegoleTurniPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4">
       {Header}
-      {nuovaProcedura && regoleVer.valido_da < meseKey && (
-        <div className="card p-3 flex items-start gap-2" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-          <Info size={16} className="shrink-0 mt-0.5" style={{ color: '#1d4ed8' }} />
-          <p className="text-xs" style={{ color: '#1e3a5f' }}>Queste regole sono <strong>condivise</strong> con i mesi che le ereditano (da {meseLabel(regoleVer.valido_da)}): modificandole cambi <strong>anche quelli</strong>. Per renderle indipendenti da {MESI[mese - 1]}, ripartile con «Attiva nuove regole».</p>
-        </div>
-      )}
       <ValiditaRiquadro etichetta="Validità regole:" val={valid} salvando={salvandoVal} onSalva={salvaValidita} />
 
       <div className="flex items-center gap-2 flex-wrap">
