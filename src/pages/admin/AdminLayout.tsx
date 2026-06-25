@@ -86,24 +86,24 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
           )
         })}
 
-        {/* Reminder in fondo: postazione + mese attivi, separati da una riga */}
-        <div className="mt-auto pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+        {/* Reminder: postazione + mese attivi, subito dopo l'ultimo menu, separato da una riga */}
+        <div className="mt-2 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.10)' }}>
           {collapsed ? (
             <div className="flex flex-col items-center gap-1" title={`${postNome ?? 'Nessuna postazione'} · ${meseLabel(meseKey)}`}>
-              <MapPin size={14} style={{ color: '#9ab488' }} />
-              <CalendarDays size={14} style={{ color: '#9ab488' }} />
-              <span className="text-[10px] font-bold leading-none" style={{ color: '#fff' }}>{String(mese).padStart(2, '0')}/{String(anno).slice(2)}</span>
+              <MapPin size={15} style={{ color: '#9ab488' }} />
+              <CalendarDays size={15} style={{ color: '#9ab488' }} />
+              <span className="text-[11px] font-bold leading-none" style={{ color: '#fff' }}>{String(mese).padStart(2, '0')}/{String(anno).slice(2)}</span>
             </div>
           ) : (
             <div className="px-4">
-              <p className="text-[9px] uppercase tracking-widest font-semibold mb-1.5" style={{ color: '#577a45' }}>Stai gestendo</p>
+              <p className="text-[10px] uppercase tracking-widest font-semibold mb-1.5" style={{ color: '#577a45' }}>Stai gestendo</p>
               <div className="flex items-center gap-1.5 mb-1" title={postNome ?? undefined}>
-                <MapPin size={13} className="shrink-0" style={{ color: '#9ab488' }} />
-                <span className="text-xs font-semibold truncate" style={{ color: '#e7efe0' }}>{postNome ?? '—'}</span>
+                <MapPin size={16} className="shrink-0" style={{ color: '#9ab488' }} />
+                <span className="text-sm font-semibold truncate" style={{ color: '#e7efe0' }}>{postNome ?? '—'}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <CalendarDays size={13} className="shrink-0" style={{ color: '#9ab488' }} />
-                <span className="text-xs font-bold" style={{ color: '#fff' }}>{meseLabel(meseKey)}</span>
+                <CalendarDays size={16} className="shrink-0" style={{ color: '#9ab488' }} />
+                <span className="text-base font-bold whitespace-nowrap" style={{ color: '#fff' }}>{meseLabel(meseKey)}</span>
               </div>
             </div>
           )}
