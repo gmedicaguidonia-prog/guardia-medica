@@ -382,6 +382,10 @@ export function GestioneTurniPage() {
 
   function apriStatoModal() { setStatoScelto(statoCal); setShowStatoModal(true) }
   async function salvaStato() {
+    if (statoScelto !== 'non_pubblicato' && importati.size === 0) {
+      void notify({ title: 'Importa prima i turnisti', message: `Per pubblicare o mettere in pianificazione il calendario di ${MESI[mese - 1]} ${anno} devi prima importare i turnisti del mese (pagina Desiderata o «Importa i turnisti»).` })
+      return
+    }
     setSavingStato(true)
     try {
       await store.setStatoCalendario(postazioneId!, meseKey, statoScelto)
@@ -467,14 +471,16 @@ export function GestioneTurniPage() {
               {STATI_CALENDARIO.map(s => {
                 const st = STATO_CALENDARIO_STILE[s.value]
                 const sel = statoScelto === s.value
+                const bloccato = s.value !== 'non_pubblicato' && importati.size === 0
                 return (
-                  <button key={s.value} onClick={() => setStatoScelto(s.value)} className="w-full text-left rounded-lg p-3 border-2 transition-all"
+                  <button key={s.value} disabled={bloccato} onClick={() => setStatoScelto(s.value)} className="w-full text-left rounded-lg p-3 border-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ borderColor: sel ? st.fg : '#e5e7eb', background: sel ? st.bg : '#fff' }}>
                     <div className="flex items-center gap-2">
                       <span className="w-3.5 h-3.5 rounded-full border-2 shrink-0" style={{ borderColor: sel ? st.fg : '#cbd5e1', background: sel ? st.fg : 'transparent' }} />
                       <span className="font-bold text-sm" style={{ color: sel ? st.fg : '#374151' }}>{s.label}</span>
                     </div>
                     <p className="text-xs text-stone-500 mt-1" style={{ marginLeft: 22 }}>{s.descr}</p>
+                    {bloccato && <p className="text-[11px] mt-1 font-medium flex items-center gap-1" style={{ marginLeft: 22, color: '#b45309' }}><AlertTriangle size={12} /> Importa prima i turnisti del mese.</p>}
                   </button>
                 )
               })}

@@ -114,12 +114,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   }, [desiderata])
   // colonne della matrice = solo i turnisti IMPORTATI per il mese (non tutta la postazione)
   const importatiMese = useMemo(() => new Set(turnistiMese), [turnistiMese])
+  // un turnista può esprimere desiderata SOLO se è tra quelli importati per il mese
+  const sonoImportato = !!mia && importatiMese.has(mia.membershipId)
   const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id) && t.livello !== 'esterno').sort(cmpTurnisti), [personale, importatiMese])
   // responsabili della postazione (mostrati nel div postazione)
   const responsabili = useMemo(() => personale.filter(t => t.livello === 'responsabile').sort(cmpTurnisti), [personale])
 
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
+    if (!sonoImportato && !adminMode) return   // non importato per il mese: non può esprimere desiderata
     await store.setDesiderata(postazioneId!, ds, turnoId, mia.membershipId, tipo)
     await qc.invalidateQueries({ queryKey: ['desiderata', postazioneId, anno, mese] })
   }
@@ -191,7 +194,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     : fin.aperta_a < oggiStr ? 'chiusa'
     : 'aperta'
   const pubblicheMode = !!fin?.pubbliche            // desiderata visibili a tutti (vista a colonne)
-  const desEditabile = desStato === 'aperta'        // si modifica solo a raccolta aperta
+  const desEditabile = desStato === 'aperta' && (sonoImportato || adminMode)   // solo a raccolta aperta e se importato per il mese
 
   const turniConfigurati = !!versione && schema.length > 0 && impaginazioneOk
 
@@ -343,6 +346,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} aprirà il <strong>{itDate(fin!.aperta_da!)}</strong>.</Avviso>
             ) : !versione || schema.length === 0 || !impaginazioneOk ? (
               <Avviso>Non ci sono turni configurati per {MESI[mese - 1]} {anno}.</Avviso>
+            ) : (!sonoImportato && !adminMode) ? (
+              <Avviso>Non risulti tra i turnisti di <strong>{MESI[mese - 1]} {anno}</strong>: per questo mese non puoi esprimere desiderata / indisponibilità. Se pensi sia un errore, contatta il tuo responsabile.</Avviso>
             ) : (pubblicheMode || adminMode) ? (
               /* ── DESIDERATA PUBBLICHE (o god mode admin): una colonna per turnista, modifichi la tua ── */
               <>

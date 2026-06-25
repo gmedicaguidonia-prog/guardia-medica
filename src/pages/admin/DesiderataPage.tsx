@@ -173,6 +173,7 @@ export function DesiderataPage() {
   const [finMsg, setFinMsg] = useState<string | null>(null)
   useEffect(() => { setFinDa(finestra?.aperta_da ?? ''); setFinA(finestra?.aperta_a ?? '') }, [finestra])
   async function salvaFinestra() {
+    if (importati.size === 0) { showWarn('Importa prima almeno un turnista per il mese (pulsante «Importa i turnisti»): senza turnisti non c\'è chi possa esprimere le desiderata.'); return }
     if (!finDa || !finA) { showWarn('Imposta sia la data di apertura sia quella di chiusura prima di pubblicare.'); return }
     if (finDa > finA) { showWarn('La data di apertura non può essere successiva a quella di chiusura.'); return }
     if (finA >= primoDelMese) { showWarn(`La chiusura deve cadere entro il ${itDate(ultimoMesePrec)} (il giorno prima dell'inizio di ${MESI[mese - 1]} ${anno}): le desiderata vanno raccolte prima che il mese cominci.`); return }
@@ -396,8 +397,9 @@ export function DesiderataPage() {
               <input type="date" value={finDa} max={ultimoMesePrec} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>chiusura
               <input type="date" value={finA} max={ultimoMesePrec} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
-            <button onClick={salvaFinestra} disabled={!finDa || !finA} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={!finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
+            <button onClick={salvaFinestra} disabled={!finDa || !finA || importati.size === 0} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={importati.size === 0 ? 'Importa prima i turnisti del mese' : !finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
             {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
+            {importati.size === 0 && <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: '#b45309' }}><AlertTriangle size={13} /> Importa prima i turnisti del mese (pulsante «Importa i turnisti»).</span>}
           </div>
         )}
         {!chiusa && (
