@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, AlertTriangle, ChevronLeft, ChevronRight, Check, Copy, Info } from 'lucide-react'
 import { store } from '../../lib/store'
 import { RICORRENZE } from '../../types'
-import { GIORNI_SETTIMANA } from '../../lib/constants'
+import { GIORNI_SETTIMANA, ATTIVAZIONE_DA } from '../../lib/constants'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useUnsaved } from '../../contexts/UnsavedContext'
@@ -16,6 +16,8 @@ import type { TurnoSchema, Ricorrenza, ConfigVersione } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
+const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
+const meseSucc = (k: string) => { let [a, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; a++ } return `${a}-${String(m).padStart(2, '0')}` }
 
 function eqDays(a: number[], b: number[]): boolean {
   if (a.length !== b.length) return false
@@ -131,6 +133,12 @@ export function SchemaTurniPage() {
     enabled: !!versione,
   })
   const { data: tutteVer = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all', postazioneId], queryFn: () => store.getVersioni(postazioneId!), enabled: !!postazioneId })
+  // Procedura sequenziale: dal mese cutoff ogni mese va "attivato"
+  const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
+  const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: sorgenteCopia } = useQuery<ConfigVersione | null>({ queryKey: ['ultima-config-con-turni', postazioneId, meseKey], queryFn: () => store.ultimaConfigConTurni(postazioneId!, meseKey), enabled: !!postazioneId && nuovaProcedura })
+  const attivo1 = attivazioni.includes(1)
+  const mostraGate = nuovaProcedura && !attivo1
 
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
   const handleDirty = useCallback((id: string, dirty: boolean) => {
@@ -165,6 +173,72 @@ export function SchemaTurniPage() {
   async function configuraMese() {
     await store.creaVersione(postazioneId!, meseKey)
     await qc.invalidateQueries({ queryKey: ['versione'] })
+  }
+
+  // ── Attivazione del mese (passo 1) ──
+  async function ricaricaAttivazione() {
+    await qc.invalidateQueries({ queryKey: ['versione'] })
+    await qc.invalidateQueries({ queryKey: ['versioni-all'] })
+    await qc.invalidateQueries({ queryKey: ['attivazioni'] })
+    await qc.invalidateQueries({ queryKey: ['ultima-config-con-turni'] })
+  }
+  // Tappa in bianco i mesi non configurati tra il cutoff e questo mese (continuità),
+  // PRIMA di un'eventuale copia. Ritorna false se l'utente annulla.
+  async function assicuraContinuita(): Promise<boolean> {
+    const attivati = new Set(await store.getMesiAttivati(postazioneId!, 1))
+    const buchi: string[] = []
+    for (let m = ATTIVAZIONE_DA; m < meseKey; m = meseSucc(m)) if (!attivati.has(m)) buchi.push(m)
+    if (!buchi.length) return true
+    const ok = await confirm({
+      title: 'Mesi non configurati',
+      message: `${buchi.map(meseLabel).join(', ')} non ${buchi.length === 1 ? 'è stato configurato' : 'sono stati configurati'}: ${buchi.length === 1 ? 'verrà attivato in bianco' : 'verranno attivati in bianco'} per dare continuità, poi si procede con questo mese. Procedere?`,
+      confirmLabel: 'Sì, procedi',
+    })
+    if (!ok) return false
+    for (const b of buchi) { await store.creaVersione(postazioneId!, b); await store.attivaPasso(postazioneId!, b, 1) }
+    return true
+  }
+  function logAttiva(testo: string) {
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'config_turni', messaggio: `Configurazione di ${meseLabel(meseKey)} ${testo}.`, target: '/admin/schema', perAdmin: true }).catch(() => {})
+  }
+  async function attivaIdentica() {
+    if (!(await assicuraContinuita())) return
+    await store.attivaPasso(postazioneId!, meseKey, 1)
+    logAttiva('attivata (identica al periodo precedente)')
+    await ricaricaAttivazione()
+  }
+  async function attivaNuova() {
+    if (!(await assicuraContinuita())) return
+    const ok = await confirm({
+      title: 'Nuova configurazione',
+      message: `Verrà impostata la scadenza della configurazione precedente a ${meseLabel(mesePrec(meseKey))} e creata una NUOVA configurazione vuota a partire da ${meseLabel(meseKey)}. Procedere?`,
+      confirmLabel: 'Sì, crea nuova', danger: true,
+    })
+    if (!ok) return
+    if (versione) await store.setValiditaVersione(versione.id, mesePrec(meseKey))
+    await store.creaVersione(postazioneId!, meseKey)
+    await store.attivaPasso(postazioneId!, meseKey, 1)
+    logAttiva('attivata (nuova configurazione)')
+    await ricaricaAttivazione()
+  }
+  async function copiaPrecedente() {
+    if (!(await assicuraContinuita())) return
+    const sorgente = await store.ultimaConfigConTurni(postazioneId!, meseKey)
+    const nuova = await store.creaVersione(postazioneId!, meseKey)
+    if (sorgente) {
+      const turni = await store.getSchemaVersione(sorgente.id)
+      for (const t of turni) await store.addTurnoSchema(nuova.id, { nome: t.nome, ora_inizio: t.ora_inizio, ora_fine: t.ora_fine, n_turnisti: t.n_turnisti, ricorrenza: t.ricorrenza, giorni_custom: t.giorni_custom })
+    }
+    await store.attivaPasso(postazioneId!, meseKey, 1)
+    logAttiva(`attivata (copiata da ${sorgente ? meseLabel(sorgente.valido_da) : 'configurazione precedente'})`)
+    await ricaricaAttivazione()
+  }
+  async function attivaNuovaVuota() {
+    if (!(await assicuraContinuita())) return
+    await store.creaVersione(postazioneId!, meseKey)
+    await store.attivaPasso(postazioneId!, meseKey, 1)
+    logAttiva('attivata (nuova configurazione vuota)')
+    await ricaricaAttivazione()
   }
   async function salvaValidita() {
     if (!versione) return
@@ -229,8 +303,34 @@ export function SchemaTurniPage() {
 
       {loadingVer ? (
         <p className="text-sm text-stone-500">Caricamento…</p>
+      ) : mostraGate ? (
+        /* ── Gate di attivazione del mese (nuova procedura sequenziale) ── */
+        <div className="card p-8 text-center space-y-4">
+          <CalendarClock size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+          <div>
+            <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva la configurazione di {MESI[mese - 1]} {anno}</h3>
+            {versione ? (
+              <p className="text-sm text-stone-600 mt-1">Per questo mese è già valida la configurazione iniziata a <strong>{meseLabel(versione.valido_da)}</strong>. Attivala identica, oppure creane una nuova da questo mese (la precedente verrà chiusa al mese scorso).</p>
+            ) : (
+              <p className="text-sm text-stone-600 mt-1">Per questo mese non c'è una configurazione valida.{sorgenteCopia ? <> Puoi copiarla da <strong>{meseLabel(sorgenteCopia.valido_da)}</strong>, oppure partire da una nuova.</> : ' Crea una nuova configurazione.'}</p>
+            )}
+          </div>
+          <div className="flex gap-2 justify-center flex-wrap">
+            {versione ? (
+              <>
+                <button onClick={attivaIdentica} className="btn-primary text-sm"><Check size={16} /> Attiva identica al mese precedente</button>
+                <button onClick={attivaNuova} className="btn-secondary text-sm"><Plus size={16} /> Attiva una nuova configurazione</button>
+              </>
+            ) : (
+              <>
+                {sorgenteCopia && <button onClick={copiaPrecedente} className="btn-primary text-sm"><Copy size={16} /> Copia dalla configurazione precedente</button>}
+                <button onClick={attivaNuovaVuota} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva una nuova configurazione</button>
+              </>
+            )}
+          </div>
+        </div>
       ) : !versione ? (
-        /* ── Nessuna configurazione per il mese ── */
+        /* ── Nessuna configurazione per il mese (mesi pre-attivazione) ── */
         <div className="card p-8 text-center">
           <CalendarClock size={32} className="mx-auto mb-2" style={{ color: '#9ab488' }} />
           <p className="text-sm text-stone-600 mb-1">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>.</p>
@@ -239,6 +339,12 @@ export function SchemaTurniPage() {
         </div>
       ) : (
         <>
+          {nuovaProcedura && versione.valido_da < meseKey && (
+            <div className="card p-3 flex items-start gap-2" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+              <Info size={16} className="shrink-0 mt-0.5" style={{ color: '#1d4ed8' }} />
+              <p className="text-xs" style={{ color: '#1e3a5f' }}>Questa configurazione è <strong>condivisa</strong> con i mesi che la ereditano (da {meseLabel(versione.valido_da)}): modificandola cambi <strong>anche quelli</strong>. Per renderla indipendente da {MESI[mese - 1]}, ripartila con «Attiva nuova» (in arrivo dal pulsante «Cancella impostazioni mese»).</p>
+            </div>
+          )}
           <ValiditaRiquadro etichetta="Validità configurazione:" val={valid} salvando={salvandoVal} onSalva={salvaValidita} />
           {(() => {
             const eff = fineEffettiva(versione, tutteVer)
@@ -250,7 +356,7 @@ export function SchemaTurniPage() {
                   {eff ? <> a <strong>{meseLabel(eff)}</strong></> : <> in poi (per sempre)</>}
                   {nxt && <span className="text-amber-700"> · dal {meseLabel(nxt)} subentra un periodo più recente</span>}.
                 </p>
-                <button onClick={cancellaConfig} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella configurazione</button>
+                {!nuovaProcedura && <button onClick={cancellaConfig} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella configurazione</button>}
               </div>
             )
           })()}

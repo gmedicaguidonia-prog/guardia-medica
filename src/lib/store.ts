@@ -189,6 +189,36 @@ const supaStore = {
     if (error) throw error
   },
 
+  // ── Attivazioni mese (procedura sequenziale: passo 1..5 per mese) ──
+  async getAttivazioni(postazioneId: string, mese: string): Promise<number[]> {
+    const { data, error } = await supabase.from('attivazioni_mese').select('passo').eq('postazione_id', postazioneId).eq('mese', mese)
+    if (error) throw error
+    return (data ?? []).map(r => r.passo as number)
+  },
+  async getMesiAttivati(postazioneId: string, passo: number): Promise<string[]> {
+    const { data, error } = await supabase.from('attivazioni_mese').select('mese').eq('postazione_id', postazioneId).eq('passo', passo).order('mese')
+    if (error) throw error
+    return (data ?? []).map(r => r.mese as string)
+  },
+  async attivaPasso(postazioneId: string, mese: string, passo: number, autore?: string | null): Promise<void> {
+    const { error } = await supabase.from('attivazioni_mese').upsert({ postazione_id: postazioneId, mese, passo, autore: autore ?? _autoreCorrente }, { onConflict: 'postazione_id,mese,passo' })
+    if (error) throw error
+  },
+  async disattivaMese(postazioneId: string, mese: string): Promise<void> {
+    const { error } = await supabase.from('attivazioni_mese').delete().eq('postazione_id', postazioneId).eq('mese', mese)
+    if (error) throw error
+  },
+  // ultima config (la più recente PRIMA del mese) che abbia almeno un turno → sorgente per la copia
+  async ultimaConfigConTurni(postazioneId: string, primaDelMese: string): Promise<ConfigVersione | null> {
+    const { data: vers, error } = await supabase.from('schema_versioni').select('*').eq('postazione_id', postazioneId).lt('valido_da', primaDelMese).order('valido_da', { ascending: false })
+    if (error) throw error
+    for (const v of (vers ?? []) as ConfigVersione[]) {
+      const { count } = await supabase.from('schema_turni').select('id', { count: 'exact', head: true }).eq('versione_id', v.id)
+      if ((count ?? 0) > 0) return v
+    }
+    return null
+  },
+
   // ── Turni dello schema (per versione) ──
   async getSchemaVersione(versioneId: string): Promise<TurnoSchema[]> {
     const { data, error } = await supabase.from('schema_turni').select('*').eq('versione_id', versioneId).order('ordine')
@@ -714,6 +744,30 @@ const localStore = {
   },
   async setValiditaVersione(id: string, validoFino: string | null): Promise<void> {
     writeLs(LS_VERSIONI, read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
+  },
+
+  // ── Attivazioni mese (DEV) ──
+  async getAttivazioni(postazioneId: string, mese: string): Promise<number[]> {
+    return read<{ postazioneId: string; mese: string; passo: number }[]>('gm_attivazioni', []).filter(a => a.postazioneId === postazioneId && a.mese === mese).map(a => a.passo)
+  },
+  async getMesiAttivati(postazioneId: string, passo: number): Promise<string[]> {
+    return read<{ postazioneId: string; mese: string; passo: number }[]>('gm_attivazioni', []).filter(a => a.postazioneId === postazioneId && a.passo === passo).map(a => a.mese).sort()
+  },
+  async attivaPasso(postazioneId: string, mese: string, passo: number, autore?: string | null): Promise<void> {
+    const list = read<{ postazioneId: string; mese: string; passo: number; autore: string | null; createdAt: string }[]>('gm_attivazioni', [])
+    if (list.some(a => a.postazioneId === postazioneId && a.mese === mese && a.passo === passo)) return
+    list.push({ postazioneId, mese, passo, autore: autore ?? _autoreCorrente, createdAt: new Date().toISOString() })
+    writeLs('gm_attivazioni', list)
+  },
+  async disattivaMese(postazioneId: string, mese: string): Promise<void> {
+    writeLs('gm_attivazioni', read<{ postazioneId: string; mese: string; passo: number }[]>('gm_attivazioni', []).filter(a => !(a.postazioneId === postazioneId && a.mese === mese)))
+  },
+  async ultimaConfigConTurni(postazioneId: string, primaDelMese: string): Promise<ConfigVersione | null> {
+    const schema = read<TurnoSchema[]>(LS_SCHEMA, [])
+    const vers = read<WithPost<ConfigVersione>[]>(LS_VERSIONI, [])
+      .filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId && v.valido_da < primaDelMese)
+      .sort((a, b) => b.valido_da.localeCompare(a.valido_da))
+    return vers.find(v => schema.some(s => s.versione_id === v.id)) ?? null
   },
 
   async getSchemaVersione(versioneId: string): Promise<TurnoSchema[]> {
