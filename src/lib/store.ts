@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -540,6 +540,20 @@ const supaStore = {
     const { error } = await supabase.from('notifiche').delete().eq('postazione_id', postazioneId).eq('letta', true).lt('created_at', limite)
     if (error) console.warn('[Notifiche] cleanup ignorato:', error.message)
   },
+
+  // ── Log Postazioni (eventi globali: creazione/modifica/eliminazione) ──
+  async addLogPostazione(messaggio: string, autore?: string | null): Promise<void> {
+    const { error } = await supabase.from('log_postazioni').insert({ messaggio, autore: autore ?? _autoreCorrente })
+    if (error) console.warn('[LogPostazioni] insert ignorato:', error.message)
+  },
+  async getLogPostazioni(): Promise<LogPostazione[]> {
+    const { data, error } = await supabase.from('log_postazioni').select('*').order('created_at', { ascending: false }).limit(100)
+    if (error) throw error
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string, messaggio: r.messaggio as string,
+      autore: (r.autore as string | null) ?? null, createdAt: r.created_at as string,
+    }))
+  },
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -947,6 +961,16 @@ const localStore = {
   async cleanupNotifiche(_postazioneId: string): Promise<void> {
     const limite = new Date(Date.now() - 30 * 86400000).toISOString()
     writeLs('gm_notifiche', read<Notifica[]>('gm_notifiche', []).filter(n => !(n.letta && n.created_at < limite)))
+  },
+
+  // ── Log Postazioni (DEV) ──
+  async addLogPostazione(messaggio: string, autore?: string | null): Promise<void> {
+    const list = read<LogPostazione[]>('gm_log_postazioni', [])
+    list.push({ id: uid(), messaggio, autore: autore ?? _autoreCorrente, createdAt: new Date().toISOString() })
+    writeLs('gm_log_postazioni', list)
+  },
+  async getLogPostazioni(): Promise<LogPostazione[]> {
+    return read<LogPostazione[]>('gm_log_postazioni', []).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100)
   },
 }
 

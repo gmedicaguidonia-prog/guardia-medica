@@ -239,6 +239,14 @@ export interface Notifica {
   letta: boolean
   created_at: string
 }
+// Log eventi globali sulle postazioni (creazione/modifica/eliminazione).
+// Tabella a sé: non legata a una postazione, così l'eliminazione non lo cancella.
+export interface LogPostazione {
+  id: string
+  messaggio: string
+  autore: string | null
+  createdAt: string
+}
 /** Categorie (sottodiv) del Centro Notifiche admin: ordine + etichetta + tipi. */
 export const NOTIFICA_CATEGORIE: { key: string; label: string; tipi: string[] }[] = [
   { key: 'pianificazione', label: 'Pianificazione turni',     tipi: ['calendario_pianificazione', 'auto_assegnazione'] },

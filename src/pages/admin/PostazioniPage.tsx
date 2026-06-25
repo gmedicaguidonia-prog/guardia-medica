@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { MapPin, Plus, Trash2, Pencil, Save, X, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal } from 'lucide-react'
+import { MapPin, Plus, Trash2, Pencil, Save, X, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText } from 'lucide-react'
 import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { ADMIN_EMAIL } from '../../lib/constants'
 import { nomeCompleto } from '../../types'
-import type { AuthUser, Postazione, UtenteAdmin } from '../../types'
+import type { AuthUser, Postazione, UtenteAdmin, LogPostazione } from '../../types'
+
+function fmtDT(iso: string) {
+  return new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
 
 export function PostazioniPage() {
   const qc = useQueryClient()
@@ -17,6 +21,8 @@ export function PostazioniPage() {
   const { postazioneId, setPostazioneId } = usePostazione()
 
   const { data: postazioni = [], isLoading } = useQuery<Postazione[]>({ queryKey: ['postazioni'], queryFn: () => store.getPostazioni() })
+  const { data: logPost = [] } = useQuery<LogPostazione[]>({ queryKey: ['log-postazioni'], queryFn: () => store.getLogPostazioni() })
+  const nomeAutore = user ? nomeCompleto(user) : null
 
   const [nuovoNome, setNuovoNome] = useState('')
   const [saving, setSaving] = useState(false)
@@ -26,13 +32,27 @@ export function PostazioniPage() {
   async function crea() {
     if (!nuovoNome.trim()) return
     setSaving(true)
-    try { const p = await store.creaPostazione(nuovoNome.trim()); setNuovoNome(''); await qc.invalidateQueries({ queryKey: ['postazioni'] }); setPostazioneId(p.id) }
+    try {
+      const nome = nuovoNome.trim()
+      const p = await store.creaPostazione(nome); setNuovoNome('')
+      await store.addLogPostazione(`Postazione «${nome}» creata.`, nomeAutore)
+      await qc.invalidateQueries({ queryKey: ['postazioni'] })
+      await qc.invalidateQueries({ queryKey: ['log-postazioni'] })
+      setPostazioneId(p.id)
+    }
     catch (e) { console.error(e); alert('Errore nella creazione.') }
     finally { setSaving(false) }
   }
   async function salvaNome(id: string) {
     if (!editNome.trim()) return
-    await store.updatePostazione(id, { nome: editNome.trim() }); setEditId(null); await qc.invalidateQueries({ queryKey: ['postazioni'] })
+    const nuovo = editNome.trim()
+    const vecchio = postazioni.find(p => p.id === id)?.nome ?? ''
+    await store.updatePostazione(id, { nome: nuovo }); setEditId(null)
+    if (nuovo !== vecchio) {
+      await store.addLogPostazione(`Postazione «${vecchio}» rinominata in «${nuovo}».`, nomeAutore)
+      await qc.invalidateQueries({ queryKey: ['log-postazioni'] })
+    }
+    await qc.invalidateQueries({ queryKey: ['postazioni'] })
   }
   async function elimina(p: Postazione) {
     const ok = await confirm({
@@ -41,7 +61,10 @@ export function PostazioniPage() {
       confirmLabel: 'Elimina tutto', danger: true,
     })
     if (!ok) return
-    await store.deletePostazione(p.id); await qc.invalidateQueries({ queryKey: ['postazioni'] })
+    await store.deletePostazione(p.id)
+    await store.addLogPostazione(`Postazione «${p.nome}» eliminata.`, nomeAutore)
+    await qc.invalidateQueries({ queryKey: ['postazioni'] })
+    await qc.invalidateQueries({ queryKey: ['log-postazioni'] })
   }
 
   if (user?.livello !== 'admin') {
@@ -110,6 +133,26 @@ export function PostazioniPage() {
 
       {/* Blocco: Amministratori */}
       <AmministratoriBox user={user} />
+
+      {/* Blocco: Log Postazioni — storico eventi globali (non si cancella con la postazione) */}
+      <div className="card p-4 space-y-3">
+        <div>
+          <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><ScrollText size={15} style={{ color: '#476540' }} /> Log Postazioni</h2>
+          <p className="text-xs text-stone-500 mt-0.5">Storico di creazioni, rinomine ed eliminazioni delle postazioni, con autore e data.</p>
+        </div>
+        {logPost.length === 0 ? (
+          <p className="text-sm text-stone-500">Nessun evento registrato.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {logPost.map(l => (
+              <div key={l.id} className="px-2.5 py-1.5 rounded-lg" style={{ background: '#f4f6f1' }}>
+                <div className="text-sm" style={{ color: '#2b3c24' }}>{l.messaggio}</div>
+                <div className="text-[11px] text-stone-500 mt-0.5">{l.autore ? `${l.autore} · ` : ''}{fmtDT(l.createdAt)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
