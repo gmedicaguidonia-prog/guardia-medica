@@ -10,6 +10,8 @@ import { autoAssegna, autoReperibilita, oreSettimana, oreConsecutive, vietatiDaR
 import { isFestivo, isPrefestivo, isoDate, giornoSettimana } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
+import { usePassiCompleti } from '../../hooks/usePassiCompleti'
+import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
@@ -64,6 +66,7 @@ export function GestioneTurniPage() {
   const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
+  const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3 (4 facoltativo)
   // ordinate per giorno crescente (stesso giorno raggruppato), poi per turno e arrivo
   const richiesteOrdinate = useMemo(() => {
     const ord = (id: string) => schema.find(s => s.id === id)?.ordine ?? 0
@@ -477,6 +480,17 @@ export function GestioneTurniPage() {
 
   if (!postazioneId) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento postazione…</p></div>
   if (loadingVer) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento…</p></div>
+  if (passi.nuovaProcedura && !passi.tuttiOk) return (
+    <div className="max-w-5xl mx-auto p-6">{Header}
+      <div className="mt-4">
+        <PrerequisitiPassi titolo={`Per comporre i Turni di ${MESI[mese - 1]} ${anno} completa prima questi passi (la Desiderata è facoltativa):`} onVai={navigate} passi={[
+          { n: '①', label: 'Configurazione Turni', ok: passi.passo1, to: '/admin/schema' },
+          { n: '②', label: 'Regole Turni', ok: passi.passo2, to: '/admin/regole' },
+          { n: '③', label: 'Impaginazione', ok: passi.passo3, to: '/admin/impaginazione' },
+        ]} />
+      </div>
+    </div>
+  )
   if (!versione || schema.length === 0) {
     return (
       <div className="max-w-5xl mx-auto p-6">{Header}

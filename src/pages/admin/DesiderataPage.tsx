@@ -11,6 +11,8 @@ import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
+import { usePassiCompleti } from '../../hooks/usePassiCompleti'
+import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata, AuthUser } from '../../types'
 
@@ -47,6 +49,7 @@ export function DesiderataPage() {
   const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
   const navigate = useNavigate()
   const { impaginazioneOk, fogliConTurni, loadingImpag } = useImpaginazione(postazioneId, meseKey, schema)
+  const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3
 
   // serverMap: chiave `data|turnoId|turnistaId` → tipo ('desiderata'|'indisponibilita')
   const serverMap = useMemo(() => {
@@ -194,8 +197,10 @@ export function DesiderataPage() {
     if (!versione || schema.length === 0) { showWarn(`Non ci sono turni configurati per ${MESI[mese - 1]} ${anno}: impostali prima in Configurazione Turni (passo ①), poi potrai attivare la raccolta.`); return }
     try {
       await store.attivaDesiderata(postazioneId!, meseKey)
+      await store.attivaPasso(postazioneId!, meseKey, 4)   // passo 4 della procedura sequenziale
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_creata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} attivata.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
+      await qc.invalidateQueries({ queryKey: ['attivazioni', postazioneId, meseKey] })
     } catch (e) { console.error(e); alert('Errore nell\'attivazione della raccolta.') }
   }
 
@@ -223,6 +228,15 @@ export function DesiderataPage() {
 
   if (!postazioneId) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento postazione…</p></div>
   if (loadingVer || loadingFin || loadingImpag) return <div className="max-w-5xl mx-auto p-6">{Header}<p className="text-sm text-stone-500 mt-4">Caricamento…</p></div>
+  if (passi.nuovaProcedura && !passi.tuttiOk) return (
+    <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
+      <PrerequisitiPassi titolo={`Per fare le Desiderata di ${MESI[mese - 1]} ${anno} completa prima questi passi:`} onVai={navigate} passi={[
+        { n: '①', label: 'Configurazione Turni', ok: passi.passo1, to: '/admin/schema' },
+        { n: '②', label: 'Regole Turni', ok: passi.passo2, to: '/admin/regole' },
+        { n: '③', label: 'Impaginazione', ok: passi.passo3, to: '/admin/impaginazione' },
+      ]} />
+    </div>
+  )
   if (!versione || schema.length === 0) return (
     <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
       <div className="card p-5 flex items-start gap-3 mt-2"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
