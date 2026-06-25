@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus, X, Trash2, Moon, Sun, Save, RotateCcw, Infinity as InfinityIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus, X, Trash2, Moon, Sun, Save, RotateCcw } from 'lucide-react'
 import { store } from '../../lib/store'
 import { fineEffettiva, prossimoInizio } from '../../lib/turniLogic'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+import { useValiditaStaged } from '../../hooks/useValiditaStaged'
+import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import type { TurnoSchema, ConfigVersione, ImpaginazioneVersione, Foglio, FoglioTurno } from '../../types'
 
@@ -21,26 +23,6 @@ const FOGLIO_COLORI = [
 ]
 const coloreFoglio = (i: number) => FOGLIO_COLORI[((i % FOGLIO_COLORI.length) + FOGLIO_COLORI.length) % FOGLIO_COLORI.length]
 type FoglioBozza = { id: string; nome: string; ordine: number }
-
-function ValiditaControls({ versione, onChange }: { versione: ImpaginazioneVersione; onChange: (v: string | null) => void }) {
-  const perSempre = versione.valido_fino === null
-  const [ey, em] = (versione.valido_fino ?? versione.valido_da).split('-').map(Number)
-  const anni = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() + i)
-  return (
-    <div className="card p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Validità impaginazione:</span>
-      <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" checked={perSempre} onChange={() => onChange(null)} style={{ accentColor: '#476540' }} /><InfinityIcon size={14} /> Per sempre</label>
-      <label className="flex items-center gap-1.5 text-sm cursor-pointer"><input type="radio" checked={!perSempre} onChange={() => onChange(`${ey}-${String(em).padStart(2, '0')}`)} style={{ accentColor: '#476540' }} /> Fino a</label>
-      {!perSempre && (
-        <div className="flex items-center gap-1.5">
-          <select value={em} onChange={e => onChange(`${ey}-${String(+e.target.value).padStart(2, '0')}`)} className="input text-sm py-1 w-32">{MESI.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
-          <select value={ey} onChange={e => onChange(`${+e.target.value}-${String(em).padStart(2, '0')}`)} className="input text-sm py-1 w-24">{anni.map(a => <option key={a} value={a}>{a}</option>)}</select>
-          <span className="text-xs text-stone-500">(compreso)</span>
-        </div>
-      )}
-    </div>
-  )
-}
 
 export function ImpaginazionePage() {
   const qc = useQueryClient()
@@ -81,13 +63,18 @@ export function ImpaginazionePage() {
     return false
   }, [draftFogli, draftAssegn, fogli.length, serverNome, serverAssegn])
 
+  // Validità impaginazione — staged, niente auto-save (hook condiviso)
+  const valid = useValiditaStaged(impagVer, meseKey)
+  const [salvandoVal, setSalvandoVal] = useState(false)
+  const anyDirty = dirty || valid.dirty
+
   useEffect(() => { if (!dirty) editing.current = false }, [dirty])
-  useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
+  useEffect(() => { setHasUnsaved(anyDirty); return () => setHasUnsaved(false) }, [anyDirty, setHasUnsaved])
   useEffect(() => {
-    if (!dirty) return
+    if (!anyDirty) return
     const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
     window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h)
-  }, [dirty])
+  }, [anyDirty])
 
   const indiceFoglio = useMemo(() => { const m = new Map<string, number>(); draftFogli.forEach((f, i) => m.set(f.id, i)); return m }, [draftFogli])
   const contaTurni = useMemo(() => { const m = new Map<string, number>(); draftAssegn.forEach(fid => m.set(fid, (m.get(fid) ?? 0) + 1)); return m }, [draftAssegn])
@@ -96,14 +83,29 @@ export function ImpaginazionePage() {
   function showWarn(msg: string) { setWarn(msg); window.setTimeout(() => setWarn(null), 3000) }
 
   function cambiaMese(delta: number) {
-    if (dirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
+    if (anyDirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
     editing.current = false
+    if (valid.dirty) valid.reset()
     let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
     setMeseAnno(a, m); setAttivo(null)
   }
-  // operazioni sulla VERSIONE (immediate: creare/cancellare la versione, validità)
+  // operazioni sulla VERSIONE (immediate: creare/cancellare la versione)
   async function configura() { await store.creaImpaginazioneVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] }) }
-  async function cambiaValidita(v: string | null) { if (!impagVer) return; await store.setValiditaImpaginazioneVersione(impagVer.id, v); await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] }) }
+  // Validità impaginazione — salvataggio ESPLICITO (niente più auto-save)
+  async function salvaValidita() {
+    if (!impagVer) return
+    const fino = valid.draft
+    if (fino != null && fino < impagVer.valido_da) { showWarn(`La scadenza non può precedere l'inizio del periodo (${meseLabel(impagVer.valido_da)}).`); return }
+    if (fino === (impagVer.valido_fino ?? null)) return
+    setSalvandoVal(true)
+    try {
+      await store.setValiditaImpaginazioneVersione(impagVer.id, fino)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'impaginazione', messaggio: `Validità dell'impaginazione ${fino ? `impostata fino a ${meseLabel(fino)} compreso` : 'impostata su «per sempre»'}.`, target: '/admin/impaginazione', perAdmin: true }).catch(() => {})
+      await qc.invalidateQueries({ queryKey: ['impag-versione'] })
+      await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] })
+    } catch (e) { console.error('[Impaginazione] salvataggio validità fallito:', e); showWarn('Errore nel salvataggio della validità.') }
+    finally { setSalvandoVal(false) }
+  }
   async function cancella() {
     if (!impagVer) return
     if (!window.confirm(`Cancellare l'impaginazione valida da ${meseLabel(impagVer.valido_da)}? Non è reversibile.`)) return
@@ -202,7 +204,7 @@ export function ImpaginazionePage() {
   return (
     <div className="p-4 sm:p-6 space-y-4">
       {Header}
-      <ValiditaControls versione={impagVer} onChange={cambiaValidita} />
+      <ValiditaRiquadro etichetta="Validità impaginazione:" val={valid} salvando={salvandoVal} onSalva={salvaValidita} />
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs text-stone-500 flex-1">Valida da <strong>{meseLabel(impagVer.valido_da)}</strong>{eff ? <> a <strong>{meseLabel(eff)}</strong></> : <> in poi (per sempre)</>}{nxt && <span className="text-amber-700"> · dal {meseLabel(nxt)} subentra un periodo più recente</span>}.</p>
         <button onClick={cancella} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella impaginazione</button>

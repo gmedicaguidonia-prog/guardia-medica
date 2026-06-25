@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, AlertTriangle, ChevronLeft, ChevronRight, Infinity as InfinityIcon } from 'lucide-react'
+import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { store } from '../../lib/store'
 import { RICORRENZE } from '../../types'
 import { GIORNI_SETTIMANA } from '../../lib/constants'
@@ -9,6 +9,8 @@ import { ConfirmModal } from '../../components/ConfirmModal'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+import { useValiditaStaged } from '../../hooks/useValiditaStaged'
+import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
 import { prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
 import type { TurnoSchema, Ricorrenza, ConfigVersione } from '../../types'
 
@@ -110,40 +112,6 @@ function TurnoCard({ turno, onDelete, onDirty }: {
   )
 }
 
-// ── Controlli validità (per sempre / fino a mese-anno) ──
-function ValiditaControls({ versione, onChange }: { versione: ConfigVersione; onChange: (validoFino: string | null) => void }) {
-  const perSempre = versione.valido_fino === null
-  const baseKey = versione.valido_fino ?? versione.valido_da
-  const [ey, em] = baseKey.split('-').map(Number)
-  const annoOggi = new Date().getFullYear()
-  const anni = Array.from({ length: 6 }, (_, i) => annoOggi + i)
-
-  return (
-    <div className="card p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Validità configurazione:</span>
-      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-        <input type="radio" checked={perSempre} onChange={() => onChange(null)} style={{ accentColor: '#476540' }} />
-        <InfinityIcon size={14} /> Per sempre
-      </label>
-      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-        <input type="radio" checked={!perSempre} onChange={() => onChange(`${ey}-${String(em).padStart(2, '0')}`)} style={{ accentColor: '#476540' }} />
-        Fino a
-      </label>
-      {!perSempre && (
-        <div className="flex items-center gap-1.5">
-          <select value={em} onChange={e => onChange(`${ey}-${String(+e.target.value).padStart(2, '0')}`)} className="input text-sm py-1 w-32">
-            {MESI.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <select value={ey} onChange={e => onChange(`${+e.target.value}-${String(em).padStart(2, '0')}`)} className="input text-sm py-1 w-24">
-            {anni.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <span className="text-xs text-stone-500">(compreso)</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function SchemaTurniPage() {
   const qc = useQueryClient()
   const { confirm, confirmState } = useConfirm()
@@ -174,16 +142,21 @@ export function SchemaTurniPage() {
     })
   }, [])
   const hasUnsaved = dirtyIds.size > 0
-  useEffect(() => { setHasUnsaved(hasUnsaved); return () => setHasUnsaved(false) }, [hasUnsaved, setHasUnsaved])
+  // Validità configurazione — staged, niente auto-save (hook condiviso)
+  const valid = useValiditaStaged(versione, meseKey)
+  const [salvandoVal, setSalvandoVal] = useState(false)
+  const anyDirty = hasUnsaved || valid.dirty
+  useEffect(() => { setHasUnsaved(anyDirty); return () => setHasUnsaved(false) }, [anyDirty, setHasUnsaved])
   useEffect(() => {
-    if (!hasUnsaved) return
+    if (!anyDirty) return
     const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
     window.addEventListener('beforeunload', h)
     return () => window.removeEventListener('beforeunload', h)
-  }, [hasUnsaved])
+  }, [anyDirty])
 
   function cambiaMese(delta: number) {
-    if (hasUnsaved && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
+    if (anyDirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
+    if (valid.dirty) valid.reset()
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
     setMeseAnno(a, m)
@@ -193,11 +166,19 @@ export function SchemaTurniPage() {
     await store.creaVersione(postazioneId!, meseKey)
     await qc.invalidateQueries({ queryKey: ['versione'] })
   }
-  async function cambiaValidita(validoFino: string | null) {
+  async function salvaValidita() {
     if (!versione) return
-    await store.setValiditaVersione(versione.id, validoFino)
-    await qc.invalidateQueries({ queryKey: ['versione'] })
-    await qc.invalidateQueries({ queryKey: ['versioni-all'] })
+    const fino = valid.draft
+    if (fino != null && fino < versione.valido_da) { window.alert(`La scadenza non può precedere l'inizio del periodo (${meseLabel(versione.valido_da)}).`); return }
+    if (fino === (versione.valido_fino ?? null)) return
+    setSalvandoVal(true)
+    try {
+      await store.setValiditaVersione(versione.id, fino)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'config_turni', messaggio: `Validità della configurazione turni ${fino ? `impostata fino a ${meseLabel(fino)} compreso` : 'impostata su «per sempre»'}.`, target: '/admin/schema', perAdmin: true }).catch(() => {})
+      await qc.invalidateQueries({ queryKey: ['versione'] })
+      await qc.invalidateQueries({ queryKey: ['versioni-all'] })
+    } catch (e) { console.error('[Config] salvataggio validità fallito:', e); window.alert('Errore nel salvataggio della validità.') }
+    finally { setSalvandoVal(false) }
   }
   async function cancellaConfig() {
     if (!versione) return
@@ -258,7 +239,7 @@ export function SchemaTurniPage() {
         </div>
       ) : (
         <>
-          <ValiditaControls versione={versione} onChange={cambiaValidita} />
+          <ValiditaRiquadro etichetta="Validità configurazione:" val={valid} salvando={salvandoVal} onSalva={salvaValidita} />
           {(() => {
             const eff = fineEffettiva(versione, tutteVer)
             const nxt = prossimoInizio(versione, tutteVer)
