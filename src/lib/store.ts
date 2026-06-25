@@ -213,6 +213,16 @@ const supaStore = {
     const { error } = await supabase.rpc('cancella_mese', { p_postazione: postazioneId, p_mese: mese, p_autore: autore ?? _autoreCorrente })
     if (error) throw error
   },
+  // info sull'eventuale snapshot del mese (per mostrare il pulsante Ripristina)
+  async getSetupBackup(postazioneId: string, mese: string): Promise<{ id: string; createdAt: string; autore: string | null } | null> {
+    const { data, error } = await supabase.from('setup_backup').select('id, created_at, autore').eq('postazione_id', postazioneId).eq('mese', mese).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (error) throw error
+    return data ? { id: data.id as string, createdAt: data.created_at as string, autore: (data.autore as string | null) ?? null } : null
+  },
+  async ripristinaMese(postazioneId: string, mese: string): Promise<void> {
+    const { error } = await supabase.rpc('ripristina_mese', { p_postazione: postazioneId, p_mese: mese })
+    if (error) throw error
+  },
   // ultima config (la più recente PRIMA del mese) che abbia almeno un turno → sorgente per la copia
   async ultimaConfigConTurni(postazioneId: string, primaDelMese: string): Promise<ConfigVersione | null> {
     const { data: vers, error } = await supabase.from('schema_versioni').select('*').eq('postazione_id', postazioneId).lt('valido_da', primaDelMese).order('valido_da', { ascending: false })
@@ -791,8 +801,8 @@ const localStore = {
     const first = `${mese}-01`, last = `${mese}-31`
     const own = (pid: string | undefined) => (pid ?? DEV_POSTAZIONE) === postazioneId
     const inMese = (d: string) => d >= first && d <= last
-    // snapshot minimale (DEV)
-    const backups = read<Record<string, unknown>[]>('gm_setup_backup', [])
+    // snapshot minimale (DEV) — max 1 per mese: sostituisce l'eventuale precedente
+    const backups = read<Record<string, unknown>[]>('gm_setup_backup', []).filter(x => !(x.postazioneId === postazioneId && x.mese === mese))
     backups.push({ id: uid(), postazioneId, mese, autore: autore ?? _autoreCorrente, createdAt: new Date().toISOString(),
       snapshot: { mese, turni: read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => own(t.postazione_id) && inMese(t.data)), desiderata: read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => own(d.postazione_id) && inMese(d.data)) } })
     writeLs('gm_setup_backup', backups)
@@ -815,6 +825,21 @@ const localStore = {
     writeLs(LS_FOGLIO_TURNI, read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => !ivId.includes(ft.versione_id)))
     // attivazioni
     writeLs('gm_attivazioni', read<{ postazioneId: string; mese: string }[]>('gm_attivazioni', []).filter(a => !(a.postazioneId === postazioneId && a.mese === mese)))
+  },
+  async getSetupBackup(postazioneId: string, mese: string): Promise<{ id: string; createdAt: string; autore: string | null } | null> {
+    const b = read<Record<string, unknown>[]>('gm_setup_backup', []).filter(x => x.postazioneId === postazioneId && x.mese === mese).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]
+    return b ? { id: b.id as string, createdAt: b.createdAt as string, autore: (b.autore as string | null) ?? null } : null
+  },
+  async ripristinaMese(postazioneId: string, mese: string): Promise<void> {
+    const all = read<{ id: string; postazioneId: string; mese: string; snapshot: { turni?: WithPost<Turno>[]; desiderata?: WithPost<Desiderata>[] } }[]>('gm_setup_backup', [])
+    const b = all.filter(x => x.postazioneId === postazioneId && x.mese === mese).sort((a, b) => String(b.id).localeCompare(String(a.id)))[0]
+    if (!b) throw new Error('Nessuna copia di backup per questo mese')
+    const first = `${mese}-01`, last = `${mese}-31`
+    const own = (pid: string | undefined) => (pid ?? DEV_POSTAZIONE) === postazioneId
+    const inMese = (d: string) => d >= first && d <= last
+    writeLs(LS_TURNI, [...read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => !(own(t.postazione_id) && inMese(t.data))), ...(b.snapshot.turni ?? [])])
+    writeLs(LS_DESIDERATA, [...read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => !(own(d.postazione_id) && inMese(d.data))), ...(b.snapshot.desiderata ?? [])])
+    writeLs('gm_setup_backup', all.filter(x => x.id !== b.id))
   },
   async ultimaConfigConTurni(postazioneId: string, primaDelMese: string): Promise<ConfigVersione | null> {
     const schema = read<TurnoSchema[]>(LS_SCHEMA, [])
