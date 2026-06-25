@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Copy } from 'lucide-react'
 import { store } from '../../lib/store'
-import { nomeCompleto, gruppiPerLivello } from '../../types'
+import { nomeCompleto, gruppiPerLivello, TIPI_REGOLA_TURNISTA } from '../../types'
 import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
 import { GIORNI_SETTIMANA, ATTIVAZIONE_DA } from '../../lib/constants'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
@@ -15,7 +15,7 @@ import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
-import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, RegolaTurno } from '../../types'
+import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
@@ -50,6 +50,7 @@ export function RegoleTurniPage() {
   const { data: schema = [] } = useQuery<TurnoSchema[]>({ queryKey: ['schema', configVer?.id], queryFn: () => store.getSchemaVersione(configVer!.id), enabled: !!configVer })
   const { data: regoleVer, isLoading: loadingRegole } = useQuery<RegolaVersione | null>({ queryKey: ['regole-versione', postazioneId, meseKey], queryFn: () => store.getRegoleVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: regole = [] } = useQuery<RegolaTurno[]>({ queryKey: ['regole', regoleVer?.id], queryFn: () => store.getRegole(regoleVer!.id), enabled: !!regoleVer })
+  const { data: regoleSpeciali = [] } = useQuery<RegolaTurnista[]>({ queryKey: ['regole-turnista', regoleVer?.id], queryFn: () => store.getRegoleTurnista(regoleVer!.id), enabled: !!regoleVer })
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
   const { data: tutteVer = [] } = useQuery<RegolaVersione[]>({ queryKey: ['regole-versioni-all', postazioneId], queryFn: () => store.getRegoleVersioni(postazioneId!), enabled: !!postazioneId })
   // Procedura sequenziale: passo 2 (regole). Richiede passo 1 (config attivato+valido).
@@ -81,7 +82,15 @@ export function RegoleTurniPage() {
     normOre(oreMaxSett) !== (regoleVer?.ore_max_settimana ?? null) ||
     normOre(oreMaxCons) !== (regoleVer?.ore_max_consecutive ?? null) ||
     cambioAuto !== (regoleVer?.cambio_auto ?? true)
-  const salvaDirty = dirty || oreDirty       // barra Salva principale (regole + impostazioni)
+  // Regole speciali per turnista — anch'esse STAGED (drag → bozza → Aggiungi → riga; si salvano col Salva)
+  const [speLocal, setSpeLocal] = useState<{ turnista_id: string; tipo: TipoRegolaTurnista; valore: number }[]>([])
+  const [bozze, setBozze] = useState<{ key: string; turnista_id: string; tipo: TipoRegolaTurnista | ''; valore: string }[]>([])
+  const speEditing = useRef(false)
+  const tmpRef = useRef(0)
+  const [overSpe, setOverSpe] = useState(false)
+  const speSig = (arr: { turnista_id: string; tipo: TipoRegolaTurnista; valore: number }[]) => arr.map(r => `${r.turnista_id}|${r.tipo}|${r.valore}`).sort().join(',')
+  const speDirty = speSig(speLocal) !== speSig(regoleSpeciali.map(r => ({ turnista_id: r.turnista_id, tipo: r.tipo, valore: r.valore })))
+  const salvaDirty = dirty || oreDirty || speDirty   // barra Salva principale (regole fisse + impostazioni + regole speciali)
   const anyDirty = salvaDirty || valid.dirty
 
   useEffect(() => { setHasUnsaved(anyDirty); return () => setHasUnsaved(false) }, [anyDirty, setHasUnsaved])
@@ -95,6 +104,8 @@ export function RegoleTurniPage() {
   useEffect(() => { setOreMaxSett(regoleVer?.ore_max_settimana != null ? String(regoleVer.ore_max_settimana) : '') }, [regoleVer?.id, regoleVer?.ore_max_settimana])
   useEffect(() => { setOreMaxCons(regoleVer?.ore_max_consecutive != null ? String(regoleVer.ore_max_consecutive) : '') }, [regoleVer?.id, regoleVer?.ore_max_consecutive])
   useEffect(() => { setCambioAuto(regoleVer?.cambio_auto ?? true) }, [regoleVer?.id, regoleVer?.cambio_auto])
+  useEffect(() => { if (!speEditing.current) setSpeLocal(regoleSpeciali.map(r => ({ turnista_id: r.turnista_id, tipo: r.tipo, valore: r.valore }))) }, [regoleSpeciali])
+  useEffect(() => { speEditing.current = false; setBozze([]) }, [regoleVer?.id])   // cambio mese/versione: scarta bozze, riallinea
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti), [turnisti])
@@ -268,13 +279,47 @@ export function RegoleTurniPage() {
     await store.deleteRegoleVersione(regoleVer.id)
     await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
   }
-  // Annulla TUTTE le modifiche in sospeso (regole fisse + impostazioni orario/cambio turno)
+  // ── Regole speciali per turnista (staged): trascina → bozza → Aggiungi → riga ──
+  const labelTipo = (t: TipoRegolaTurnista) => TIPI_REGOLA_TURNISTA.find(x => x.value === t)?.label ?? t
+  // tipi non ancora usati per quel turnista (né confermati né in altre bozze): nel menu non si ripetono
+  function tipiDisponibili(turnistaId: string, exceptKey?: string): TipoRegolaTurnista[] {
+    const usati = new Set<string>()
+    speLocal.forEach(r => { if (r.turnista_id === turnistaId) usati.add(r.tipo) })
+    bozze.forEach(b => { if (b.turnista_id === turnistaId && b.key !== exceptKey && b.tipo) usati.add(b.tipo) })
+    return TIPI_REGOLA_TURNISTA.map(t => t.value).filter(v => !usati.has(v))
+  }
+  function aggiungiRegolaTurnista(turnistaId: string) {
+    if (tipiDisponibili(turnistaId).length === 0) { showWarn(`${nomeTurnista(turnistaId)} ha già tutte le regole speciali disponibili.`); return }
+    speEditing.current = true
+    setBozze(prev => [...prev, { key: `b-${++tmpRef.current}`, turnista_id: turnistaId, tipo: '', valore: '' }])
+  }
+  function setBozza(key: string, patch: Partial<{ tipo: TipoRegolaTurnista | ''; valore: string }>) {
+    speEditing.current = true
+    setBozze(prev => prev.map(b => b.key === key ? { ...b, ...patch } : b))
+  }
+  function confermaBozza(b: { key: string; turnista_id: string; tipo: TipoRegolaTurnista | ''; valore: string }) {
+    const v = Math.max(0, parseInt(b.valore) || 0)
+    if (!b.tipo || v <= 0) return
+    speEditing.current = true
+    setSpeLocal(prev => [...prev.filter(r => !(r.turnista_id === b.turnista_id && r.tipo === b.tipo)), { turnista_id: b.turnista_id, tipo: b.tipo as TipoRegolaTurnista, valore: v }])
+    setBozze(prev => prev.filter(x => x.key !== b.key))
+  }
+  function scartaBozza(key: string) { setBozze(prev => prev.filter(b => b.key !== key)) }
+  async function eliminaRegolaTurnista(turnistaId: string, tipo: TipoRegolaTurnista) {
+    if (!(await confirm({ title: 'Elimina regola speciale', message: `Eliminare «${labelTipo(tipo)}» di ${nomeTurnista(turnistaId)}?`, confirmLabel: 'Elimina', danger: true }))) return
+    speEditing.current = true
+    setSpeLocal(prev => prev.filter(r => !(r.turnista_id === turnistaId && r.tipo === tipo)))
+  }
+  // Annulla TUTTE le modifiche in sospeso (regole fisse + impostazioni + regole speciali)
   function annullaTutto() {
     discard()
     setOreMin(regoleVer?.ore_min_settimana != null ? String(regoleVer.ore_min_settimana) : '')
     setOreMaxSett(regoleVer?.ore_max_settimana != null ? String(regoleVer.ore_max_settimana) : '')
     setOreMaxCons(regoleVer?.ore_max_consecutive != null ? String(regoleVer.ore_max_consecutive) : '')
     setCambioAuto(regoleVer?.cambio_auto ?? true)
+    speEditing.current = false
+    setSpeLocal(regoleSpeciali.map(r => ({ turnista_id: r.turnista_id, tipo: r.tipo, valore: r.valore })))
+    setBozze([])
   }
   // ── Isolamento per mese (copy-on-write a "scorporo") ──
   // Se la versione regole copre più mesi (è ereditata da un periodo precedente o
@@ -288,9 +333,11 @@ export function RegoleTurniPage() {
     if (!V) return regoleVer!.id
     if (V.valido_da === meseKey && V.valido_fino === meseKey) return V.id   // già isolata a questo mese
     const regoleV = await store.getRegole(V.id)
+    const speV = await store.getRegoleTurnista(V.id)
     const finoOrig = V.valido_fino
     const copiaIn = async (verId: string) => {
       for (const r of regoleV) await store.setRegola(verId, r.giorno_settimana, r.turno_schema_id, r.slot, r.turnista_id)
+      for (const rs of speV) await store.setRegolaTurnista(verId, rs.turnista_id, rs.tipo, rs.valore)
       if (V.ore_min_settimana != null) await store.setOreMinSettimana(verId, V.ore_min_settimana)
       if (V.ore_max_settimana != null) await store.setOreMaxSettimana(verId, V.ore_max_settimana)
       if (V.ore_max_consecutive != null) await store.setOreMaxConsecutive(verId, V.ore_max_consecutive)
@@ -327,8 +374,15 @@ export function RegoleTurniPage() {
       await store.setOreMaxSettimana(verId, normOre(oreMaxSett))
       await store.setOreMaxConsecutive(verId, normOre(oreMaxCons))
       await store.setCambioAuto(verId, cambioAuto)
-      if (mod.length || oreDirty) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole turni di ${meseLabel(meseKey)} aggiornate${mod.length ? ` · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}` : ''}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
+      // regole speciali per turnista (staged): la versione del mese è isolata → riscrivo l'insieme
+      if (speDirty) {
+        await store.deleteRegoleTurnistaVersione(verId)
+        for (const r of speLocal) await store.setRegolaTurnista(verId, r.turnista_id, r.tipo, r.valore)
+      }
+      speEditing.current = false
+      if (mod.length || oreDirty || speDirty) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole turni di ${meseLabel(meseKey)} aggiornate${mod.length ? ` · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}` : ''}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['regole'] })
+      await qc.invalidateQueries({ queryKey: ['regole-turnista'] })
       await qc.invalidateQueries({ queryKey: ['regole-versione'] })
       await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
     } catch (e) { console.error('[Regole] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }) }
@@ -434,10 +488,13 @@ export function RegoleTurniPage() {
       <div ref={containerRef} className="flex gap-3 items-start"
         onTouchEnd={e => {
           if (!touchActive.current) return
-          touchActive.current = false; setOverKey(null); setDraggingId(null)
+          touchActive.current = false; setOverKey(null); setDraggingId(null); setOverSpe(false)
           const t = e.changedTouches[0]
-          const td = (document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null)?.closest('[data-giorno][data-turno]') as HTMLElement | null
+          const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null
+          const td = el?.closest('[data-giorno][data-turno]') as HTMLElement | null
+          const sp = el?.closest('[data-speciali]') as HTMLElement | null
           if (td?.dataset.giorno && td.dataset.turno) { const turno = schema.find(s => s.id === td!.dataset.turno); if (turno) handleDrop(+td.dataset.giorno, turno) }
+          else if (sp && dragSource.current) { const tid = dragSource.current; dragSource.current = null; aggiungiRegolaTurnista(tid) }
           else dragSource.current = null
         }}>
 
@@ -503,6 +560,56 @@ export function RegoleTurniPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Regole speciali per turnista (trascina un nome dalla palette qui dentro) */}
+      <div data-speciali="1"
+        onDragOver={e => { e.preventDefault(); setOverSpe(true) }}
+        onDragLeave={() => setOverSpe(false)}
+        onDrop={e => { e.preventDefault(); setOverSpe(false); const tid = dragSource.current; dragSource.current = null; setDraggingId(null); if (tid) aggiungiRegolaTurnista(tid) }}
+        className="card p-3 space-y-2 transition-colors"
+        style={overSpe ? { boxShadow: 'inset 0 0 0 2px #2e7d32', background: '#f0fdf4' } : undefined}>
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#476540' }}>Regole speciali per turnista</h3>
+          <span className="text-[11px] text-stone-400">— trascina qui un turnista per aggiungere un limite personale (si somma alle altre regole)</span>
+        </div>
+
+        {speLocal.length === 0 && bozze.length === 0 && (
+          <p className="text-xs text-stone-400 italic">Nessuna regola speciale. Verranno rispettate dall'Auto Assegnazione e segnalate (con possibilità di forzare) nell'assegnazione manuale.</p>
+        )}
+
+        {speLocal.map(r => {
+          const col = coloreTurnista(r.turnista_id)
+          return (
+            <div key={`${r.turnista_id}|${r.tipo}`} className="flex items-center gap-2 flex-wrap rounded-lg px-2 py-1.5" style={{ background: '#f7f8f4' }}>
+              <span className="rounded px-2 py-0.5 text-xs font-semibold shadow-sm" style={{ background: col.bg, color: col.fg }}>{nomeTurnista(r.turnista_id)}</span>
+              <span className="text-sm" style={{ color: '#3a3d30' }}>{labelTipo(r.tipo)}: <strong>{r.valore}</strong></span>
+              <button onClick={() => eliminaRegolaTurnista(r.turnista_id, r.tipo)} title="Elimina questa regola" className="ml-auto p-1.5 rounded text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={15} /></button>
+            </div>
+          )
+        })}
+
+        {bozze.map(b => {
+          const disp = tipiDisponibili(b.turnista_id, b.key)
+          const col = coloreTurnista(b.turnista_id)
+          const valido = !!b.tipo && parseInt(b.valore) > 0
+          return (
+            <div key={b.key} className="flex items-center gap-2 flex-wrap rounded-lg px-2 py-1.5" style={{ background: '#fffdf5', border: '1px dashed #fbbf24' }}>
+              <span className="rounded px-2 py-0.5 text-xs font-semibold shadow-sm" style={{ background: col.bg, color: col.fg }}>{nomeTurnista(b.turnista_id)}</span>
+              <select value={b.tipo} onChange={e => setBozza(b.key, { tipo: e.target.value as TipoRegolaTurnista | '' })} className="input text-sm" style={{ width: 'auto' }}>
+                <option value="">Scegli regola…</option>
+                {disp.map(v => <option key={v} value={v}>{labelTipo(v)}</option>)}
+              </select>
+              <input type="number" min={1} value={b.valore} onChange={e => setBozza(b.key, { valore: e.target.value })} className="input text-sm w-20" placeholder="n." />
+              <button onClick={() => confermaBozza(b)} disabled={!valido}
+                className="flex items-center gap-1 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:cursor-default"
+                style={valido ? { background: '#2e7d32', color: '#fff' } : { background: '#f3f4f6', color: '#9ca3af' }}>
+                <Plus size={14} /> Aggiungi
+              </button>
+              <button onClick={() => scartaBozza(b.key)} title="Scarta" className="p-1.5 rounded text-stone-400 hover:text-stone-600"><X size={15} /></button>
+            </div>
+          )
+        })}
       </div>
 
       {/* Impostazioni sull'orario */}

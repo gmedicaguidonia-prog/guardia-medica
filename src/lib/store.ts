@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -342,6 +342,20 @@ const supaStore = {
       if (error) throw error
     }
   },
+  // ── Regole speciali per turnista (limiti personali, legate alla versione regole) ──
+  async getRegoleTurnista(regolaVersioneId: string): Promise<RegolaTurnista[]> {
+    const { data, error } = await supabase.from('regole_turnista').select('*').eq('regola_versione_id', regolaVersioneId)
+    if (error) throw error
+    return (data ?? []) as RegolaTurnista[]
+  },
+  async setRegolaTurnista(regolaVersioneId: string, turnistaId: string, tipo: TipoRegolaTurnista, valore: number): Promise<void> {
+    const { error } = await supabase.from('regole_turnista').upsert({ regola_versione_id: regolaVersioneId, turnista_id: turnistaId, tipo, valore }, { onConflict: 'regola_versione_id,turnista_id,tipo' })
+    if (error) throw error
+  },
+  async deleteRegoleTurnistaVersione(regolaVersioneId: string): Promise<void> {
+    const { error } = await supabase.from('regole_turnista').delete().eq('regola_versione_id', regolaVersioneId)
+    if (error) throw error
+  },
   async deleteVersione(id: string): Promise<void> {
     const { error } = await supabase.from('schema_versioni').delete().eq('id', id)
     if (error) throw error
@@ -663,6 +677,7 @@ const LS_SCHEMA           = 'gm_schema'
 const LS_VERSIONI         = 'gm_versioni'
 const LS_REGOLE_VERSIONI  = 'gm_regole_versioni'
 const LS_REGOLE           = 'gm_regole'
+const LS_REGOLE_TURNISTA  = 'gm_regole_turnista'
 const LS_TURNI            = 'gm_turni'
 const LS_TURNISTI_MESE    = 'gm_turnisti_mese'
 const LS_DESIDERATA       = 'gm_desiderata'
@@ -955,6 +970,18 @@ const localStore = {
   async deleteRegoleVersione(id: string): Promise<void> {
     writeLs(LS_REGOLE_VERSIONI, read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).filter(v => v.id !== id))
     writeLs(LS_REGOLE, read<RegolaTurno[]>(LS_REGOLE, []).filter(r => r.regola_versione_id !== id))
+    writeLs(LS_REGOLE_TURNISTA, read<RegolaTurnista[]>(LS_REGOLE_TURNISTA, []).filter(r => r.regola_versione_id !== id))
+  },
+  async getRegoleTurnista(regolaVersioneId: string): Promise<RegolaTurnista[]> {
+    return read<RegolaTurnista[]>(LS_REGOLE_TURNISTA, []).filter(r => r.regola_versione_id === regolaVersioneId)
+  },
+  async setRegolaTurnista(regolaVersioneId: string, turnistaId: string, tipo: TipoRegolaTurnista, valore: number): Promise<void> {
+    const list = read<RegolaTurnista[]>(LS_REGOLE_TURNISTA, []).filter(r => !(r.regola_versione_id === regolaVersioneId && r.turnista_id === turnistaId && r.tipo === tipo))
+    list.push({ id: uid(), regola_versione_id: regolaVersioneId, turnista_id: turnistaId, tipo, valore })
+    writeLs(LS_REGOLE_TURNISTA, list)
+  },
+  async deleteRegoleTurnistaVersione(regolaVersioneId: string): Promise<void> {
+    writeLs(LS_REGOLE_TURNISTA, read<RegolaTurnista[]>(LS_REGOLE_TURNISTA, []).filter(r => r.regola_versione_id !== regolaVersioneId))
   },
   async setOreMinSettimana(id: string, ore: number | null): Promise<void> {
     writeLs(LS_REGOLE_VERSIONI, read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []).map(v => v.id === id ? { ...v, ore_min_settimana: ore } : v))

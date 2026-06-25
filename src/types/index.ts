@@ -165,6 +165,23 @@ export interface RegolaTurno {
   created_at: string
 }
 
+// ─── Regole speciali per turnista (limiti personali, versionate come le regole) ───
+//  Si SOMMANO ai vincoli generali: vanno rispettate dall'Auto Assegnazione e
+//  segnalate (con possibilità di forzare) nell'assegnazione manuale.
+export type TipoRegolaTurnista = 'max_sett' | 'max_mese'
+export const TIPI_REGOLA_TURNISTA: { value: TipoRegolaTurnista; label: string; unita: string }[] = [
+  { value: 'max_sett', label: 'Massimo turni a settimana', unita: 'turni/sett.' },
+  { value: 'max_mese', label: 'Massimo turni in un mese',  unita: 'turni/mese' },
+]
+export interface RegolaTurnista {
+  id: string
+  regola_versione_id: string
+  turnista_id: string
+  tipo: TipoRegolaTurnista
+  valore: number
+  created_at?: string
+}
+
 // ─── Desiderata / Indisponibilità ───────────────────────────────────
 //  Una preferenza espressa da (o per) un turnista su uno specifico turno:
 //  'desiderata' = lo vorrebbe fare, 'indisponibilita' = non può farlo.

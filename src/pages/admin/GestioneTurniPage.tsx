@@ -667,7 +667,12 @@ export function GestioneTurniPage() {
         <button onClick={apriImporta} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         {showRep && <button onClick={eseguiReperibilita} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95" style={{ background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }} title="Riempi le reperibilità con le disponibilità libere (richiede turni coperti almeno all’80%)"><Phone size={14} /> Assegna Reperibilità</button>}
-        <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={coperturaOk ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' } : { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }} title="Turni del mese con tutti i posti assegnati"><CalendarDays size={13} /> Turni coperti {copertura.coperti}/{copertura.totali}</span>
+        <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={
+          copertura.totali === 0 ? { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }
+          : copertura.coperti === 0 ? { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }
+          : copertura.coperti >= copertura.totali ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }
+          : { background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }
+        } title="Turni del mese con tutti i posti assegnati (rosso = nessuno, giallo = parziale, verde = completo)"><CalendarDays size={13} /> Turni coperti {copertura.coperti}/{copertura.totali}</span>
         <button onClick={chiediAuto}
           className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95"
           style={{ background: '#ede9fe', color: '#6d28d9', borderColor: '#c4b5fd' }}

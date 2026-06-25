@@ -195,6 +195,13 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     : 'aperta'
   const pubblicheMode = !!fin?.pubbliche            // desiderata visibili a tutti (vista a colonne)
   const desEditabile = desStato === 'aperta' && (sonoImportato || adminMode)   // solo a raccolta aperta e se importato per il mese
+  // avviso evidente SOPRA il calendario desiderata (in qualunque forma): fino a quando è attivo
+  const avvisoChiusura = desEditabile && fin?.aperta_a ? (
+    <div className="card p-3 flex items-start gap-2" style={{ background: '#fef3c7', border: '1px solid #fbbf24' }}>
+      <Clock size={16} className="shrink-0 mt-0.5" style={{ color: '#b45309' }} />
+      <p className="text-sm" style={{ color: '#78350f' }}>Calendario desiderata attivo <strong>fino al {itDate(fin.aperta_a)}</strong>: dopo questa data <strong>non sarà più visibile</strong> e non potrà più essere modificato. Compila entro tale giorno.</p>
+    </div>
+  ) : null
 
   const turniConfigurati = !!versione && schema.length > 0 && impaginazioneOk
 
@@ -351,6 +358,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             ) : (pubblicheMode || adminMode) ? (
               /* ── DESIDERATA PUBBLICHE (o god mode admin): una colonna per turnista, modifichi la tua ── */
               <>
+                {avvisoChiusura}
                 <p className="text-xs text-stone-500">
                   {desEditabile
                     ? <>Scegli nella <strong>tua</strong> colonna; vedi anche le scelte degli altri. Raccolta aperta fino al {itDate(fin!.aperta_a!)}.</>
@@ -435,7 +443,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} si è chiusa il <strong>{itDate(fin!.aperta_a!)}</strong>.</Avviso>
             ) : (
               <>
-                <p className="text-xs text-stone-500">Per ogni turno indica se lo <strong style={{ color: '#166534' }}>vorresti</strong> o se <strong style={{ color: '#b91c1c' }}>non puoi</strong>. Raccolta aperta fino al {itDate(fin!.aperta_a!)}.</p>
+                {avvisoChiusura}
+                <p className="text-xs text-stone-500">Per ogni turno indica se lo <strong style={{ color: '#166534' }}>vorresti</strong> o se <strong style={{ color: '#b91c1c' }}>non puoi</strong>.</p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
                 <div key={foglio.id} className="card overflow-auto">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
