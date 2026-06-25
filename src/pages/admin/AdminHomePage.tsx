@@ -106,7 +106,31 @@ export function AdminHomePage() {
       <div className="relative max-w-3xl mx-auto p-6 space-y-6">
         <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Riepilogo{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
 
-        {/* Centro Notifiche — per mese, poi per categoria */}
+        {/* Promemoria e scadenze */}
+        <section className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">Promemoria e scadenze</h2>
+          {avvisi.length === 0 ? (
+            <div className="card p-4 flex items-center gap-2 text-sm" style={{ color: '#166534' }}>
+              <CheckCircle2 size={18} /> Tutto in regola: nessuna scadenza imminente.
+            </div>
+          ) : avvisi.map((a, i) => (
+            <div key={i} className="card p-4 flex items-center gap-3" style={{ borderLeft: '4px solid #f59e0b' }}>
+              <AlertTriangle size={18} style={{ color: '#d97706' }} className="shrink-0" />
+              <span className="text-sm flex-1" style={{ color: '#3a3d30' }}>{a.testo}</span>
+              {a.cta && <button onClick={a.azione} className="btn-primary text-xs py-1 px-2.5 shrink-0">{a.cta}</button>}
+            </div>
+          ))}
+        </section>
+
+        {/* Funzioni in arrivo (placeholder) */}
+        <section className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">In arrivo</h2>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <PlaceholderCard Icon={ArrowRightLeft} titolo="Cambi turno" descr="Avvisi delle richieste e dei cambi turno effettuati dai turnisti." />
+          </div>
+        </section>
+
+        {/* Centro Notifiche — per mese, poi per categoria (in fondo) */}
         {perMese.length > 0 && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
@@ -152,30 +176,6 @@ export function AdminHomePage() {
             ))}
           </section>
         )}
-
-        {/* Promemoria e scadenze */}
-        <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">Promemoria e scadenze</h2>
-          {avvisi.length === 0 ? (
-            <div className="card p-4 flex items-center gap-2 text-sm" style={{ color: '#166534' }}>
-              <CheckCircle2 size={18} /> Tutto in regola: nessuna scadenza imminente.
-            </div>
-          ) : avvisi.map((a, i) => (
-            <div key={i} className="card p-4 flex items-center gap-3" style={{ borderLeft: '4px solid #f59e0b' }}>
-              <AlertTriangle size={18} style={{ color: '#d97706' }} className="shrink-0" />
-              <span className="text-sm flex-1" style={{ color: '#3a3d30' }}>{a.testo}</span>
-              {a.cta && <button onClick={a.azione} className="btn-primary text-xs py-1 px-2.5 shrink-0">{a.cta}</button>}
-            </div>
-          ))}
-        </section>
-
-        {/* Funzioni in arrivo (placeholder) */}
-        <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">In arrivo</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <PlaceholderCard Icon={ArrowRightLeft} titolo="Cambi turno" descr="Avvisi delle richieste e dei cambi turno effettuati dai turnisti." />
-          </div>
-        </section>
       </div>
     </div>
   )
