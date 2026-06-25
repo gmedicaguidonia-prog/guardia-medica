@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
@@ -41,7 +41,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const { hasUnsaved } = useUnsaved()
   const { confirm, confirmState } = useConfirm()
   const { postazioneAttiva } = usePostazione()
-  const { meseKey, mese, anno } = useMeseSelezionato()
+  const { meseKey, mese, anno, setMeseAnno } = useMeseSelezionato()
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_COLLAPSED) === '1')
   const visibleLinks = links.filter(l => !l.adminOnly || user?.livello === 'admin')
   const postNome = postazioneAttiva?.nome ?? null
@@ -51,6 +51,12 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
     if (location.pathname === to) return
     if (hasUnsaved && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Vuoi uscire senza salvarle?', confirmLabel: 'Esci senza salvare', danger: true }))) return
     navigate(to)
+  }
+  async function cambiaMeseSidebar(delta: number) {
+    if (hasUnsaved && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Cambiare mese senza salvarle?', confirmLabel: 'Sì, cambia', danger: true }))) return
+    let m = mese + delta, a = anno
+    if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
+    setMeseAnno(a, m)
   }
 
   return (
@@ -101,6 +107,14 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
               <MapPin size={15} style={{ color: '#9ab488' }} />
               <CalendarDays size={15} style={{ color: '#9ab488' }} />
               <span className="text-[11px] font-bold leading-none" style={{ color: '#fff' }}>{String(mese).padStart(2, '0')}/{String(anno).slice(2)}</span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: '#9ab488' }}>
+                  <ChevronLeft size={16} />
+                </button>
+                <button onClick={() => cambiaMeseSidebar(1)} title="Mese successivo" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: '#9ab488' }}>
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
           ) : (
             <div className="px-4">
@@ -112,6 +126,14 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
               <div className="flex items-center gap-1.5">
                 <CalendarDays size={16} className="shrink-0" style={{ color: '#9ab488' }} />
                 <span className="text-base font-bold whitespace-nowrap" style={{ color: '#fff' }}>{meseLabel(meseKey)}</span>
+                <div className="flex items-center gap-0.5 ml-auto">
+                  <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: '#9ab488' }}>
+                    <ChevronLeft size={18} />
+                  </button>
+                  <button onClick={() => cambiaMeseSidebar(1)} title="Mese successivo" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: '#9ab488' }}>
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
               </div>
             </div>
           )}

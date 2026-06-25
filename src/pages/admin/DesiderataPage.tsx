@@ -67,7 +67,7 @@ export function DesiderataPage() {
     desiderata.forEach(d => m.set(`${d.data}|${d.turno_schema_id}|${d.turnista_id}`, d.tipo))
     return m
   }, [desiderata])
-  const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap)
+  const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap, meseKey)
   const [saving, setSaving] = useState(false)
   const [showImport, setShowImport] = useState(false)
 

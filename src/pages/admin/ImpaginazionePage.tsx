@@ -70,6 +70,8 @@ export function ImpaginazionePage() {
     setDraftFogli(fogli.map(f => ({ id: f.id, nome: f.nome, ordine: f.ordine })))
     setDraftAssegn(new Map(foglioTurni.map(ft => [ft.turno_schema_id, ft.foglio_id])))
   }, [fogli, foglioTurni])
+  // cambio mese (anche dalla sidebar): scarta la bozza in sospeso
+  useEffect(() => { editing.current = false; setAttivo(null) }, [meseKey])
 
   const serverNome = useMemo(() => new Map(fogli.map(f => [f.id, f.nome])), [fogli])
   const serverAssegn = useMemo(() => new Map(foglioTurni.map(ft => [ft.turno_schema_id, ft.foglio_id])), [foglioTurni])

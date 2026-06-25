@@ -64,7 +64,7 @@ export function RegoleTurniPage() {
     regole.forEach(r => { if (r.turnista_id) m.set(`${r.giorno_settimana}|${r.turno_schema_id}|${r.slot}`, r.turnista_id) })
     return m
   }, [regole])
-  const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap)
+  const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap, meseKey)
   const [saving, setSaving] = useState(false)
   // Validità del periodo (per sempre / fino a) — staged, niente auto-save (hook condiviso)
   const [salvandoVal, setSalvandoVal] = useState(false)

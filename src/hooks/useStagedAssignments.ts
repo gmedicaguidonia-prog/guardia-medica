@@ -7,11 +7,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
  * Quando `serverMap` cambia (refetch) e non si sta editando, `local` si
  * riallinea da solo.
  */
-export function useStagedAssignments(serverMap: Map<string, string>) {
+export function useStagedAssignments(serverMap: Map<string, string>, resetKey?: string) {
   const [local, setLocal] = useState<Map<string, string>>(() => new Map(serverMap))
   const editingRef = useRef(false)
 
   useEffect(() => { if (!editingRef.current) setLocal(new Map(serverMap)) }, [serverMap])
+  // cambio di "scope" (es. il mese): scarta le modifiche in sospeso e riparti dal server
+  useEffect(() => { editingRef.current = false; setLocal(new Map(serverMap)) }, [resetKey])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = useMemo(() => {
     if (local.size !== serverMap.size) return true

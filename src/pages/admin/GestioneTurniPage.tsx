@@ -87,7 +87,7 @@ export function GestioneTurniPage() {
     turni.forEach(t => { if (t.turnista_id) m.set(`${t.data}|${t.turno_schema_id}|${t.slot}`, t.turnista_id) })
     return m
   }, [turni])
-  const { local, dirty, set, replaceAll, diff, discard } = useStagedAssignments(serverMap)
+  const { local, dirty, set, replaceAll, diff, discard } = useStagedAssignments(serverMap, meseKey)
   const [saving, setSaving] = useState(false)
   const [autoRes, setAutoRes] = useState<AutoAssegnaResult | null>(null)
   const [showAuto, setShowAuto] = useState(false)
