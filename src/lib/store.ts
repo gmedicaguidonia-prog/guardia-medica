@@ -750,10 +750,11 @@ const localStore = {
     const ultimo = all.filter(b => b.postazioneId === postazioneId && b.mese === mese).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
     if (ultimo && JSON.stringify(ultimo.snapshot) === JSON.stringify(snap)) return
     all.push({ id: uid(), postazioneId, mese, snapshot: snap, motivo, autore: autore ?? _autoreCorrente, nTurni: snap.length, createdAt: new Date().toISOString() })
-    // conserva max 50 versioni per mese
-    const tieni = all.filter(b => !(b.postazioneId === postazioneId && b.mese === mese))
-    const dimese = all.filter(b => b.postazioneId === postazioneId && b.mese === mese).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50)
-    writeLs('gm_turni_backup', [...tieni, ...dimese])
+    // conservazione: tiene tutte le versioni < 2 mesi + l'ultima di ogni calendario
+    const due = new Date(Date.now() - 60 * 86400000).toISOString()
+    const ultima = new Map<string, string>()   // postazione|mese → createdAt più recente
+    for (const x of all) { const k = `${x.postazioneId}|${x.mese}`; const c = ultima.get(k); if (!c || x.createdAt > c) ultima.set(k, x.createdAt) }
+    writeLs('gm_turni_backup', all.filter(x => x.createdAt >= due || ultima.get(`${x.postazioneId}|${x.mese}`) === x.createdAt))
   },
   async getBackupTurni(postazioneId: string, mese: string): Promise<BackupTurni[]> {
     return read<(BackupTurni & { postazioneId: string })[]>('gm_turni_backup', [])

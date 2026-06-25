@@ -90,6 +90,7 @@ export function GestioneTurniPage() {
   const [showRestore, setShowRestore] = useState(false)
   const [confermaId, setConfermaId] = useState<string | null>(null)
   const [ripristinando, setRipristinando] = useState<string | null>(null)
+  const [pagBackup, setPagBackup] = useState(0)   // paginazione versioni (10/pagina)
   const { data: backups = [], isLoading: loadingBackup } = useQuery<BackupTurni[]>({ queryKey: ['turni-backup', postazioneId, meseKey], queryFn: () => store.getBackupTurni(postazioneId!, meseKey), enabled: !!postazioneId && showRestore })
 
   useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
@@ -567,25 +568,37 @@ export function GestioneTurniPage() {
             ) : backups.length === 0 ? (
               <p className="text-sm text-stone-500">Nessuna versione salvata per questo mese. Le versioni si creano a ogni salvataggio del calendario.</p>
             ) : (
-              <div className="space-y-1.5">
-                {backups.map((b, i) => (
-                  <div key={b.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: '#f4f6f1', border: '1px solid #e5e7eb' }}>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate" style={{ color: '#2b3c24' }}>{i === 0 && <span title="Versione più recente" style={{ color: '#b45309' }}>★ </span>}{b.motivo ?? 'Versione'}</div>
-                      <div className="text-[11px] text-stone-500">{b.autore ? `${b.autore} · ` : ''}{fmtDT(b.createdAt)} · {b.nTurni} turni</div>
-                    </div>
-                    {confermaId === b.id ? (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <span className="text-[11px] font-semibold" style={{ color: '#b91c1c' }}>Confermi?</span>
-                        <button onClick={() => ripristina(b)} disabled={!!ripristinando} className="text-xs font-semibold py-1 px-2 rounded-md" style={{ background: '#2e7d32', color: '#fff' }}>{ripristinando === b.id ? '…' : 'Sì'}</button>
-                        <button onClick={() => setConfermaId(null)} disabled={!!ripristinando} className="btn-secondary text-xs py-1 px-2">No</button>
+              <>
+                <div className="space-y-1.5">
+                  {backups.slice(pagBackup * 10, pagBackup * 10 + 10).map((b, li) => {
+                    const i = pagBackup * 10 + li
+                    return (
+                    <div key={b.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: '#f4f6f1', border: '1px solid #e5e7eb' }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate" style={{ color: '#2b3c24' }}>{i === 0 && <span title="Versione più recente" style={{ color: '#b45309' }}>★ </span>}{b.motivo ?? 'Versione'}</div>
+                        <div className="text-[11px] text-stone-500">{b.autore ? `${b.autore} · ` : ''}{fmtDT(b.createdAt)} · {b.nTurni} turni</div>
                       </div>
-                    ) : (
-                      <button onClick={() => setConfermaId(b.id)} className="shrink-0 flex items-center gap-1 text-xs font-semibold py-1 px-2.5 rounded-md transition-colors hover:brightness-95" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd' }}><History size={12} /> Ripristina</button>
-                    )}
+                      {confermaId === b.id ? (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[11px] font-semibold" style={{ color: '#b91c1c' }}>Confermi?</span>
+                          <button onClick={() => ripristina(b)} disabled={!!ripristinando} className="text-xs font-semibold py-1 px-2 rounded-md" style={{ background: '#2e7d32', color: '#fff' }}>{ripristinando === b.id ? '…' : 'Sì'}</button>
+                          <button onClick={() => setConfermaId(null)} disabled={!!ripristinando} className="btn-secondary text-xs py-1 px-2">No</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setConfermaId(b.id)} className="shrink-0 flex items-center gap-1 text-xs font-semibold py-1 px-2.5 rounded-md transition-colors hover:brightness-95" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd' }}><History size={12} /> Ripristina</button>
+                      )}
+                    </div>
+                  )})}
+                </div>
+                {backups.length > 10 && (
+                  <div className="flex items-center justify-between gap-2 mt-2">
+                    <button onClick={() => { setConfermaId(null); setPagBackup(p => Math.max(0, p - 1)) }} disabled={pagBackup === 0} className="btn-secondary text-xs py-1 px-2.5 disabled:opacity-40 disabled:cursor-default"><ChevronLeft size={13} /> Precedenti</button>
+                    <span className="text-[11px] text-stone-500">Pagina {pagBackup + 1} di {Math.ceil(backups.length / 10)} · {backups.length} versioni</span>
+                    <button onClick={() => { setConfermaId(null); setPagBackup(p => Math.min(Math.ceil(backups.length / 10) - 1, p + 1)) }} disabled={pagBackup >= Math.ceil(backups.length / 10) - 1} className="btn-secondary text-xs py-1 px-2.5 disabled:opacity-40 disabled:cursor-default">Successive <ChevronRight size={13} /></button>
                   </div>
-                ))}
-              </div>
+                )}
+                <p className="text-[10px] text-stone-400 mt-2">Le versioni più vecchie di 2 mesi vengono ridotte all'ultima per liberare spazio nel database.</p>
+              </>
             )}
             <div className="flex justify-end mt-3"><button onClick={() => setShowRestore(false)} className="btn-secondary text-sm py-1.5 px-3">Chiudi</button></div>
           </div>
@@ -635,7 +648,7 @@ export function GestioneTurniPage() {
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
           {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
-          <button onClick={() => { setConfermaId(null); setShowRestore(true) }} title="Ripristina una versione precedente del calendario" className="flex items-center gap-1 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors hover:brightness-95" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd' }}><History size={13} /> Ripristina</button>
+          <button onClick={() => { setConfermaId(null); setPagBackup(0); setShowRestore(true) }} title="Ripristina una versione precedente del calendario" className="flex items-center gap-1 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors hover:brightness-95" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd' }}><History size={13} /> Ripristina</button>
           <button onClick={reset} disabled={statoCal === 'pubblicato'} title={statoCal === 'pubblicato' ? 'Il calendario è pubblicato: non puoi svuotarlo' : 'Svuota la griglia (poi salva)'} className="flex items-center gap-1 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors hover:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}><Eraser size={13} /> Reset</button>
           <button onClick={salva} disabled={!dirty || saving}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:cursor-default"
