@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Mail, Clock, Check, Ban, Bell } from 'lucide-react'
 import { store } from '../lib/store'
+import { useConfirm } from '../hooks/useConfirm'
+import { ConfirmModal } from './ConfirmModal'
 import { nomeCompleto } from '../types'
 import type { AuthUser, Notifica, CandidaturaAttesa, MiaPostazione } from '../types'
 
@@ -12,6 +14,7 @@ const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-d
  *  rifiuti ricevuti. Icona a lettera con numerello arancione pulsante sui nuovi. */
 export function CentroMessaggi({ user }: { user: AuthUser }) {
   const qc = useQueryClient()
+  const { confirm, confirmState } = useConfirm()
   const [open, setOpen] = useState(false)
 
   const { data: mie = [] } = useQuery<MiaPostazione[]>({ queryKey: ['mie-postazioni', user.id], queryFn: () => store.getMiePostazioni(user.id), enabled: !!user.id })
@@ -30,7 +33,7 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
     }
   }
   async function ritira(c: CandidaturaAttesa) {
-    if (!window.confirm(`Ritirare la candidatura per ${c.turnoNome} del ${itDate(c.data)}?`)) return
+    if (!(await confirm({ title: 'Ritira candidatura', message: `Ritirare la candidatura per ${c.turnoNome} del ${itDate(c.data)}?`, confirmLabel: 'Sì, ritira', danger: true }))) return
     try {
       const cur = await store.getRichiestaCorrente(c.postazioneId, c.data, c.turnoSchemaId, c.turnistaId)
       if (!cur || cur.stato === 'in_attesa') {
@@ -39,9 +42,9 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
           store.addNotifica({ postazioneId: c.postazioneId, mese: c.data.slice(0, 7), tipo: 'candidatura_ritirata', messaggio: `${nomeCompleto(user) || 'Un turnista'} ha ritirato la candidatura per ${c.turnoNome} del ${itDate(c.data)}`, target: '/admin/turni', perAdmin: true }).catch(() => {})
         }
       } else if (cur.stato === 'approvata') {
-        alert('La tua candidatura è stata appena APPROVATA. Per annullarla ora contatta il tuo responsabile.')
+        await confirm({ title: 'Candidatura approvata', message: 'La tua candidatura è stata appena APPROVATA. Per annullarla ora contatta il tuo responsabile.', confirmLabel: 'Ho capito' })
       } else {
-        alert('La tua candidatura era già stata RIFIUTATA: non c’è nulla da ritirare.')
+        await confirm({ title: 'Candidatura rifiutata', message: 'La tua candidatura era già stata RIFIUTATA: non c’è nulla da ritirare.', confirmLabel: 'Ho capito' })
       }
       qc.invalidateQueries({ queryKey: ['richieste-utente', membershipIds] })
       qc.invalidateQueries({ queryKey: ['richieste'] })
@@ -55,6 +58,7 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
 
   return (
     <div className="relative shrink-0">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <button onClick={apri} title="Messaggi"
         className={`relative flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${nonLette > 0 ? 'animate-pulse' : ''}`}
         style={{ background: nonLette > 0 ? 'rgba(249,115,22,0.18)' : 'transparent' }}>

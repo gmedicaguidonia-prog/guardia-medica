@@ -14,6 +14,8 @@ import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
+import { useConfirm } from '../../hooks/useConfirm'
+import { ConfirmModal } from '../../components/ConfirmModal'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata, AuthUser } from '../../types'
 
@@ -36,6 +38,7 @@ function itDate(iso: string): string { const [a, m, d] = iso.split('-'); return 
 export function DesiderataPage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
+  const { confirm, confirmState } = useConfirm()
   const { postazioneId, postazioneAttiva } = usePostazione()
   const { user: actore } = useOutletContext<{ user: AuthUser | null }>()
   const nomeAutore = actore ? nomeCompleto(actore) : null
@@ -142,8 +145,8 @@ export function DesiderataPage() {
     set(`${ds}|${turno.id}|${tid}`, tipo)   // sovrascrive l'eventuale altra colonna dello stesso turno
   }
 
-  function cambiaMese(delta: number) {
-    if (dirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
+  async function cambiaMese(delta: number) {
+    if (dirty && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Cambiare mese senza salvarle?', confirmLabel: 'Sì, cambia', danger: true }))) return
     if (dirty) discard()
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
@@ -216,6 +219,7 @@ export function DesiderataPage() {
 
   const Header = (
     <div className="flex items-center gap-3">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <CalendarHeart size={22} style={{ color: '#476540' }} />
       <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Desiderata / Indisponibilità{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
       <div className="flex items-center gap-2 flex-wrap justify-end">

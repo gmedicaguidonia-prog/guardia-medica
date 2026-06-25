@@ -21,8 +21,10 @@ export function usePassiCompleti(postazioneId: string | null | undefined, meseKe
   const { data: schema = [] } = useQuery<TurnoSchema[]>({ queryKey: ['schema', configVer?.id], queryFn: () => store.getSchemaVersione(configVer!.id), enabled: !!configVer })
   const { impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
 
+  // Cumulativi: un passo non può risultare completo se manca un passo precedente
+  // (così il passo 2 non mostra la spunta verde se il passo 1 non è fatto).
   const passo1 = nuovaProcedura ? (attivazioni.includes(1) && schema.length > 0) : (!!configVer && schema.length > 0)
-  const passo2 = nuovaProcedura ? attivazioni.includes(2) : true
-  const passo3 = nuovaProcedura ? (attivazioni.includes(3) && impaginazioneOk) : impaginazioneOk
+  const passo2 = passo1 && (nuovaProcedura ? attivazioni.includes(2) : true)
+  const passo3 = passo2 && (nuovaProcedura ? (attivazioni.includes(3) && impaginazioneOk) : impaginazioneOk)
   return { nuovaProcedura, attivazioni, passo1, passo2, passo3, tuttiOk: passo1 && passo2 && passo3 }
 }

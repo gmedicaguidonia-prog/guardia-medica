@@ -5,6 +5,8 @@ import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+import { useConfirm } from '../../hooks/useConfirm'
+import { ConfirmModal } from '../../components/ConfirmModal'
 import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 
 // Pagine numerate (1-5): in fondo mostrano "Cancella/Ripristina impostazioni mese"
@@ -37,6 +39,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { hasUnsaved } = useUnsaved()
+  const { confirm, confirmState } = useConfirm()
   const { postazioneAttiva } = usePostazione()
   const { meseKey, mese, anno } = useMeseSelezionato()
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_COLLAPSED) === '1')
@@ -44,14 +47,15 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const postNome = postazioneAttiva?.nome ?? null
 
   function toggle() { setCollapsed(c => { const n = !c; try { localStorage.setItem(LS_COLLAPSED, n ? '1' : '0') } catch { /* ignore */ } return n }) }
-  function handleNav(to: string) {
+  async function handleNav(to: string) {
     if (location.pathname === to) return
-    if (hasUnsaved && !window.confirm('Hai modifiche non salvate. Vuoi uscire senza salvarle?')) return
+    if (hasUnsaved && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Vuoi uscire senza salvarle?', confirmLabel: 'Esci senza salvare', danger: true }))) return
     navigate(to)
   }
 
   return (
     <div className="flex h-[calc(100vh-48px)]">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       {/* Sidebar */}
       <aside className="shrink-0 flex flex-col py-4 overflow-y-auto overflow-x-hidden"
         style={{ width: collapsed ? 56 : 208, background: '#1c2818', color: '#c0d0b0', transition: 'width 160ms ease' }}>

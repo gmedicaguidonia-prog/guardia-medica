@@ -9,6 +9,8 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useValiditaStaged } from '../../hooks/useValiditaStaged'
 import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
+import { useConfirm } from '../../hooks/useConfirm'
+import { ConfirmModal } from '../../components/ConfirmModal'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import type { TurnoSchema, ConfigVersione, ImpaginazioneVersione, Foglio, FoglioTurno } from '../../types'
 
@@ -35,6 +37,7 @@ type FoglioBozza = { id: string; nome: string; ordine: number }
 export function ImpaginazionePage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
+  const { confirm, confirmState } = useConfirm()
   const { postazioneId, postazioneAttiva } = usePostazione()
   const oggi = new Date()
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
@@ -97,8 +100,8 @@ export function ImpaginazionePage() {
   const [warn, setWarn] = useState<string | null>(null)
   function showWarn(msg: string) { setWarn(msg); window.setTimeout(() => setWarn(null), 3000) }
 
-  function cambiaMese(delta: number) {
-    if (anyDirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
+  async function cambiaMese(delta: number) {
+    if (anyDirty && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Cambiare mese senza salvarle?', confirmLabel: 'Sì, cambia', danger: true }))) return
     editing.current = false
     if (valid.dirty) valid.reset()
     let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
@@ -119,7 +122,7 @@ export function ImpaginazionePage() {
     const buchi: string[] = []
     for (let m = ATTIVAZIONE_DA; m < meseKey; m = meseSucc(m)) if (!attivati.has(m)) buchi.push(m)
     if (!buchi.length) return true
-    if (!window.confirm(`${buchi.map(meseLabel).join(', ')}: impaginazione non attivata. ${buchi.length === 1 ? 'Verrà attivata in bianco' : 'Verranno attivate in bianco'} per continuità, poi si procede. Procedere?`)) return false
+    if (!(await confirm({ title: 'Mesi non attivati', message: `${buchi.map(meseLabel).join(', ')}: impaginazione non attivata. ${buchi.length === 1 ? 'Verrà attivata in bianco' : 'Verranno attivate in bianco'} per continuità, poi si procede. Procedere?`, confirmLabel: 'Sì, procedi' }))) return false
     for (const b of buchi) { await store.creaImpaginazioneVersione(postazioneId!, b); await store.attivaPasso(postazioneId!, b, 3) }
     return true
   }
@@ -180,7 +183,7 @@ export function ImpaginazionePage() {
   }
   async function cancella() {
     if (!impagVer) return
-    if (!window.confirm(`Cancellare l'impaginazione valida da ${meseLabel(impagVer.valido_da)}? Non è reversibile.`)) return
+    if (!(await confirm({ title: 'Cancella impaginazione', message: `Cancellare l'impaginazione valida da ${meseLabel(impagVer.valido_da)}? Non è reversibile.`, confirmLabel: 'Cancella', danger: true }))) return
     editing.current = false; setAttivo(null)
     await store.deleteImpaginazioneVersione(impagVer.id)
     await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] })
@@ -242,6 +245,7 @@ export function ImpaginazionePage() {
 
   const Header = (
     <div className="flex items-center gap-3 flex-wrap">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <LayoutGrid size={22} style={{ color: '#476540' }} />
       <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Impaginazione{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
       <div className="flex items-center gap-2 flex-wrap justify-end">

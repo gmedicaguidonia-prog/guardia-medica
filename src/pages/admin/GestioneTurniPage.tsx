@@ -267,8 +267,8 @@ export function GestioneTurniPage() {
     set(`${ds}|${turno.id}|${free}`, tid)
   }
 
-  function cambiaMese(delta: number) {
-    if (dirty && !window.confirm('Hai modifiche non salvate. Cambiare mese senza salvarle?')) return
+  async function cambiaMese(delta: number) {
+    if (dirty && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Cambiare mese senza salvarle?', confirmLabel: 'Sì, cambia', danger: true }))) return
     if (dirty) discard()
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
