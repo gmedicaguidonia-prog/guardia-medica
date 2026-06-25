@@ -1,11 +1,11 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Check, Copy, Info } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
 import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
-import { GIORNI_SETTIMANA } from '../../lib/constants'
+import { GIORNI_SETTIMANA, ATTIVAZIONE_DA } from '../../lib/constants'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
@@ -16,6 +16,8 @@ import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, RegolaTurno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
+const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
+const meseSucc = (k: string) => { let [a, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; a++ } return `${a}-${String(m).padStart(2, '0')}` }
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
   admin:        { bg: '#fee2e2', fg: '#b91c1c' },
@@ -40,6 +42,12 @@ export function RegoleTurniPage() {
   const { data: regole = [] } = useQuery<RegolaTurno[]>({ queryKey: ['regole', regoleVer?.id], queryFn: () => store.getRegole(regoleVer!.id), enabled: !!regoleVer })
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
   const { data: tutteVer = [] } = useQuery<RegolaVersione[]>({ queryKey: ['regole-versioni-all', postazioneId], queryFn: () => store.getRegoleVersioni(postazioneId!), enabled: !!postazioneId })
+  // Procedura sequenziale: passo 2 (regole). Richiede passo 1 (config attivato+valido).
+  const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
+  const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: sorgenteCopia } = useQuery<RegolaVersione | null>({ queryKey: ['ultima-regole-con-contenuto', postazioneId, meseKey], queryFn: () => store.ultimaRegoleConContenuto(postazioneId!, meseKey), enabled: !!postazioneId && nuovaProcedura })
+  const config1Attivo = attivazioni.includes(1)
+  const regole2Attivo = attivazioni.includes(2)
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -159,6 +167,61 @@ export function RegoleTurniPage() {
     setMeseAnno(a, m)
   }
   async function configuraRegole() { await store.creaRegoleVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }) }
+
+  // ── Attivazione del mese — passo 2 (regole) ──
+  async function ricaricaAttRegole() {
+    await qc.invalidateQueries({ queryKey: ['regole-versione'] })
+    await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
+    await qc.invalidateQueries({ queryKey: ['attivazioni'] })
+    await qc.invalidateQueries({ queryKey: ['ultima-regole-con-contenuto'] })
+  }
+  async function assicuraContinuitaRegole(): Promise<boolean> {
+    const attivati = new Set(await store.getMesiAttivati(postazioneId!, 2))
+    const buchi: string[] = []
+    for (let m = ATTIVAZIONE_DA; m < meseKey; m = meseSucc(m)) if (!attivati.has(m)) buchi.push(m)
+    if (!buchi.length) return true
+    if (!window.confirm(`${buchi.map(meseLabel).join(', ')}: regole non attivate. ${buchi.length === 1 ? 'Verrà attivato in bianco' : 'Verranno attivati in bianco'} per continuità, poi si procede. Procedere?`)) return false
+    for (const b of buchi) { await store.creaRegoleVersione(postazioneId!, b); await store.attivaPasso(postazioneId!, b, 2) }
+    return true
+  }
+  function logRegoleAtt(testo: string) {
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole di ${meseLabel(meseKey)} ${testo}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
+  }
+  async function attivaIdenticaRegole() {
+    if (!(await assicuraContinuitaRegole())) return
+    await store.attivaPasso(postazioneId!, meseKey, 2)
+    logRegoleAtt('attivate (identiche al periodo precedente)')
+    await ricaricaAttRegole()
+  }
+  async function attivaNuoveRegole() {
+    if (!(await assicuraContinuitaRegole())) return
+    if (!window.confirm(`Verrà impostata la scadenza delle regole precedenti a ${meseLabel(mesePrec(meseKey))} e create NUOVE regole (vuote) da ${meseLabel(meseKey)}. Procedere?`)) return
+    if (regoleVer) await store.setValiditaRegoleVersione(regoleVer.id, mesePrec(meseKey))
+    await store.creaRegoleVersione(postazioneId!, meseKey)
+    await store.attivaPasso(postazioneId!, meseKey, 2)
+    logRegoleAtt('attivate (nuove regole)')
+    await ricaricaAttRegole()
+  }
+  async function copiaRegolePrecedenti() {
+    if (!(await assicuraContinuitaRegole())) return
+    const sorgente = await store.ultimaRegoleConContenuto(postazioneId!, meseKey)
+    const nuova = await store.creaRegoleVersione(postazioneId!, meseKey)
+    if (sorgente) {
+      const validi = new Set(schema.map(s => s.id))   // copia solo le regole sui turni esistenti in questo mese
+      const src = await store.getRegole(sorgente.id)
+      for (const r of src) if (validi.has(r.turno_schema_id)) await store.setRegola(nuova.id, r.giorno_settimana, r.turno_schema_id, r.slot, r.turnista_id)
+    }
+    await store.attivaPasso(postazioneId!, meseKey, 2)
+    logRegoleAtt(`attivate (copiate da ${sorgente ? meseLabel(sorgente.valido_da) : 'periodo precedente'})`)
+    await ricaricaAttRegole()
+  }
+  async function attivaRegoleVuote() {
+    if (!(await assicuraContinuitaRegole())) return
+    await store.creaRegoleVersione(postazioneId!, meseKey)
+    await store.attivaPasso(postazioneId!, meseKey, 2)
+    logRegoleAtt('attivate (nuove, vuote)')
+    await ricaricaAttRegole()
+  }
   // Salvataggio ESPLICITO della validità (niente più auto-save al clic sui radio)
   async function salvaValidita() {
     if (!regoleVer) return
@@ -239,7 +302,39 @@ export function RegoleTurniPage() {
   if (!postazioneId) return <div className="max-w-4xl mx-auto p-6 space-y-4">{Header}<p className="text-sm text-stone-500">Caricamento postazione…</p></div>
   if (loadingConfig) return <div className="max-w-4xl mx-auto p-6 space-y-4">{Header}<p className="text-sm text-stone-500">Caricamento…</p></div>
   if (!configVer || schema.length === 0) return avviso(<>Nessun turno configurato per <strong>{MESI[mese - 1]} {anno}</strong>. Imposta prima i turni in <strong>Configurazione Turni</strong> (passo ①).</>)
+  if (nuovaProcedura && !config1Attivo) return avviso(<>La <strong>Configurazione Turni</strong> di {MESI[mese - 1]} {anno} non è ancora stata <strong>attivata</strong>. Attivala prima (passo ①), poi torna qui.</>)
   if (loadingRegole) return <div className="max-w-4xl mx-auto p-6 space-y-4">{Header}<p className="text-sm text-stone-500">Caricamento…</p></div>
+  if (nuovaProcedura && !regole2Attivo) {
+    /* ── Gate di attivazione delle regole (passo 2) ── */
+    return (
+      <div className="max-w-4xl mx-auto p-6 space-y-4">{Header}
+        <div className="card p-8 text-center space-y-4">
+          <ListChecks size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+          <div>
+            <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva le regole di {MESI[mese - 1]} {anno}</h3>
+            {regoleVer ? (
+              <p className="text-sm text-stone-600 mt-1">Per questo mese sono già valide le regole iniziate a <strong>{meseLabel(regoleVer.valido_da)}</strong>. Attivale identiche, oppure creane di nuove. <span className="text-stone-400">(Le regole sono facoltative: i turni fissi non sono obbligatori.)</span></p>
+            ) : (
+              <p className="text-sm text-stone-600 mt-1">Non ci sono regole valide per questo mese.{sorgenteCopia ? <> Puoi copiarle da <strong>{meseLabel(sorgenteCopia.valido_da)}</strong>, oppure attivarne di nuove.</> : ' Attivane di nuove (anche vuote: i turni fissi non sono obbligatori).'}</p>
+            )}
+          </div>
+          <div className="flex gap-2 justify-center flex-wrap">
+            {regoleVer ? (
+              <>
+                <button onClick={attivaIdenticaRegole} className="btn-primary text-sm"><Check size={16} /> Attiva identiche al mese precedente</button>
+                <button onClick={attivaNuoveRegole} className="btn-secondary text-sm"><Plus size={16} /> Attiva nuove regole</button>
+              </>
+            ) : (
+              <>
+                {sorgenteCopia && <button onClick={copiaRegolePrecedenti} className="btn-primary text-sm"><Copy size={16} /> Copia dalle regole precedenti</button>}
+                <button onClick={attivaRegoleVuote} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva nuove regole</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (!regoleVer) {
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-4">{Header}
@@ -268,6 +363,12 @@ export function RegoleTurniPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4">
       {Header}
+      {nuovaProcedura && regoleVer.valido_da < meseKey && (
+        <div className="card p-3 flex items-start gap-2" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+          <Info size={16} className="shrink-0 mt-0.5" style={{ color: '#1d4ed8' }} />
+          <p className="text-xs" style={{ color: '#1e3a5f' }}>Queste regole sono <strong>condivise</strong> con i mesi che le ereditano (da {meseLabel(regoleVer.valido_da)}): modificandole cambi <strong>anche quelli</strong>. Per renderle indipendenti da {MESI[mese - 1]}, ripartile con «Attiva nuove regole».</p>
+        </div>
+      )}
       <ValiditaRiquadro etichetta="Validità regole:" val={valid} salvando={salvandoVal} onSalva={salvaValidita} />
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -275,7 +376,7 @@ export function RegoleTurniPage() {
           Valide da <strong>{meseLabel(regoleVer.valido_da)}</strong>{eff ? <> a <strong>{meseLabel(eff)}</strong></> : <> in poi (per sempre)</>}
           {nxt && <span className="text-amber-700"> · dal {meseLabel(nxt)} subentra un periodo più recente</span>}.
         </p>
-        <button onClick={cancellaRegole} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella queste regole</button>
+        {!nuovaProcedura && <button onClick={cancellaRegole} className="btn-danger text-xs py-1 px-2 shrink-0"><Trash2 size={13} /> Cancella queste regole</button>}
       </div>
 
       {/* Barra salvataggio */}
