@@ -188,6 +188,10 @@ const supaStore = {
     const { error } = await supabase.from('schema_versioni').update({ valido_fino: validoFino }).eq('id', id)
     if (error) throw error
   },
+  async setValidoDaVersione(id: string, validoDa: string): Promise<void> {
+    const { error } = await supabase.from('schema_versioni').update({ valido_da: validoDa }).eq('id', id)
+    if (error) throw error
+  },
 
   // ── Attivazioni mese (procedura sequenziale: passo 1..5 per mese) ──
   async getAttivazioni(postazioneId: string, mese: string): Promise<number[]> {
@@ -488,6 +492,10 @@ const supaStore = {
     const { error } = await supabase.from('impaginazione_versioni').update({ valido_fino: validoFino }).eq('id', id)
     if (error) throw error
   },
+  async setValidoDaImpaginazioneVersione(id: string, validoDa: string): Promise<void> {
+    const { error } = await supabase.from('impaginazione_versioni').update({ valido_da: validoDa }).eq('id', id)
+    if (error) throw error
+  },
   // ultima impaginazione (più recente PRIMA del mese) con almeno un foglio → sorgente per la copia
   async ultimaImpaginazioneConContenuto(postazioneId: string, primaDelMese: string): Promise<ImpaginazioneVersione | null> {
     const { data: vers, error } = await supabase.from('impaginazione_versioni').select('*').eq('postazione_id', postazioneId).lt('valido_da', primaDelMese).order('valido_da', { ascending: false })
@@ -780,6 +788,9 @@ const localStore = {
   async setValiditaVersione(id: string, validoFino: string | null): Promise<void> {
     writeLs(LS_VERSIONI, read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
   },
+  async setValidoDaVersione(id: string, validoDa: string): Promise<void> {
+    writeLs(LS_VERSIONI, read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).map(v => v.id === id ? { ...v, valido_da: validoDa } : v))
+  },
 
   // ── Attivazioni mese (DEV) ──
   async getAttivazioni(postazioneId: string, mese: string): Promise<number[]> {
@@ -1053,6 +1064,9 @@ const localStore = {
   },
   async setValiditaImpaginazioneVersione(id: string, validoFino: string | null): Promise<void> {
     writeLs(LS_IMPAG_VERSIONI, read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).map(v => v.id === id ? { ...v, valido_fino: validoFino } : v))
+  },
+  async setValidoDaImpaginazioneVersione(id: string, validoDa: string): Promise<void> {
+    writeLs(LS_IMPAG_VERSIONI, read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).map(v => v.id === id ? { ...v, valido_da: validoDa } : v))
   },
   async ultimaImpaginazioneConContenuto(postazioneId: string, primaDelMese: string): Promise<ImpaginazioneVersione | null> {
     const fogli = read<Foglio[]>(LS_FOGLI, [])

@@ -38,12 +38,17 @@ function itDate(iso: string): string { const [a, m, d] = iso.split('-'); return 
 export function DesiderataPage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
-  const { confirm, confirmState } = useConfirm()
+  const { confirm, notify, confirmState } = useConfirm()
   const { postazioneId, postazioneAttiva } = usePostazione()
   const { user: actore } = useOutletContext<{ user: AuthUser | null }>()
   const nomeAutore = actore ? nomeCompleto(actore) : null
   const oggi = new Date()
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
+  // La raccolta desiderata dev'essere chiusa PRIMA che il mese inizi: la data di
+  // chiusura può arrivare al massimo al giorno prima del primo del mese selezionato
+  // (es. desiderata di Agosto → chiusura entro il 31 Luglio).
+  const primoDelMese = `${meseKey}-01`
+  const ultimoMesePrec = `${mese === 1 ? anno - 1 : anno}-${String(mese === 1 ? 12 : mese - 1).padStart(2, '0')}-${String(new Date(anno, mese - 1, 0).getDate()).padStart(2, '0')}`
 
   const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
@@ -157,7 +162,7 @@ export function DesiderataPage() {
     try {
       for (const c of diff()) { const [data, turnoId, tid] = c.key.split('|'); await store.setDesiderata(postazioneId!, data, turnoId, tid, c.value as TipoDesiderata | null) }
       await qc.invalidateQueries({ queryKey: ['desiderata', postazioneId, anno, mese] })
-    } catch (e) { console.error('[Desiderata] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
+    } catch (e) { console.error('[Desiderata] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }) }
     finally { setSaving(false) }
   }
   async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
@@ -170,13 +175,13 @@ export function DesiderataPage() {
   async function salvaFinestra() {
     if (!finDa || !finA) { showWarn('Imposta sia la data di apertura sia quella di chiusura prima di pubblicare.'); return }
     if (finDa > finA) { showWarn('La data di apertura non può essere successiva a quella di chiusura.'); return }
-    if (finA.slice(0, 7) > meseKey) { showWarn(`La chiusura (${itDate(finA)}) non può cadere in un mese successivo a ${MESI[mese - 1]} ${anno}: le desiderata vanno raccolte prima.`); return }
+    if (finA >= primoDelMese) { showWarn(`La chiusura deve cadere entro il ${itDate(ultimoMesePrec)} (il giorno prima dell'inizio di ${MESI[mese - 1]} ${anno}): le desiderata vanno raccolte prima che il mese cominci.`); return }
     try {
       await store.setDesiderataFinestra(postazioneId!, meseKey, finDa || null, finA || null)
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Periodo di raccolta desiderata di ${MESI[mese - 1]} ${anno} pubblicato${finDa && finA ? ` (${itDate(finDa)}–${itDate(finA)})` : ''}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
       setFinMsg('Pubblicato'); setTimeout(() => setFinMsg(null), 2500)
-    } catch (e) { console.error(e); alert('Errore nella pubblicazione del periodo.') }
+    } catch (e) { console.error(e); void notify({ title: 'Errore', message: 'Errore nella pubblicazione del periodo.' }) }
   }
 
   // ── switch "desiderata pubbliche" (visibili a tutti i turnisti) ──
@@ -186,7 +191,7 @@ export function DesiderataPage() {
       await store.setDesiderataPubbliche(postazioneId!, meseKey, !pubbliche)
       if (!pubbliche) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubbliche', messaggio: `Desiderata di ${MESI[mese - 1]} ${anno} rese pubbliche (visibili a tutti i turnisti).`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
-    } catch (e) { console.error(e); alert('Errore nel cambio modalità desiderata pubbliche.') }
+    } catch (e) { console.error(e); void notify({ title: 'Errore', message: 'Errore nel cambio modalità desiderata pubbliche.' }) }
   }
 
   // ── stato della raccolta per il mese selezionato ──
@@ -214,7 +219,7 @@ export function DesiderataPage() {
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_creata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} attivata.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
       await qc.invalidateQueries({ queryKey: ['attivazioni', postazioneId, meseKey] })
-    } catch (e) { console.error(e); alert('Errore nell\'attivazione della raccolta.') }
+    } catch (e) { console.error(e); void notify({ title: 'Errore', message: 'Errore nell\'attivazione della raccolta.' }) }
   }
 
   const Header = (
@@ -388,9 +393,9 @@ export function DesiderataPage() {
         ) : (
           <div className="flex items-center gap-3 flex-wrap">
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>apertura
-              <input type="date" value={finDa} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
+              <input type="date" value={finDa} max={ultimoMesePrec} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>chiusura
-              <input type="date" value={finA} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
+              <input type="date" value={finA} max={ultimoMesePrec} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <button onClick={salvaFinestra} disabled={!finDa || !finA} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={!finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
             {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
           </div>

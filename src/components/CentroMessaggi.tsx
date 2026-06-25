@@ -14,7 +14,7 @@ const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-d
  *  rifiuti ricevuti. Icona a lettera con numerello arancione pulsante sui nuovi. */
 export function CentroMessaggi({ user }: { user: AuthUser }) {
   const qc = useQueryClient()
-  const { confirm, confirmState } = useConfirm()
+  const { confirm, notify, confirmState } = useConfirm()
   const [open, setOpen] = useState(false)
 
   const { data: mie = [] } = useQuery<MiaPostazione[]>({ queryKey: ['mie-postazioni', user.id], queryFn: () => store.getMiePostazioni(user.id), enabled: !!user.id })
@@ -48,7 +48,7 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
       }
       qc.invalidateQueries({ queryKey: ['richieste-utente', membershipIds] })
       qc.invalidateQueries({ queryKey: ['richieste'] })
-    } catch (e) { console.error('[Messaggi] ritiro fallito:', e); alert('Errore durante il ritiro.') }
+    } catch (e) { console.error('[Messaggi] ritiro fallito:', e); void notify({ title: 'Errore', message: 'Errore durante il ritiro.' }) }
   }
 
   const iconaTipo = (tipo: string) =>

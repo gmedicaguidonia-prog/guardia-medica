@@ -6,6 +6,8 @@ export interface ConfirmOpts {
   confirmLabel?: string
   cancelLabel?: string
   danger?: boolean
+  /** Avviso informativo: nasconde il pulsante "Annulla" (un solo bottone). */
+  hideCancel?: boolean
 }
 
 const DEFAULT: ConfirmOpts = { title: '', message: '' }
@@ -21,6 +23,13 @@ export function useConfirm() {
     setState({ open: true, opts })
   }), [])
 
+  /** Avviso informativo (un solo pulsante "OK"). `await notify({...})`. */
+  const notify = useCallback((opts: Omit<ConfirmOpts, 'hideCancel'>) =>
+    new Promise<void>(resolve => {
+      resolverRef.current = () => resolve()
+      setState({ open: true, opts: { confirmLabel: 'OK', ...opts, hideCancel: true } })
+    }), [])
+
   const finish = useCallback((v: boolean) => {
     resolverRef.current?.(v)
     resolverRef.current = null
@@ -29,6 +38,7 @@ export function useConfirm() {
 
   return {
     confirm,
+    notify,
     confirmState: {
       open:      state.open,
       opts:      state.opts,

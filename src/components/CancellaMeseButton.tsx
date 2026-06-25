@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2, AlertTriangle, History } from 'lucide-react'
 import { store } from '../lib/store'
+import { useConfirm } from '../hooks/useConfirm'
+import { ConfirmModal } from './ConfirmModal'
 
 const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
 const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -14,6 +16,7 @@ const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-d
  */
 export function CancellaMeseButton({ postazioneId, meseKey, anno, mese }: { postazioneId: string | null; meseKey: string; anno: number; mese: number }) {
   const qc = useQueryClient()
+  const { notify, confirmState } = useConfirm()
   const [openDel, setOpenDel] = useState(false)
   const [openRip, setOpenRip] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -28,7 +31,7 @@ export function CancellaMeseButton({ postazioneId, meseKey, anno, mese }: { post
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'config_turni', messaggio: `Impostazioni di ${MESI[mese - 1]} ${anno} azzerate (con backup). Mese riportato a vuoto.`, target: '/admin/schema', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries()
       setOpenDel(false)
-    } catch (e) { console.error('[CancellaMese] fallito:', e); alert((e as Error).message || 'Errore nella cancellazione del mese.') }
+    } catch (e) { console.error('[CancellaMese] fallito:', e); void notify({ title: 'Errore', message: (e as Error).message || 'Errore nella cancellazione del mese.' }) }
     finally { setBusy(false) }
   }
   async function ripristina() {
@@ -38,12 +41,13 @@ export function CancellaMeseButton({ postazioneId, meseKey, anno, mese }: { post
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'config_turni', messaggio: `Impostazioni di ${MESI[mese - 1]} ${anno} ripristinate dal backup.`, target: '/admin/schema', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries()
       setOpenRip(false)
-    } catch (e) { console.error('[RipristinaMese] fallito:', e); alert((e as Error).message || 'Errore nel ripristino del mese.') }
+    } catch (e) { console.error('[RipristinaMese] fallito:', e); void notify({ title: 'Errore', message: (e as Error).message || 'Errore nel ripristino del mese.' }) }
     finally { setBusy(false) }
   }
 
   return (
     <>
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       {snap && (
         <button onClick={() => setOpenRip(true)} title={`Ripristina ${MESI[mese - 1]} ${anno} dalla copia del ${fmtDT(snap.createdAt)}`}
           className="flex items-center gap-1 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors hover:brightness-95 shrink-0"

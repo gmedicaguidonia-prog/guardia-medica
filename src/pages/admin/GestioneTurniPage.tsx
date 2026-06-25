@@ -48,7 +48,7 @@ export function GestioneTurniPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { setHasUnsaved } = useUnsaved()
-  const { confirm, confirmState } = useConfirm()
+  const { confirm, notify, confirmState } = useConfirm()
   const { postazioneId, postazioneAttiva } = usePostazione()
   const { user: actore } = useOutletContext<{ user: AuthUser | null }>()
   const nomeAutore = actore ? nomeCompleto(actore) : null
@@ -308,7 +308,7 @@ export function GestioneTurniPage() {
         store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'turni_salvati', messaggio: `Calendario turni di ${MESI[mese - 1]} ${anno} salvato · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
       }
       await qc.invalidateQueries({ queryKey: ['turni', postazioneId, anno, mese] })
-    } catch (e) { console.error('[Turni] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
+    } catch (e) { console.error('[Turni] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }) }
     finally { setSaving(false) }
   }
 
@@ -357,7 +357,7 @@ export function GestioneTurniPage() {
       replaceAll(map)   // mette la versione nello staged → griglia "sporca", in attesa di Salva
       setConfermaId(null); setShowRestore(false)
       showWarn(`Versione del ${fmtDT(b.createdAt)} caricata nella griglia. Controllala e premi Salva per renderla definitiva.`)
-    } catch (e) { console.error('[Turni] caricamento versione fallito:', e); alert((e as Error).message || 'Errore nel caricamento della versione.') }
+    } catch (e) { console.error('[Turni] caricamento versione fallito:', e); void notify({ title: 'Errore', message: (e as Error).message || 'Errore nel caricamento della versione.' }) }
     finally { setRipristinando(null) }
   }
   function chiediAuto() {
@@ -391,7 +391,7 @@ export function GestioneTurniPage() {
         target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['turni-stato', postazioneId, meseKey] })
       setShowStatoModal(false)
-    } catch (e) { console.error('[Turni] salvataggio stato fallito:', e); alert('Errore nel salvataggio dello stato.') }
+    } catch (e) { console.error('[Turni] salvataggio stato fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio dello stato.' }) }
     finally { setSavingStato(false) }
   }
 

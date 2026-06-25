@@ -135,7 +135,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'candidatura', messaggio: `${(user && nomeCompleto(user)) || 'Un turnista'} si è candidato per ${proposta.turno.nome || 'un turno'} del ${itDate(proposta.ds)}`, target: '/admin/turni', perAdmin: true, autore: (user && nomeCompleto(user)) || null }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['richieste', postazioneId, anno, mese] })
       setProposta(null)
-    } catch (e) { console.error('[Turni] invio richiesta fallito:', e); alert('Errore nell\'invio della richiesta.') }
+    } catch (e) { console.error('[Turni] invio richiesta fallito:', e); setAnnullaMsg('Errore nell\'invio della richiesta. Riprova.') }
     finally { setInviando(false) }
   }
 
@@ -165,7 +165,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
         setAnnulla(null)
         setAnnullaMsg('La tua proposta era già stata RIFIUTATA, prima della tua richiesta di annullamento: non c\'è nulla da annullare.')
       }
-    } catch (e) { console.error('[Turni] annullamento fallito:', e); alert('Errore durante l\'annullamento.') }
+    } catch (e) { console.error('[Turni] annullamento fallito:', e); setAnnullaMsg('Errore durante l\'annullamento. Riprova.') }
     finally { setAnnullando(false) }
   }
 

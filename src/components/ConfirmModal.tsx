@@ -7,7 +7,7 @@ interface Props extends ConfirmOpts {
 }
 
 export function ConfirmModal({
-  open, title, message, confirmLabel = 'Conferma', cancelLabel = 'Annulla', danger, onConfirm, onCancel,
+  open, title, message, confirmLabel = 'Conferma', cancelLabel = 'Annulla', danger, hideCancel, onConfirm, onCancel,
 }: Props) {
   if (!open) return null
   return (
@@ -20,7 +20,7 @@ export function ConfirmModal({
         <h3 className="text-base font-bold mb-1.5" style={{ color: '#2b3c24' }}>{title}</h3>
         <p className="text-sm mb-5" style={{ color: '#5a5a4a' }}>{message}</p>
         <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="btn-secondary py-1.5 px-3 text-sm">{cancelLabel}</button>
+          {!hideCancel && <button onClick={onCancel} className="btn-secondary py-1.5 px-3 text-sm">{cancelLabel}</button>}
           <button onClick={onConfirm}
             className={`${danger ? 'btn-danger' : 'btn-primary'} py-1.5 px-3 text-sm`}>
             {confirmLabel}

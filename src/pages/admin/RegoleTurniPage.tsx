@@ -42,7 +42,7 @@ const thStyle = (corner: boolean): CSSProperties => ({
 export function RegoleTurniPage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
-  const { confirm, confirmState } = useConfirm()
+  const { confirm, notify, confirmState } = useConfirm()
   const { postazioneId, postazioneAttiva } = usePostazione()
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
 
@@ -248,7 +248,7 @@ export function RegoleTurniPage() {
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Validità delle regole ${fino ? `impostata fino a ${meseLabel(fino)} compreso` : 'impostata su «per sempre»'}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['regole-versione'] })
       await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
-    } catch (e) { console.error('[Regole] salvataggio validità fallito:', e); alert('Errore nel salvataggio della validità.') }
+    } catch (e) { console.error('[Regole] salvataggio validità fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio della validità.' }) }
     finally { setSalvandoVal(false) }
   }
   async function cancellaRegole() {
@@ -333,7 +333,7 @@ export function RegoleTurniPage() {
       await qc.invalidateQueries({ queryKey: ['regole'] })
       await qc.invalidateQueries({ queryKey: ['regole-versione'] })
       await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] })
-    } catch (e) { console.error('[Regole] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
+    } catch (e) { console.error('[Regole] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }) }
     finally { setSaving(false) }
   }
 

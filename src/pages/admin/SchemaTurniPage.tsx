@@ -35,8 +35,10 @@ function sameTurno(a: TurnoSchema, b: TurnoSchema): boolean {
 }
 
 // ── Card turno con salvataggio esplicito (floppy bianco/nero → verde) ──
-function TurnoCard({ turno, onDelete, onDirty }: {
+function TurnoCard({ turno, onDelete, onDirty, prima }: {
   turno: TurnoSchema; onDelete: () => void; onDirty: (id: string, dirty: boolean) => void
+  // isola il mese (copy-on-write) PRIMA di scrivere, così la modifica non tocca gli altri mesi
+  prima: () => Promise<unknown>
 }) {
   const qc = useQueryClient()
   const [form, setForm]     = useState<TurnoSchema>(turno)
@@ -56,11 +58,14 @@ function TurnoCard({ turno, onDelete, onDirty }: {
   async function salva() {
     setSaving(true); setErrore('')
     try {
+      await prima()   // scorpora il mese se la versione è condivisa (id del turno preservato)
       await store.updateTurnoSchema(turno.id, {
         nome: form.nome, ora_inizio: form.ora_inizio, ora_fine: form.ora_fine,
         n_turnisti: form.n_turnisti, ricorrenza: form.ricorrenza, giorni_custom: form.giorni_custom,
       })
       await qc.invalidateQueries({ queryKey: ['schema', turno.versione_id] })
+      await qc.invalidateQueries({ queryKey: ['versione'] })
+      await qc.invalidateQueries({ queryKey: ['versioni-all'] })
     } catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
   }
@@ -121,7 +126,7 @@ function TurnoCard({ turno, onDelete, onDirty }: {
 
 export function SchemaTurniPage() {
   const qc = useQueryClient()
-  const { confirm, confirmState } = useConfirm()
+  const { confirm, notify, confirmState } = useConfirm()
   const { setHasUnsaved } = useUnsaved()
   const { postazioneId, postazioneAttiva } = usePostazione()
 
@@ -180,6 +185,36 @@ export function SchemaTurniPage() {
     await qc.invalidateQueries({ queryKey: ['versione'] })
   }
 
+  // ── Isolamento per mese (copy-on-write a "scorporo") ──
+  // Se la configurazione che governa il mese è condivisa (ereditata da un periodo
+  // precedente e/o estesa oltre questo mese), la SCORPORA così la modifica tocca
+  // SOLO questo mese. Mantiene la versione corrente (e gli id dei suoi turni) come
+  // versione di QUESTO mese e crea copie del contenuto originale per «prima»/«dopo».
+  async function assicuraConfigDelMese(): Promise<string> {
+    // Rileggo lo stato FRESCO dal DB: rende lo scorporo idempotente anche con più
+    // salvataggi ravvicinati (se è già stato isolato, esce subito senza duplicare).
+    const V = await store.getVersioneMese(postazioneId!, meseKey)
+    if (!V) return versione!.id
+    if (V.valido_da === meseKey && V.valido_fino === meseKey) return V.id   // già isolata
+    const turni = await store.getSchemaVersione(V.id)
+    const finoOrig = V.valido_fino
+    const creaCopia = async (da: string, a: string | null) => {
+      const W = await store.creaVersione(postazioneId!, da)
+      if (a != null) await store.setValiditaVersione(W.id, a)
+      for (const t of turni) await store.addTurnoSchema(W.id, { nome: t.nome, ora_inizio: t.ora_inizio, ora_fine: t.ora_fine, n_turnisti: t.n_turnisti, ricorrenza: t.ricorrenza, giorni_custom: t.giorni_custom })
+    }
+    if (finoOrig == null || finoOrig > meseKey) await creaCopia(meseSucc(meseKey), finoOrig)   // «dopo»
+    if (V.valido_da < meseKey) { await creaCopia(V.valido_da, mesePrec(meseKey)); await store.setValidoDaVersione(V.id, meseKey) }   // «prima»
+    await store.setValiditaVersione(V.id, meseKey)   // V = solo questo mese
+    return V.id
+  }
+  async function dopoScorporo() {
+    await qc.invalidateQueries({ queryKey: ['versione'] })
+    await qc.invalidateQueries({ queryKey: ['versioni-all'] })
+    await qc.invalidateQueries({ queryKey: ['attivazioni'] })
+    await qc.invalidateQueries({ queryKey: ['ultima-config-con-turni'] })
+  }
+
   // ── Attivazione del mese (passo 1) ──
   async function ricaricaAttivazione() {
     await qc.invalidateQueries({ queryKey: ['versione'] })
@@ -228,7 +263,7 @@ export function SchemaTurniPage() {
   async function salvaValidita() {
     if (!versione) return
     const fino = valid.draft
-    if (fino != null && fino < versione.valido_da) { window.alert(`La scadenza non può precedere l'inizio del periodo (${meseLabel(versione.valido_da)}).`); return }
+    if (fino != null && fino < versione.valido_da) { await notify({ title: 'Scadenza non valida', message: `La scadenza non può precedere l'inizio del periodo (${meseLabel(versione.valido_da)}).` }); return }
     if (fino === (versione.valido_fino ?? null)) return
     setSalvandoVal(true)
     try {
@@ -236,7 +271,7 @@ export function SchemaTurniPage() {
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'config_turni', messaggio: `Validità della configurazione turni ${fino ? `impostata fino a ${meseLabel(fino)} compreso` : 'impostata su «per sempre»'}.`, target: '/admin/schema', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['versione'] })
       await qc.invalidateQueries({ queryKey: ['versioni-all'] })
-    } catch (e) { console.error('[Config] salvataggio validità fallito:', e); window.alert('Errore nel salvataggio della validità.') }
+    } catch (e) { console.error('[Config] salvataggio validità fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio della validità.' }) }
     finally { setSalvandoVal(false) }
   }
   async function cancellaConfig() {
@@ -249,15 +284,19 @@ export function SchemaTurniPage() {
   }
   async function aggiungiTurno() {
     if (!versione) return
+    await assicuraConfigDelMese()   // isola il mese prima di aggiungere
     await store.addTurnoSchema(versione.id, { nome: '', ora_inizio: '08:00', ora_fine: '20:00', n_turnisti: 1, ricorrenza: 'tutti', giorni_custom: [] })
     await qc.invalidateQueries({ queryKey: ['schema', versione.id] })
+    await dopoScorporo()
   }
   async function eliminaTurno(t: TurnoSchema) {
     const ok = await confirm({ title: 'Elimina turno', message: `Vuoi eliminare il turno "${t.nome || 'senza nome'}"?`, confirmLabel: 'Elimina', danger: true })
     if (!ok) return
     handleDirty(t.id, false)
+    await assicuraConfigDelMese()   // isola il mese prima di eliminare
     await store.deleteTurnoSchema(t.id)
     await qc.invalidateQueries({ queryKey: ['schema', t.versione_id] })
+    await dopoScorporo()
   }
 
   if (!postazioneId) return <div className="max-w-4xl mx-auto p-6 text-sm text-stone-500">Caricamento postazione…</div>
@@ -317,7 +356,7 @@ export function SchemaTurniPage() {
           {nuovaProcedura && versione.valido_da < meseKey && (
             <div className="card p-3 flex items-start gap-2" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
               <Info size={16} className="shrink-0 mt-0.5" style={{ color: '#1d4ed8' }} />
-              <p className="text-xs" style={{ color: '#1e3a5f' }}>Questa configurazione è <strong>condivisa</strong> con i mesi che la ereditano (da {meseLabel(versione.valido_da)}): modificandola cambi <strong>anche quelli</strong>. Per renderla indipendente da {MESI[mese - 1]}, ripartila con «Attiva nuova» (in arrivo dal pulsante «Cancella impostazioni mese»).</p>
+              <p className="text-xs" style={{ color: '#1e3a5f' }}>Questa configurazione proviene da un periodo precedente (da {meseLabel(versione.valido_da)}) ed è condivisa con altri mesi. <strong>Appena la modifichi qui</strong> (turni, validità) viene resa automaticamente <strong>indipendente per {MESI[mese - 1]} {anno}</strong>, senza toccare gli altri mesi.</p>
             </div>
           )}
           <ValiditaRiquadro etichetta="Validità configurazione:" val={valid} salvando={salvandoVal} onSalva={salvaValidita} />
@@ -346,7 +385,7 @@ export function SchemaTurniPage() {
             <div className="card p-6 text-center text-sm text-stone-500">Nessun turno in questa configurazione. Premi “Aggiungi turno”.</div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
-              {schema.map(t => <TurnoCard key={t.id} turno={t} onDelete={() => eliminaTurno(t)} onDirty={handleDirty} />)}
+              {schema.map(t => <TurnoCard key={t.id} turno={t} onDelete={() => eliminaTurno(t)} onDirty={handleDirty} prima={assicuraConfigDelMese} />)}
             </div>
           )}
         </>

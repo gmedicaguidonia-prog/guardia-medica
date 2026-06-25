@@ -37,7 +37,7 @@ type FoglioBozza = { id: string; nome: string; ordine: number }
 export function ImpaginazionePage() {
   const qc = useQueryClient()
   const { setHasUnsaved } = useUnsaved()
-  const { confirm, confirmState } = useConfirm()
+  const { confirm, notify, confirmState } = useConfirm()
   const { postazioneId, postazioneAttiva } = usePostazione()
   const oggi = new Date()
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
@@ -111,6 +111,33 @@ export function ImpaginazionePage() {
   }
   // operazioni sulla VERSIONE (immediate: creare/cancellare la versione)
   async function configura() { await store.creaImpaginazioneVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['impag-versione'] }); await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] }) }
+
+  // ── Isolamento per mese (copy-on-write a "scorporo") ──
+  // Se l'impaginazione che governa il mese è condivisa (ereditata da un periodo
+  // precedente e/o estesa oltre questo mese), la SCORPORA così la modifica tocca
+  // SOLO questo mese. Mantiene la versione corrente (e gli id dei suoi fogli) come
+  // versione di QUESTO mese e crea copie del contenuto originale per «prima»/«dopo».
+  async function assicuraImpagDelMese(): Promise<string> {
+    // Rileggo lo stato FRESCO dal DB: rende lo scorporo idempotente anche con più
+    // salvataggi ravvicinati (se è già stato isolato, esce subito senza duplicare).
+    const V = await store.getImpaginazioneVersioneMese(postazioneId!, meseKey)
+    if (!V) return impagVer!.id
+    if (V.valido_da === meseKey && V.valido_fino === meseKey) return V.id   // già isolata
+    const fogliSrc = await store.getFogli(V.id)
+    const turniSrc = await store.getFoglioTurni(V.id)
+    const finoOrig = V.valido_fino
+    const creaCopia = async (da: string, a: string | null) => {
+      const W = await store.creaImpaginazioneVersione(postazioneId!, da)
+      if (a != null) await store.setValiditaImpaginazioneVersione(W.id, a)
+      const mapF = new Map<string, string>()
+      for (const f of fogliSrc) { const nf = await store.addFoglio(W.id, f.nome); mapF.set(f.id, nf.id) }
+      for (const ft of turniSrc) { const nf = mapF.get(ft.foglio_id); if (nf) await store.setFoglioTurno(W.id, ft.turno_schema_id, nf) }
+    }
+    if (finoOrig == null || finoOrig > meseKey) await creaCopia(meseSucc(meseKey), finoOrig)   // «dopo»
+    if (V.valido_da < meseKey) { await creaCopia(V.valido_da, mesePrec(meseKey)); await store.setValidoDaImpaginazioneVersione(V.id, meseKey) }   // «prima»
+    await store.setValiditaImpaginazioneVersione(V.id, meseKey)   // V = solo questo mese
+    return V.id
+  }
 
   // ── Attivazione del mese — passo 3 (impaginazione) ──
   async function ricaricaAttImpag() {
@@ -221,6 +248,7 @@ export function ImpaginazionePage() {
     if (!impagVer) return
     setSaving(true)
     try {
+      await assicuraImpagDelMese()   // isola il mese se la versione è condivisa (id dei fogli preservati)
       const draftIds = new Set(draftFogli.map(f => f.id))
       for (const f of fogli) if (!draftIds.has(f.id)) await store.deleteFoglio(f.id)
       const idMap = new Map<string, string>()
@@ -241,7 +269,9 @@ export function ImpaginazionePage() {
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'impaginazione', messaggio: `Impaginazione (fogli) di ${meseLabel(meseKey)} aggiornata · ${draftFogli.length} fogl${draftFogli.length === 1 ? 'io' : 'i'}.`, target: '/admin/impaginazione', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['fogli', impagVer.id] })
       await qc.invalidateQueries({ queryKey: ['foglio-turni', impagVer.id] })
-    } catch (e) { console.error('[Impaginazione] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
+      await qc.invalidateQueries({ queryKey: ['impag-versione'] })
+      await qc.invalidateQueries({ queryKey: ['impag-versioni-all'] })
+    } catch (e) { console.error('[Impaginazione] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }) }
     finally { setSaving(false) }
   }
 
@@ -306,7 +336,7 @@ export function ImpaginazionePage() {
       {nuovaProcedura && impagVer.valido_da < meseKey && (
         <div className="card p-3 flex items-start gap-2" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
           <Info size={16} className="shrink-0 mt-0.5" style={{ color: '#1d4ed8' }} />
-          <p className="text-xs" style={{ color: '#1e3a5f' }}>Questa impaginazione è <strong>condivisa</strong> con i mesi che la ereditano (da {meseLabel(impagVer.valido_da)}): modificandola cambi <strong>anche quelli</strong>. Per renderla indipendente da {MESI[mese - 1]}, ripartila con «Attiva nuova impaginazione».</p>
+          <p className="text-xs" style={{ color: '#1e3a5f' }}>Questa impaginazione proviene da un periodo precedente (da {meseLabel(impagVer.valido_da)}) ed è condivisa con altri mesi. <strong>Appena salvi una modifica qui</strong> viene resa automaticamente <strong>indipendente per {MESI[mese - 1]} {anno}</strong>, senza toccare gli altri mesi.</p>
         </div>
       )}
       <ValiditaRiquadro etichetta="Validità impaginazione:" val={valid} salvando={salvandoVal} onSalva={salvaValidita} />

@@ -17,7 +17,7 @@ function fmtDT(iso: string) {
 export function PostazioniPage() {
   const qc = useQueryClient()
   const { user } = useOutletContext<{ user: AuthUser | null }>()
-  const { confirm, confirmState } = useConfirm()
+  const { confirm, notify, confirmState } = useConfirm()
   const { postazioneId, setPostazioneId } = usePostazione()
 
   const { data: postazioni = [], isLoading } = useQuery<Postazione[]>({ queryKey: ['postazioni'], queryFn: () => store.getPostazioni() })
@@ -40,7 +40,7 @@ export function PostazioniPage() {
       await qc.invalidateQueries({ queryKey: ['log-postazioni'] })
       setPostazioneId(p.id)
     }
-    catch (e) { console.error(e); alert('Errore nella creazione.') }
+    catch (e) { console.error(e); void notify({ title: 'Errore', message: 'Errore nella creazione.' }) }
     finally { setSaving(false) }
   }
   async function salvaNome(id: string) {
@@ -160,7 +160,7 @@ export function PostazioniPage() {
 // ─── Riquadro gestione amministratori globali ───────────────────────
 function AmministratoriBox({ user }: { user: AuthUser | null }) {
   const qc = useQueryClient()
-  const { confirm, confirmState } = useConfirm()
+  const { confirm, notify, confirmState } = useConfirm()
   const { data: utenti = [], isLoading } = useQuery<UtenteAdmin[]>({ queryKey: ['utenti'], queryFn: () => store.getUtenti() })
   const [nuovo, setNuovo] = useState('')
   const [busy, setBusy] = useState(false)
@@ -177,7 +177,7 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
     if (!nuovo) return
     setBusy(true)
     try { await store.setUtenteAdmin(nuovo, true); setNuovo(''); await qc.invalidateQueries({ queryKey: ['utenti'] }) }
-    catch (e) { alert(`Impossibile aggiungere l'amministratore.\n${(e as Error).message ?? ''}`) }
+    catch (e) { void notify({ title: 'Operazione non riuscita', message: `Impossibile aggiungere l'amministratore. ${(e as Error).message ?? ''}` }) }
     finally { setBusy(false) }
   }
   async function rimuovi(u: UtenteAdmin) {
@@ -188,13 +188,13 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
     })
     if (!ok) return
     try { await store.setUtenteAdmin(u.id, false); await qc.invalidateQueries({ queryKey: ['utenti'] }) }
-    catch (e) { alert(`Impossibile rimuovere l'amministratore.\n${(e as Error).message ?? ''}`) }
+    catch (e) { void notify({ title: 'Operazione non riuscita', message: `Impossibile rimuovere l'amministratore. ${(e as Error).message ?? ''}` }) }
   }
   async function creaNuovo() {
     if (!nEmail.trim() || !nNome.trim()) return
     setBusy(true)
     try { await store.creaUtenteAdmin(nNome, nCognome, nEmail); setNNome(''); setNCognome(''); setNEmail(''); await qc.invalidateQueries({ queryKey: ['utenti'] }) }
-    catch (e) { alert(`Impossibile creare l'amministratore.\n${(e as Error).message ?? ''}`) }
+    catch (e) { void notify({ title: 'Operazione non riuscita', message: `Impossibile creare l'amministratore. ${(e as Error).message ?? ''}` }) }
     finally { setBusy(false) }
   }
 
