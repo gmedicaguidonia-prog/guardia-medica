@@ -12,6 +12,7 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useValiditaStaged } from '../../hooks/useValiditaStaged'
 import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
+import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, RegolaTurno } from '../../types'
 
@@ -287,10 +288,11 @@ export function RegoleTurniPage() {
       <div className="flex-1">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Regole Turni{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
             <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
             <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
+            <CancellaMeseButton postazioneId={postazioneId} meseKey={meseKey} anno={anno} mese={mese} />
           </div>
         </div>
         <p className="text-sm text-stone-600">Trascina i turnisti dalla colonna sinistra nelle celle. Ricordati di premere <strong>Salva</strong>.</p>

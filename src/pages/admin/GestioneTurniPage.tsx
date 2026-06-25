@@ -12,6 +12,7 @@ import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
+import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
@@ -430,10 +431,11 @@ export function GestioneTurniPage() {
     <div className="flex items-center gap-3 flex-wrap">
       <CalendarDays size={22} style={{ color: '#476540' }} />
       <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Turni del Mese{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
         <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
         <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>
+        <CancellaMeseButton postazioneId={postazioneId} meseKey={meseKey} anno={anno} mese={mese} />
       </div>
       {/* Stato del calendario turni — apre il modal di scelta */}
       <button onClick={apriStatoModal}

@@ -208,6 +208,11 @@ const supaStore = {
     const { error } = await supabase.from('attivazioni_mese').delete().eq('postazione_id', postazioneId).eq('mese', mese)
     if (error) throw error
   },
+  // Cancella TUTTO il setup del mese (snapshot JSON unico prima, poi wipe + re-ancoraggio versioni condivise)
+  async cancellaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
+    const { error } = await supabase.rpc('cancella_mese', { p_postazione: postazioneId, p_mese: mese, p_autore: autore ?? _autoreCorrente })
+    if (error) throw error
+  },
   // ultima config (la più recente PRIMA del mese) che abbia almeno un turno → sorgente per la copia
   async ultimaConfigConTurni(postazioneId: string, primaDelMese: string): Promise<ConfigVersione | null> {
     const { data: vers, error } = await supabase.from('schema_versioni').select('*').eq('postazione_id', postazioneId).lt('valido_da', primaDelMese).order('valido_da', { ascending: false })
@@ -781,6 +786,35 @@ const localStore = {
   },
   async disattivaMese(postazioneId: string, mese: string): Promise<void> {
     writeLs('gm_attivazioni', read<{ postazioneId: string; mese: string; passo: number }[]>('gm_attivazioni', []).filter(a => !(a.postazioneId === postazioneId && a.mese === mese)))
+  },
+  async cancellaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
+    const first = `${mese}-01`, last = `${mese}-31`
+    const own = (pid: string | undefined) => (pid ?? DEV_POSTAZIONE) === postazioneId
+    const inMese = (d: string) => d >= first && d <= last
+    // snapshot minimale (DEV)
+    const backups = read<Record<string, unknown>[]>('gm_setup_backup', [])
+    backups.push({ id: uid(), postazioneId, mese, autore: autore ?? _autoreCorrente, createdAt: new Date().toISOString(),
+      snapshot: { mese, turni: read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => own(t.postazione_id) && inMese(t.data)), desiderata: read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => own(d.postazione_id) && inMese(d.data)) } })
+    writeLs('gm_setup_backup', backups)
+    // dati del mese
+    writeLs(LS_TURNI, read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => !(own(t.postazione_id) && inMese(t.data))))
+    writeLs(LS_DESIDERATA, read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => !(own(d.postazione_id) && inMese(d.data))))
+    writeLs(LS_TURNI_STATO, read<WithPost<{ mese: string }>[]>(LS_TURNI_STATO, []).filter(s => !(own(s.postazione_id) && s.mese === mese)))
+    writeLs(LS_DESIDERATA_FIN, read<WithPost<{ mese: string }>[]>(LS_DESIDERATA_FIN, []).filter(f => !(own(f.postazione_id) && f.mese === mese)))
+    writeLs(LS_TURNISTI_MESE, read<WithPost<{ mese: string }>[]>(LS_TURNISTI_MESE, []).filter(tm => !(own(tm.postazione_id) && tm.mese === mese)))
+    writeLs(LS_RICHIESTE, read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => !(own(r.postazione_id) && inMese(r.data))))
+    // versioni possedute dal mese (DEV: elimina, niente re-ancoraggio)
+    const ownIds = <T extends { id: string; valido_da: string; postazione_id?: string }>(rows: T[]) => rows.filter(v => own(v.postazione_id) && v.valido_da === mese).map(v => v.id)
+    const cv = read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []); const cvId = ownIds(cv)
+    writeLs(LS_VERSIONI, cv.filter(v => !cvId.includes(v.id))); writeLs(LS_SCHEMA, read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => !cvId.includes(s.versione_id)))
+    const rv = read<WithPost<RegolaVersione>[]>(LS_REGOLE_VERSIONI, []); const rvId = ownIds(rv)
+    writeLs(LS_REGOLE_VERSIONI, rv.filter(v => !rvId.includes(v.id))); writeLs(LS_REGOLE, read<RegolaTurno[]>(LS_REGOLE, []).filter(r => !rvId.includes(r.regola_versione_id)))
+    const iv = read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []); const ivId = ownIds(iv)
+    writeLs(LS_IMPAG_VERSIONI, iv.filter(v => !ivId.includes(v.id)))
+    writeLs(LS_FOGLI, read<Foglio[]>(LS_FOGLI, []).filter(f => !ivId.includes(f.versione_id)))
+    writeLs(LS_FOGLIO_TURNI, read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => !ivId.includes(ft.versione_id)))
+    // attivazioni
+    writeLs('gm_attivazioni', read<{ postazioneId: string; mese: string }[]>('gm_attivazioni', []).filter(a => !(a.postazioneId === postazioneId && a.mese === mese)))
   },
   async ultimaConfigConTurni(postazioneId: string, primaDelMese: string): Promise<ConfigVersione | null> {
     const schema = read<TurnoSchema[]>(LS_SCHEMA, [])

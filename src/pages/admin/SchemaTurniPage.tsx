@@ -11,6 +11,7 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useValiditaStaged } from '../../hooks/useValiditaStaged'
 import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
+import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
 import type { TurnoSchema, Ricorrenza, ConfigVersione } from '../../types'
 
@@ -288,10 +289,11 @@ export function SchemaTurniPage() {
           <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Configurazione Turni{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
           <p className="text-sm text-stone-600">Definisci i turni validi per un periodo. Dopo ogni modifica premi <strong>Salva</strong>.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
           <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1" title="Mese successivo"><ChevronRight size={16} /></button>
+          <CancellaMeseButton postazioneId={postazioneId} meseKey={meseKey} anno={anno} mese={mese} />
         </div>
       </div>
 
