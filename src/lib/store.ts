@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -242,9 +242,11 @@ const supaStore = {
       autore: (r.autore as string | null) ?? null, nTurni: (r.n_turni as number) ?? 0, createdAt: r.created_at as string,
     }))
   },
-  async ripristinaTurni(backupId: string, autore?: string | null): Promise<void> {
-    const { error } = await supabase.rpc('ripristina_turni', { p_backup_id: backupId, p_autore: autore ?? _autoreCorrente })
+  // ritorna il contenuto completo (assegnazioni) di una versione, per caricarlo nella griglia
+  async getBackupSnapshot(backupId: string): Promise<SnapshotTurno[]> {
+    const { data, error } = await supabase.from('turni_backup').select('snapshot').eq('id', backupId).single()
     if (error) throw error
+    return (data?.snapshot as SnapshotTurno[] | null) ?? []
   },
 
   // ── Regole turni fisse (settimanali, versionate) ──
@@ -759,16 +761,9 @@ const localStore = {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(({ id, mese, motivo, autore, nTurni, createdAt }) => ({ id, mese, motivo, autore, nTurni, createdAt }))
   },
-  async ripristinaTurni(backupId: string, autore?: string | null): Promise<void> {
-    const all = read<(BackupTurni & { postazioneId: string; snapshot: { data: string; turno_schema_id: string; slot: number; turnista_id: string }[] })[]>('gm_turni_backup', [])
-    const b = all.find(x => x.id === backupId)
-    if (!b) throw new Error('Versione non trovata')
-    await this.snapshotTurni(b.postazioneId, b.mese, 'Stato prima del ripristino', autore)
-    const first = `${b.mese}-01`, last = `${b.mese}-31`
-    const altri = read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => !((t.postazione_id ?? DEV_POSTAZIONE) === b.postazioneId && t.data >= first && t.data <= last))
-    const ripristinati = b.snapshot.map(e => ({ id: uid(), data: e.data, turno_schema_id: e.turno_schema_id, slot: e.slot, turnista_id: e.turnista_id, created_at: new Date().toISOString(), postazione_id: b.postazioneId }))
-    writeLs(LS_TURNI, [...altri, ...ripristinati])
-    await this.snapshotTurni(b.postazioneId, b.mese, 'Ripristino di una versione precedente', autore)
+  async getBackupSnapshot(backupId: string): Promise<SnapshotTurno[]> {
+    const b = read<(BackupTurni & { snapshot: SnapshotTurno[] })[]>('gm_turni_backup', []).find(x => x.id === backupId)
+    return b?.snapshot ?? []
   },
 
   async getRegoleVersioneMese(postazioneId: string, mese: string): Promise<RegolaVersione | null> {

@@ -332,17 +332,19 @@ export function GestioneTurniPage() {
     })
     if (ok) replaceAll(new Map())
   }
-  // Ripristino di una versione precedente (bloccato se pubblicato o con modifiche in sospeso)
+  // Ripristino di una versione: la CARICA nella griglia (in sospeso), NON la salva.
+  // Diventa definitiva solo col Salva. Bloccato se pubblicato o con modifiche non salvate.
   async function ripristina(b: BackupTurni) {
     if (statoCal === 'pubblicato' || dirty) return
     setRipristinando(b.id)
     try {
-      await store.ripristinaTurni(b.id, nomeAutore)
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'turni_salvati', messaggio: `Calendario di ${MESI[mese - 1]} ${anno} ripristinato a una versione precedente (${b.nTurni} turni).`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
-      await qc.invalidateQueries({ queryKey: ['turni', postazioneId, anno, mese] })
-      await qc.invalidateQueries({ queryKey: ['turni-backup', postazioneId, meseKey] })
+      const snap = await store.getBackupSnapshot(b.id)
+      const map = new Map<string, string>()
+      for (const e of snap) if (e.turnista_id) map.set(`${e.data}|${e.turno_schema_id}|${e.slot}`, e.turnista_id)
+      replaceAll(map)   // mette la versione nello staged → griglia "sporca", in attesa di Salva
       setConfermaId(null); setShowRestore(false)
-    } catch (e) { console.error('[Turni] ripristino fallito:', e); alert((e as Error).message || 'Errore nel ripristino.') }
+      showWarn(`Versione del ${fmtDT(b.createdAt)} caricata nella griglia. Controllala e premi Salva per renderla definitiva.`)
+    } catch (e) { console.error('[Turni] caricamento versione fallito:', e); alert((e as Error).message || 'Errore nel caricamento della versione.') }
     finally { setRipristinando(null) }
   }
   function chiediAuto() {
@@ -551,7 +553,7 @@ export function GestioneTurniPage() {
               <h3 className="text-base font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}><History size={18} style={{ color: '#1d4ed8' }} /> Ripristina calendario · {MESI[mese - 1]} {anno}</h3>
               <button onClick={() => setShowRestore(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
             </div>
-            <p className="text-xs text-stone-500 mb-3">Scegli una versione salvata: i turni del mese verranno riportati a quello stato. Prima di sovrascrivere viene salvata in automatico una copia dello stato attuale, così il ripristino è a sua volta annullabile.</p>
+            <p className="text-xs text-stone-500 mb-3">Scegli una versione: verrà <strong>caricata nella griglia</strong> ma <strong>non salvata in automatico</strong>. Controllala e premi <strong>Salva</strong> per renderla definitiva — solo allora viene creata una nuova copia di backup. Finché non salvi, lo stato attuale resta intatto.</p>
             {statoCal === 'pubblicato' ? (
               <div className="rounded-lg p-3 text-sm flex items-start gap-2" style={{ background: '#fef2f2', color: '#7f1d1d', border: '1px solid #fecaca' }}>
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" /> <span>Il calendario è <strong>Pubblicato</strong>. Per ripristinare una versione, riportalo prima a <strong>«Non pubblicato»</strong> o <strong>«Pianificazione»</strong> (pulsante di stato in alto).</span>

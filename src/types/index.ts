@@ -256,6 +256,13 @@ export interface BackupTurni {
   nTurni: number
   createdAt: string
 }
+// Una singola assegnazione dentro lo snapshot di una versione.
+export interface SnapshotTurno {
+  data: string
+  turno_schema_id: string
+  slot: number
+  turnista_id: string | null
+}
 /** Categorie (sottodiv) del Centro Notifiche admin: ordine + etichetta + tipi. */
 export const NOTIFICA_CATEGORIE: { key: string; label: string; tipi: string[] }[] = [
   { key: 'pianificazione', label: 'Pianificazione turni',     tipi: ['calendario_pianificazione', 'auto_assegnazione'] },
