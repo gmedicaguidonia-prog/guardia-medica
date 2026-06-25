@@ -247,6 +247,15 @@ export interface LogPostazione {
   autore: string | null
   createdAt: string
 }
+// Versione (snapshot completo) del calendario turni di un mese, per il ripristino.
+export interface BackupTurni {
+  id: string
+  mese: string
+  motivo: string | null
+  autore: string | null
+  nTurni: number
+  createdAt: string
+}
 /** Categorie (sottodiv) del Centro Notifiche admin: ordine + etichetta + tipi. */
 export const NOTIFICA_CATEGORIE: { key: string; label: string; tipi: string[] }[] = [
   { key: 'pianificazione', label: 'Pianificazione turni',     tipi: ['calendario_pianificazione', 'auto_assegnazione'] },

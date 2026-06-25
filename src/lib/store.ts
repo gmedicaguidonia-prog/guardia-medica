@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione } from '../types'
+import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -226,6 +226,25 @@ const supaStore = {
       const { error } = await supabase.from('turni').upsert({ data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, postazione_id: postazioneId }, { onConflict: 'data,turno_schema_id,slot' })
       if (error) throw error
     }
+  },
+
+  // ── Versioni/backup del calendario (snapshot completo per ripristino) ──
+  async snapshotTurni(postazioneId: string, mese: string, motivo: string, autore?: string | null): Promise<void> {
+    const { error } = await supabase.rpc('snapshot_turni', { p_postazione: postazioneId, p_mese: mese, p_motivo: motivo, p_autore: autore ?? _autoreCorrente })
+    if (error) console.warn('[Backup] snapshot ignorato:', error.message)
+  },
+  async getBackupTurni(postazioneId: string, mese: string): Promise<BackupTurni[]> {
+    const { data, error } = await supabase.from('turni_backup').select('id, mese, motivo, autore, n_turni, created_at')
+      .eq('postazione_id', postazioneId).eq('mese', mese).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string, mese: r.mese as string, motivo: (r.motivo as string | null) ?? null,
+      autore: (r.autore as string | null) ?? null, nTurni: (r.n_turni as number) ?? 0, createdAt: r.created_at as string,
+    }))
+  },
+  async ripristinaTurni(backupId: string, autore?: string | null): Promise<void> {
+    const { error } = await supabase.rpc('ripristina_turni', { p_backup_id: backupId, p_autore: autore ?? _autoreCorrente })
+    if (error) throw error
   },
 
   // ── Regole turni fisse (settimanali, versionate) ──
@@ -716,6 +735,40 @@ const localStore = {
     const list = read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => !(t.data === data && t.turno_schema_id === turnoSchemaId && t.slot === slot))
     if (turnistaId !== null) list.push({ id: uid(), data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, created_at: new Date().toISOString(), postazione_id: postazioneId })
     writeLs(LS_TURNI, list)
+  },
+
+  // ── Versioni/backup del calendario (DEV) ──
+  async snapshotTurni(postazioneId: string, mese: string, motivo: string, autore?: string | null): Promise<void> {
+    const first = `${mese}-01`, last = `${mese}-31`
+    const snap = read<WithPost<Turno>[]>(LS_TURNI, [])
+      .filter(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId && t.data >= first && t.data <= last)
+      .map(t => ({ data: t.data, turno_schema_id: t.turno_schema_id, slot: t.slot, turnista_id: t.turnista_id }))
+      .sort((a, b) => (a.data + a.turno_schema_id + a.slot).localeCompare(b.data + b.turno_schema_id + b.slot))
+    const all = read<(BackupTurni & { postazioneId: string; snapshot: unknown[] })[]>('gm_turni_backup', [])
+    const ultimo = all.filter(b => b.postazioneId === postazioneId && b.mese === mese).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    if (ultimo && JSON.stringify(ultimo.snapshot) === JSON.stringify(snap)) return
+    all.push({ id: uid(), postazioneId, mese, snapshot: snap, motivo, autore: autore ?? _autoreCorrente, nTurni: snap.length, createdAt: new Date().toISOString() })
+    // conserva max 50 versioni per mese
+    const tieni = all.filter(b => !(b.postazioneId === postazioneId && b.mese === mese))
+    const dimese = all.filter(b => b.postazioneId === postazioneId && b.mese === mese).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 50)
+    writeLs('gm_turni_backup', [...tieni, ...dimese])
+  },
+  async getBackupTurni(postazioneId: string, mese: string): Promise<BackupTurni[]> {
+    return read<(BackupTurni & { postazioneId: string })[]>('gm_turni_backup', [])
+      .filter(b => b.postazioneId === postazioneId && b.mese === mese)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(({ id, mese, motivo, autore, nTurni, createdAt }) => ({ id, mese, motivo, autore, nTurni, createdAt }))
+  },
+  async ripristinaTurni(backupId: string, autore?: string | null): Promise<void> {
+    const all = read<(BackupTurni & { postazioneId: string; snapshot: { data: string; turno_schema_id: string; slot: number; turnista_id: string }[] })[]>('gm_turni_backup', [])
+    const b = all.find(x => x.id === backupId)
+    if (!b) throw new Error('Versione non trovata')
+    await this.snapshotTurni(b.postazioneId, b.mese, 'Stato prima del ripristino', autore)
+    const first = `${b.mese}-01`, last = `${b.mese}-31`
+    const altri = read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => !((t.postazione_id ?? DEV_POSTAZIONE) === b.postazioneId && t.data >= first && t.data <= last))
+    const ripristinati = b.snapshot.map(e => ({ id: uid(), data: e.data, turno_schema_id: e.turno_schema_id, slot: e.slot, turnista_id: e.turnista_id, created_at: new Date().toISOString(), postazione_id: b.postazioneId }))
+    writeLs(LS_TURNI, [...altri, ...ripristinati])
+    await this.snapshotTurni(b.postazioneId, b.mese, 'Ripristino di una versione precedente', autore)
   },
 
   async getRegoleVersioneMese(postazioneId: string, mese: string): Promise<RegolaVersione | null> {

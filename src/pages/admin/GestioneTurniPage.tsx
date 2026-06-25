@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser, History } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
@@ -16,11 +16,12 @@ import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser } from '../../types'
+import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser, BackupTurni } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
 const itDate = (iso: string) => { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
+const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 const REP_SLOT = -1   // slot speciale per il reperibile
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
   admin:        { bg: '#fee2e2', fg: '#b91c1c' },
@@ -85,6 +86,11 @@ export function GestioneTurniPage() {
   const [showStatoModal, setShowStatoModal] = useState(false)
   const [statoScelto, setStatoScelto] = useState<StatoCalendario>('non_pubblicato')
   const [savingStato, setSavingStato] = useState(false)
+  // Ripristino versioni del calendario
+  const [showRestore, setShowRestore] = useState(false)
+  const [confermaId, setConfermaId] = useState<string | null>(null)
+  const [ripristinando, setRipristinando] = useState<string | null>(null)
+  const { data: backups = [], isLoading: loadingBackup } = useQuery<BackupTurni[]>({ queryKey: ['turni-backup', postazioneId, meseKey], queryFn: () => store.getBackupTurni(postazioneId!, meseKey), enabled: !!postazioneId && showRestore })
 
   useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
   useEffect(() => {
@@ -283,7 +289,11 @@ export function GestioneTurniPage() {
     try {
       const mod = diff()
       for (const c of mod) { const [data, turnoId, slot] = c.key.split('|'); await store.setAssegnazione(postazioneId!, data, turnoId, +slot, c.value) }
-      if (mod.length) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'turni_salvati', messaggio: `Calendario turni di ${MESI[mese - 1]} ${anno} salvato · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
+      if (mod.length) {
+        // copia di backup (versione ripristinabile) dello stato appena salvato
+        await store.snapshotTurni(postazioneId!, meseKey, 'Salvataggio del calendario', nomeAutore)
+        store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'turni_salvati', messaggio: `Calendario turni di ${MESI[mese - 1]} ${anno} salvato · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
+      }
       await qc.invalidateQueries({ queryKey: ['turni', postazioneId, anno, mese] })
     } catch (e) { console.error('[Turni] salvataggio fallito:', e); alert('Errore nel salvataggio.') }
     finally { setSaving(false) }
@@ -313,12 +323,27 @@ export function GestioneTurniPage() {
     }, interval)
   }
   async function reset() {
+    if (statoCal === 'pubblicato') return   // sicurezza: il pulsante è già disabilitato
+    const inPian = statoCal === 'pianificazione'
     const ok = await confirm({
-      title: 'Svuota la griglia',
-      message: 'Verranno tolti TUTTI i turnisti dai turni del mese: la griglia resterà vuota. La modifica NON viene salvata in automatico — per renderla definitiva premi Salva (oppure Annulla per ripristinare).',
-      confirmLabel: 'Svuota', danger: true,
+      title: '⚠️ Svuotare tutto il calendario?',
+      message: `Stai per togliere TUTTI i turnisti dai turni di ${MESI[mese - 1]} ${anno}: la griglia resterà completamente vuota.${inPian ? ' Attenzione: il calendario è in modalità Pianificazione, quindi è già visibile ai turnisti e potrebbe contenere candidature già approvate.' : ''} Lo svuotamento diventa definitivo solo quando premi Salva — e in quel momento verrà comunque conservata una copia di backup ripristinabile. Procedere?`,
+      confirmLabel: 'Sì, svuota tutto', danger: true,
     })
     if (ok) replaceAll(new Map())
+  }
+  // Ripristino di una versione precedente (bloccato se pubblicato o con modifiche in sospeso)
+  async function ripristina(b: BackupTurni) {
+    if (statoCal === 'pubblicato' || dirty) return
+    setRipristinando(b.id)
+    try {
+      await store.ripristinaTurni(b.id, nomeAutore)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'turni_salvati', messaggio: `Calendario di ${MESI[mese - 1]} ${anno} ripristinato a una versione precedente (${b.nTurni} turni).`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
+      await qc.invalidateQueries({ queryKey: ['turni', postazioneId, anno, mese] })
+      await qc.invalidateQueries({ queryKey: ['turni-backup', postazioneId, meseKey] })
+      setConfermaId(null); setShowRestore(false)
+    } catch (e) { console.error('[Turni] ripristino fallito:', e); alert((e as Error).message || 'Errore nel ripristino.') }
+    finally { setRipristinando(null) }
   }
   function chiediAuto() {
     if (autoAnim) return
@@ -518,6 +543,53 @@ export function GestioneTurniPage() {
     <div className="p-4 sm:p-6 space-y-4">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
 
+      {/* Modal: ripristino versioni del calendario */}
+      {showRestore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => !ripristinando && setShowRestore(false)}>
+          <div className="card w-full max-w-lg p-5 max-h-[80vh] overflow-auto" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-base font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}><History size={18} style={{ color: '#1d4ed8' }} /> Ripristina calendario · {MESI[mese - 1]} {anno}</h3>
+              <button onClick={() => setShowRestore(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-stone-500 mb-3">Scegli una versione salvata: i turni del mese verranno riportati a quello stato. Prima di sovrascrivere viene salvata in automatico una copia dello stato attuale, così il ripristino è a sua volta annullabile.</p>
+            {statoCal === 'pubblicato' ? (
+              <div className="rounded-lg p-3 text-sm flex items-start gap-2" style={{ background: '#fef2f2', color: '#7f1d1d', border: '1px solid #fecaca' }}>
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" /> <span>Il calendario è <strong>Pubblicato</strong>. Per ripristinare una versione, riportalo prima a <strong>«Non pubblicato»</strong> o <strong>«Pianificazione»</strong> (pulsante di stato in alto).</span>
+              </div>
+            ) : dirty ? (
+              <div className="rounded-lg p-3 text-sm flex items-start gap-2" style={{ background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" /> <span>Hai <strong>modifiche non salvate</strong>. Salvale (o premi «Annulla») prima di ripristinare una versione.</span>
+              </div>
+            ) : loadingBackup ? (
+              <p className="text-sm text-stone-500">Caricamento versioni…</p>
+            ) : backups.length === 0 ? (
+              <p className="text-sm text-stone-500">Nessuna versione salvata per questo mese. Le versioni si creano a ogni salvataggio del calendario.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {backups.map((b, i) => (
+                  <div key={b.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: '#f4f6f1', border: '1px solid #e5e7eb' }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate" style={{ color: '#2b3c24' }}>{i === 0 && <span title="Versione più recente" style={{ color: '#b45309' }}>★ </span>}{b.motivo ?? 'Versione'}</div>
+                      <div className="text-[11px] text-stone-500">{b.autore ? `${b.autore} · ` : ''}{fmtDT(b.createdAt)} · {b.nTurni} turni</div>
+                    </div>
+                    {confermaId === b.id ? (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[11px] font-semibold" style={{ color: '#b91c1c' }}>Confermi?</span>
+                        <button onClick={() => ripristina(b)} disabled={!!ripristinando} className="text-xs font-semibold py-1 px-2 rounded-md" style={{ background: '#2e7d32', color: '#fff' }}>{ripristinando === b.id ? '…' : 'Sì'}</button>
+                        <button onClick={() => setConfermaId(null)} disabled={!!ripristinando} className="btn-secondary text-xs py-1 px-2">No</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setConfermaId(b.id)} className="shrink-0 flex items-center gap-1 text-xs font-semibold py-1 px-2.5 rounded-md transition-colors hover:brightness-95" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd' }}><History size={12} /> Ripristina</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end mt-3"><button onClick={() => setShowRestore(false)} className="btn-secondary text-sm py-1.5 px-3">Chiudi</button></div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: importa turnisti per il mese */}
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowImport(false)}>
@@ -561,7 +633,8 @@ export function GestioneTurniPage() {
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
           {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
-          <button onClick={reset} title="Svuota la griglia (poi salva)" className="flex items-center gap-1 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors hover:brightness-95" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}><Eraser size={13} /> Reset</button>
+          <button onClick={() => { setConfermaId(null); setShowRestore(true) }} title="Ripristina una versione precedente del calendario" className="flex items-center gap-1 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors hover:brightness-95" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd' }}><History size={13} /> Ripristina</button>
+          <button onClick={reset} disabled={statoCal === 'pubblicato'} title={statoCal === 'pubblicato' ? 'Il calendario è pubblicato: non puoi svuotarlo' : 'Svuota la griglia (poi salva)'} className="flex items-center gap-1 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors hover:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}><Eraser size={13} /> Reset</button>
           <button onClick={salva} disabled={!dirty || saving}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:cursor-default"
             style={dirty ? { background: '#2e7d32', color: '#fff' } : { background: '#f3f4f6', color: '#9ca3af' }}>
