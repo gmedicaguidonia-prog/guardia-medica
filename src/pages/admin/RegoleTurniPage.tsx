@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Check, Copy } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Copy } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
 import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
@@ -18,6 +18,13 @@ import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, Re
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
 const meseSucc = (k: string) => { let [a, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; a++ } return `${a}-${String(m).padStart(2, '0')}` }
+// Mese sorgente da mostrare nei testi: l'ultimo mese con contenuto andando indietro
+// (può essere il mese prima o anche più indietro se i mesi intermedi erano vuoti).
+const meseSorgente = (sorgenteValidoDa: string, tutteValidoDa: string[], meseKey: string): string => {
+  const succ = tutteValidoDa.filter(d => d > sorgenteValidoDa && d < meseKey).sort()
+  const cap = succ.length ? mesePrec(succ[0]) : mesePrec(meseKey)
+  return cap < sorgenteValidoDa ? sorgenteValidoDa : cap
+}
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
   admin:        { bg: '#fee2e2', fg: '#b91c1c' },
@@ -187,21 +194,8 @@ export function RegoleTurniPage() {
   function logRegoleAtt(testo: string) {
     store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'regole', messaggio: `Regole di ${meseLabel(meseKey)} ${testo}.`, target: '/admin/regole', perAdmin: true }).catch(() => {})
   }
-  async function attivaIdenticaRegole() {
-    if (!(await assicuraContinuitaRegole())) return
-    await store.attivaPasso(postazioneId!, meseKey, 2)
-    logRegoleAtt('attivate (identiche al periodo precedente)')
-    await ricaricaAttRegole()
-  }
-  async function attivaNuoveRegole() {
-    if (!(await assicuraContinuitaRegole())) return
-    if (!window.confirm(`Verrà impostata la scadenza delle regole precedenti a ${meseLabel(mesePrec(meseKey))} e create NUOVE regole (vuote) da ${meseLabel(meseKey)}. Procedere?`)) return
-    if (regoleVer) await store.setValiditaRegoleVersione(regoleVer.id, mesePrec(meseKey))
-    await store.creaRegoleVersione(postazioneId!, meseKey)
-    await store.attivaPasso(postazioneId!, meseKey, 2)
-    logRegoleAtt('attivate (nuove regole)')
-    await ricaricaAttRegole()
-  }
+  // Copia dall'ULTIMO mese con regole inserite (può essere il mese prima o anche più
+  // indietro se i mesi intermedi erano vuoti). Crea una versione propria del mese.
   async function copiaRegolePrecedenti() {
     if (!(await assicuraContinuitaRegole())) return
     const sorgente = await store.ultimaRegoleConContenuto(postazioneId!, meseKey)
@@ -222,6 +216,11 @@ export function RegoleTurniPage() {
         if (!curTurnoId && curIds.has(r.turno_schema_id)) curTurnoId = r.turno_schema_id
         if (curTurnoId) await store.setRegola(nuova.id, r.giorno_settimana, curTurnoId, r.slot, r.turnista_id)
       }
+      // copia anche le impostazioni orario / cambio turno
+      if (sorgente.ore_min_settimana != null) await store.setOreMinSettimana(nuova.id, sorgente.ore_min_settimana)
+      if (sorgente.ore_max_settimana != null) await store.setOreMaxSettimana(nuova.id, sorgente.ore_max_settimana)
+      if (sorgente.ore_max_consecutive != null) await store.setOreMaxConsecutive(nuova.id, sorgente.ore_max_consecutive)
+      await store.setCambioAuto(nuova.id, sorgente.cambio_auto ?? true)
     }
     await store.attivaPasso(postazioneId!, meseKey, 2)
     logRegoleAtt(`attivate (copiate da ${sorgente ? meseLabel(sorgente.valido_da) : 'periodo precedente'})`)
@@ -365,24 +364,15 @@ export function RegoleTurniPage() {
           <ListChecks size={32} className="mx-auto" style={{ color: '#9ab488' }} />
           <div>
             <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva le regole di {MESI[mese - 1]} {anno}</h3>
-            {regoleVer ? (
-              <p className="text-sm text-stone-600 mt-1">Per questo mese sono già valide le regole iniziate a <strong>{meseLabel(regoleVer.valido_da)}</strong>. Attivale identiche, oppure creane di nuove. <span className="text-stone-400">(Le regole sono facoltative: i turni fissi non sono obbligatori.)</span></p>
+            {sorgenteCopia ? (
+              <p className="text-sm text-stone-600 mt-1">Puoi copiarle dall'ultimo mese con regole inserite (<strong>{meseLabel(meseSorgente(sorgenteCopia.valido_da, tutteVer.map(v => v.valido_da), meseKey))}</strong>), oppure attivarne di nuove. <span className="text-stone-400">(Le regole sono facoltative: i turni fissi non sono obbligatori.)</span></p>
             ) : (
-              <p className="text-sm text-stone-600 mt-1">Non ci sono regole valide per questo mese.{sorgenteCopia ? <> Puoi copiarle da <strong>{meseLabel(sorgenteCopia.valido_da)}</strong>, oppure attivarne di nuove.</> : ' Attivane di nuove (anche vuote: i turni fissi non sono obbligatori).'}</p>
+              <p className="text-sm text-stone-600 mt-1">Non c'è ancora un mese con regole da cui copiare. Attivane di nuove (anche vuote: i turni fissi non sono obbligatori).</p>
             )}
           </div>
           <div className="flex gap-2 justify-center flex-wrap">
-            {regoleVer ? (
-              <>
-                <button onClick={attivaIdenticaRegole} className="btn-primary text-sm"><Check size={16} /> Attiva identiche al mese precedente</button>
-                <button onClick={attivaNuoveRegole} className="btn-secondary text-sm"><Plus size={16} /> Attiva nuove regole</button>
-              </>
-            ) : (
-              <>
-                {sorgenteCopia && <button onClick={copiaRegolePrecedenti} className="btn-primary text-sm"><Copy size={16} /> Copia dalle regole precedenti</button>}
-                <button onClick={attivaRegoleVuote} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva nuove regole</button>
-              </>
-            )}
+            {sorgenteCopia && <button onClick={copiaRegolePrecedenti} className="btn-primary text-sm"><Copy size={16} /> Copia da {meseLabel(meseSorgente(sorgenteCopia.valido_da, tutteVer.map(v => v.valido_da), meseKey))}</button>}
+            <button onClick={attivaRegoleVuote} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva nuove (vuote)</button>
           </div>
         </div>
       </div>

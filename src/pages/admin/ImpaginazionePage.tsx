@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus, X, Trash2, Moon, Sun, Save, RotateCcw, Check, Copy, Info } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, AlertCircle, AlertTriangle, Plus, X, Trash2, Moon, Sun, Save, RotateCcw, Copy, Info } from 'lucide-react'
 import { store } from '../../lib/store'
 import { ATTIVAZIONE_DA } from '../../lib/constants'
 import { fineEffettiva, prossimoInizio } from '../../lib/turniLogic'
@@ -16,6 +16,11 @@ const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
 const meseSucc = (k: string) => { let [a, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; a++ } return `${a}-${String(m).padStart(2, '0')}` }
+const meseSorgente = (sorgenteValidoDa: string, tutteValidoDa: string[], meseKey: string): string => {
+  const succ = tutteValidoDa.filter(d => d > sorgenteValidoDa && d < meseKey).sort()
+  const cap = succ.length ? mesePrec(succ[0]) : mesePrec(meseKey)
+  return cap < sorgenteValidoDa ? sorgenteValidoDa : cap
+}
 const FOGLIO_COLORI = [
   { bg: '#dbeafe', fg: '#1e40af', br: '#93c5fd' },
   { bg: '#dcfce7', fg: '#166534', br: '#86efac' },
@@ -142,21 +147,6 @@ export function ImpaginazionePage() {
       if (nf && curTurnoId) await store.setFoglioTurno(destId, curTurnoId, nf)
     }
   }
-  async function attivaIdenticaImpag() {
-    if (!(await assicuraContinuitaImpag())) return
-    await store.attivaPasso(postazioneId!, meseKey, 3)
-    logImpagAtt('attivata (identica al periodo precedente)')
-    await ricaricaAttImpag()
-  }
-  async function attivaNuovaImpag() {
-    if (!(await assicuraContinuitaImpag())) return
-    if (!window.confirm(`Verrà impostata la scadenza dell'impaginazione precedente a ${meseLabel(mesePrec(meseKey))} e creata una NUOVA impaginazione vuota da ${meseLabel(meseKey)}. Procedere?`)) return
-    if (impagVer) await store.setValiditaImpaginazioneVersione(impagVer.id, mesePrec(meseKey))
-    await store.creaImpaginazioneVersione(postazioneId!, meseKey)
-    await store.attivaPasso(postazioneId!, meseKey, 3)
-    logImpagAtt('attivata (nuova impaginazione)')
-    await ricaricaAttImpag()
-  }
   async function copiaImpagPrecedente() {
     if (!(await assicuraContinuitaImpag())) return
     const sorgente = await store.ultimaImpaginazioneConContenuto(postazioneId!, meseKey)
@@ -275,24 +265,15 @@ export function ImpaginazionePage() {
         <LayoutGrid size={32} className="mx-auto" style={{ color: '#9ab488' }} />
         <div>
           <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva l'impaginazione di {MESI[mese - 1]} {anno}</h3>
-          {impagVer ? (
-            <p className="text-sm text-stone-600 mt-1">Per questo mese è già valida l'impaginazione iniziata a <strong>{meseLabel(impagVer.valido_da)}</strong>. Attivala identica, oppure creane una nuova.</p>
+          {sorgenteCopia ? (
+            <p className="text-sm text-stone-600 mt-1">Puoi copiarla dall'ultimo mese impaginato (<strong>{meseLabel(meseSorgente(sorgenteCopia.valido_da, tutteVer.map(v => v.valido_da), meseKey))}</strong>), oppure crearne una nuova.</p>
           ) : (
-            <p className="text-sm text-stone-600 mt-1">Non c'è un'impaginazione valida per questo mese.{sorgenteCopia ? <> Puoi copiarla da <strong>{meseLabel(sorgenteCopia.valido_da)}</strong>, oppure crearne una nuova.</> : ' Crea una nuova impaginazione (dividi i turni in fogli).'}</p>
+            <p className="text-sm text-stone-600 mt-1">Non c'è ancora un mese impaginato da cui copiare. Crea una nuova impaginazione (dividi i turni in fogli).</p>
           )}
         </div>
         <div className="flex gap-2 justify-center flex-wrap">
-          {impagVer ? (
-            <>
-              <button onClick={attivaIdenticaImpag} className="btn-primary text-sm"><Check size={16} /> Attiva identica al mese precedente</button>
-              <button onClick={attivaNuovaImpag} className="btn-secondary text-sm"><Plus size={16} /> Attiva una nuova impaginazione</button>
-            </>
-          ) : (
-            <>
-              {sorgenteCopia && <button onClick={copiaImpagPrecedente} className="btn-primary text-sm"><Copy size={16} /> Copia dall'impaginazione precedente</button>}
-              <button onClick={attivaImpagVuota} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva una nuova impaginazione</button>
-            </>
-          )}
+          {sorgenteCopia && <button onClick={copiaImpagPrecedente} className="btn-primary text-sm"><Copy size={16} /> Copia da {meseLabel(meseSorgente(sorgenteCopia.valido_da, tutteVer.map(v => v.valido_da), meseKey))}</button>}
+          <button onClick={attivaImpagVuota} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva una nuova (vuota)</button>
         </div>
       </div>
     )
