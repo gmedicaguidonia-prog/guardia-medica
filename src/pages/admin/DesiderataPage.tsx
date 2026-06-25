@@ -11,6 +11,7 @@ import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
+import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { CancellaMeseButton } from '../../components/CancellaMeseButton'
@@ -51,6 +52,12 @@ export function DesiderataPage() {
   const navigate = useNavigate()
   const { impaginazioneOk, fogliConTurni, loadingImpag } = useImpaginazione(postazioneId, meseKey, schema)
   const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3
+  // Tempo reale: desiderata dei turnisti (pagina pubblica), periodo, personale del mese
+  useRealtimePostazione(postazioneId, [
+    { tabella: 'desiderata',          invalida: [['desiderata', postazioneId]] },
+    { tabella: 'desiderata_finestra', invalida: [['desiderata-finestra', postazioneId]] },
+    { tabella: 'turnisti_mese',       invalida: [['turnisti-mese', postazioneId]] },
+  ])
 
   // serverMap: chiave `data|turnoId|turnistaId` → tipo ('desiderata'|'indisponibilita')
   const serverMap = useMemo(() => {
@@ -159,6 +166,9 @@ export function DesiderataPage() {
   const [finMsg, setFinMsg] = useState<string | null>(null)
   useEffect(() => { setFinDa(finestra?.aperta_da ?? ''); setFinA(finestra?.aperta_a ?? '') }, [finestra])
   async function salvaFinestra() {
+    if (!finDa || !finA) { showWarn('Imposta sia la data di apertura sia quella di chiusura prima di pubblicare.'); return }
+    if (finDa > finA) { showWarn('La data di apertura non può essere successiva a quella di chiusura.'); return }
+    if (finA.slice(0, 7) > meseKey) { showWarn(`La chiusura (${itDate(finA)}) non può cadere in un mese successivo a ${MESI[mese - 1]} ${anno}: le desiderata vanno raccolte prima.`); return }
     try {
       await store.setDesiderataFinestra(postazioneId!, meseKey, finDa || null, finA || null)
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Periodo di raccolta desiderata di ${MESI[mese - 1]} ${anno} pubblicato${finDa && finA ? ` (${itDate(finDa)}–${itDate(finA)})` : ''}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
@@ -380,7 +390,7 @@ export function DesiderataPage() {
               <input type="date" value={finDa} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>chiusura
               <input type="date" value={finA} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
-            <button onClick={salvaFinestra} className="btn-primary text-xs py-1 px-3">Pubblica</button>
+            <button onClick={salvaFinestra} disabled={!finDa || !finA} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={!finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
             {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
           </div>
         )}

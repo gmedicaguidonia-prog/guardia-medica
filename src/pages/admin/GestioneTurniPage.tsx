@@ -10,6 +10,7 @@ import { autoAssegna, autoReperibilita, oreSettimana, oreConsecutive, vietatiDaR
 import { isFestivo, isPrefestivo, isoDate, giornoSettimana } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
+import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { CancellaMeseButton } from '../../components/CancellaMeseButton'
@@ -68,6 +69,14 @@ export function GestioneTurniPage() {
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
   const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3 (4 facoltativo)
+  // Tempo reale: candidature in arrivo, turni, stato calendario, desiderata.
+  // Le modifiche NON salvate restano (useStagedAssignments riallinea solo se non si sta editando).
+  useRealtimePostazione(postazioneId, [
+    { tabella: 'richieste_turno', invalida: [['richieste', postazioneId]] },
+    { tabella: 'turni',           invalida: [['turni', postazioneId]] },
+    { tabella: 'turni_stato',     invalida: [['turni-stato', postazioneId]] },
+    { tabella: 'desiderata',      invalida: [['desiderata', postazioneId]] },
+  ])
   // ordinate per giorno crescente (stesso giorno raggruppato), poi per turno e arrivo
   const richiesteOrdinate = useMemo(() => {
     const ord = (id: string) => schema.find(s => s.id === id)?.ordine ?? 0

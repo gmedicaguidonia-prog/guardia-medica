@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
+let _chanSeq = 0   // per dare a ogni sottoscrizione un canale univoco (più pagine insieme)
+
 export interface RealtimeSub {
   tabella: string          // tabella Postgres da osservare
   invalida: unknown[][]    // query-key (anche solo prefisso) da invalidare all'evento
@@ -39,7 +41,7 @@ export function useRealtimePostazione(postazioneId: string | null, subs: Realtim
       if (!timer) timer = setTimeout(flush, 400)
     }
 
-    const ch = supabase.channel(`rt:postazione:${postazioneId}`)
+    const ch = supabase.channel(`rt:${postazioneId}:${++_chanSeq}`)
     for (const s of subsRef.current) {
       ch.on(
         'postgres_changes',
