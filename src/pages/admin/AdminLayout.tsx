@@ -114,14 +114,20 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
         </div>
       </aside>
 
-      {/* Contenuto */}
+      {/* Contenuto: wrapper a colonna alto almeno quanto l'area → i pulsanti mese
+          restano SEMPRE in fondo (spinti giù se la pagina è corta, scorrono se è lunga) */}
       <main className="flex-1 min-w-0 overflow-auto" style={{ background: '#f4f1ea' }}>
-        <Outlet context={{ user }} />
-        {ROTTE_NUMERATE.has(location.pathname) && postazioneAttiva && (
-          <div className="px-4 sm:px-6 pb-6 pt-2 flex gap-2">
-            <CancellaMeseButton postazioneId={postazioneAttiva.id} meseKey={meseKey} anno={anno} mese={mese} />
-          </div>
-        )}
+        <div className="min-h-full flex flex-col">
+          <div className="flex-1 min-w-0"><Outlet context={{ user }} /></div>
+          {ROTTE_NUMERATE.has(location.pathname) && postazioneAttiva && (
+            <div className="px-4 sm:px-6 pt-4 pb-6 mt-4">
+              <div className="max-w-3xl mx-auto border-t mb-4" style={{ borderColor: '#d6d3cc' }} />
+              <div className="flex justify-center gap-2">
+                <CancellaMeseButton postazioneId={postazioneAttiva.id} meseKey={meseKey} anno={anno} mese={mese} />
+              </div>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   )
