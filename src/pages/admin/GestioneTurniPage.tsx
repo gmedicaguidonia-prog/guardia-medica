@@ -614,8 +614,10 @@ export function GestioneTurniPage() {
       <button onClick={onX} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
     </span>
   )
-  const dropStyle = (key: string): CSSProperties => {
-    const base: CSSProperties = { ...tdBase, width: 1, minWidth: 170 }
+  const dropStyle = (key: string, fill = false): CSSProperties => {
+    // fill = ULTIMA colonna: si allarga fino a fine pagina (width auto), contenuto a sinistra.
+    // Le altre colonne si adattano al contenuto (width 1) tenendo i turnisti su una riga.
+    const base: CSSProperties = { ...tdBase, width: fill ? 'auto' : 1, minWidth: 150, whiteSpace: 'nowrap' }
     if (overKey === key) return { ...base, border: '2px dashed #2e7d32', background: '#dcf5dc', boxShadow: 'inset 0 0 0 2px rgba(46,125,50,0.35)' }
     // durante il trascinamento: rosso dove il turnista è indisponibile, verde dove
     // è disponibile o non ha detto nulla (vale sia per i turni che per il reperibile)
@@ -835,17 +837,17 @@ export function GestioneTurniPage() {
         {/* Una griglia per foglio (passo ③ Impaginazione) */}
         <div className="flex-1 min-w-0 space-y-4">
           {righePerFoglio.map(({ foglio, righe: righeF }) => (
-          <div key={foglio.id} className="card overflow-auto w-fit max-w-full">
+          <div key={foglio.id} className="card overflow-auto">
             <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
               <LayoutGrid size={14} style={{ color: '#476540' }} />
               <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
             </div>
-          <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, left: 0, zIndex: 3, width: 1, whiteSpace: 'nowrap' }}>Turno</th>
-                <th style={{ ...thStyle, width: 1 }}>Turnisti</th>
-                {showRep && <th style={{ ...thStyle, width: 1 }}>Reperibile</th>}
+                <th style={showRep ? { ...thStyle, width: 1, whiteSpace: 'nowrap' } : thStyle}>Turnisti</th>
+                {showRep && <th style={thStyle}>Reperibile</th>}
               </tr>
             </thead>
             <tbody>
@@ -875,8 +877,8 @@ export function GestioneTurniPage() {
                     <td data-data={ds} data-turno={turno.id} data-tipo="turnisti"
                       onDragOver={e => { e.preventDefault(); setOverKey(kT) }} onDragLeave={() => setOverKey(k => k === kT ? null : k)} onDrop={e => { e.preventDefault(); handleDrop(ds, turno, 'turnisti') }}
                       onClick={e => { if ((e.target as HTMLElement).closest('[data-chip]')) return; setPicker({ ds, turno, tipo: 'turnisti', x: e.clientX, y: e.clientY }) }}
-                      style={{ ...dropStyle(kT), cursor: 'copy' }}>
-                      <div className="flex flex-wrap gap-2 items-start">
+                      style={{ ...dropStyle(kT, !showRep), cursor: 'copy' }}>
+                      <div className="flex flex-nowrap gap-2 items-start">
                         {slots.map((tid, slot) => tid ? <span key={slot}>{Chip(tid, () => set(`${ds}|${turno.id}|${slot}`, null))}</span> : null)}
                         {slots.every(s => s === null) && <span className="text-[10px] text-stone-300 italic">trascina o clicca</span>}
                       </div>
@@ -885,7 +887,7 @@ export function GestioneTurniPage() {
                       <td data-data={ds} data-turno={turno.id} data-tipo="reperibile"
                         onDragOver={e => { e.preventDefault(); setOverKey(kR) }} onDragLeave={() => setOverKey(k => k === kR ? null : k)} onDrop={e => { e.preventDefault(); handleDrop(ds, turno, 'reperibile') }}
                         onClick={e => { if ((e.target as HTMLElement).closest('[data-chip]')) return; setPicker({ ds, turno, tipo: 'reperibile', x: e.clientX, y: e.clientY }) }}
-                        style={{ ...dropStyle(kR), cursor: 'copy' }}>
+                        style={{ ...dropStyle(kR, true), cursor: 'copy' }}>
                         {rep ? Chip(rep, () => set(`${ds}|${turno.id}|${REP_SLOT}`, null)) : <span className="text-[10px] text-stone-300 italic">trascina o clicca</span>}
                       </td>
                     )}
