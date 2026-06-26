@@ -179,7 +179,8 @@ export function DesiderataPage() {
     if (finA >= primoDelMese) { showWarn(`La chiusura deve cadere entro il ${itDate(ultimoMesePrec)} (il giorno prima dell'inizio di ${MESI[mese - 1]} ${anno}): le desiderata vanno raccolte prima che il mese cominci.`); return }
     try {
       await store.setDesiderataFinestra(postazioneId!, meseKey, finDa || null, finA || null)
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Periodo di raccolta desiderata di ${MESI[mese - 1]} ${anno} pubblicato${finDa && finA ? ` (${itDate(finDa)}–${itDate(finA)})` : ''}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
+      const chiudeOra = !!finA && finA < oggiStr
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: chiudeOra ? 'desiderata_chiusa' : 'desiderata_pubblicata', messaggio: chiudeOra ? `Raccolta desiderata di ${MESI[mese - 1]} ${anno} chiusa.` : `Raccolta desiderata di ${MESI[mese - 1]} ${anno} aperta${finDa && finA ? ` · dal ${itDate(finDa)} al ${itDate(finA)}` : ''}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
       setFinMsg('Pubblicato'); setTimeout(() => setFinMsg(null), 2500)
     } catch (e) { console.error(e); void notify({ title: 'Errore', message: 'Errore nella pubblicazione del periodo.' }) }
@@ -237,7 +238,7 @@ export function DesiderataPage() {
     if (!ok) return
     try {
       await store.setDesiderataFinestra(postazioneId!, meseKey, finestra.aperta_da ?? oggiStr, domaniStr)
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} RIAPERTA fino al ${itDate(domaniStr)}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} riaperta · chiude il ${itDate(domaniStr)}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
     } catch (e) { console.error('[Desiderata] riapertura fallita:', e); void notify({ title: 'Errore', message: 'Errore nella riapertura della raccolta.' }) }
   }

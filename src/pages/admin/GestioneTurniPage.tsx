@@ -424,7 +424,7 @@ export function GestioneTurniPage() {
     try {
       if (chiudiDes) {
         await store.setDesiderataFinestra(postazioneId!, meseKey, finestraDes?.aperta_da ?? null, ieriStr)
-        store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} chiusa contestualmente alla pubblicazione del calendario.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
+        store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_chiusa', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} chiusa (alla pubblicazione del calendario).`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
         await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
       }
       await store.setStatoCalendario(postazioneId!, meseKey, statoScelto)
