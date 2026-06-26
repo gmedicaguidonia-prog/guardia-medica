@@ -408,6 +408,12 @@ const supaStore = {
   },
   // true se l'appartenenza ha già storico (turni, desiderata o personale di qualche mese):
   // in tal caso la cancellazione anagrafica va bloccata per non lasciare buchi nei mesi passati.
+  // ultimo mese (più recente PRIMA del mese dato) che ha personale → sorgente per la copia
+  async ultimoMesePersonale(postazioneId: string, primaDelMese: string): Promise<string | null> {
+    const { data, error } = await supabase.from('turnisti_mese').select('mese').eq('postazione_id', postazioneId).lt('mese', primaDelMese).order('mese', { ascending: false }).limit(1)
+    if (error) throw error
+    return data && data[0] ? (data[0].mese as string) : null
+  },
   async turnistaHaStorico(turnistaId: string): Promise<boolean> {
     const t = await supabase.from('turni').select('id', { count: 'exact', head: true }).eq('turnista_id', turnistaId)
     if ((t.count ?? 0) > 0) return true
@@ -1033,6 +1039,11 @@ const localStore = {
   },
   async setLivelloMese(_postazioneId: string, mese: string, turnistaId: string, livello: Livello): Promise<void> {
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string; postazione_id?: string; livello?: Livello }[]>(LS_TURNISTI_MESE, []).map(x => x.mese === mese && x.turnista_id === turnistaId ? { ...x, livello } : x))
+  },
+  async ultimoMesePersonale(postazioneId: string, primaDelMese: string): Promise<string | null> {
+    const mesi = read<{ mese: string; postazione_id?: string }[]>(LS_TURNISTI_MESE, [])
+      .filter(x => (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId && x.mese < primaDelMese).map(x => x.mese).sort()
+    return mesi.length ? mesi[mesi.length - 1] : null
   },
   async turnistaHaStorico(turnistaId: string): Promise<boolean> {
     return read<WithPost<Turno>[]>(LS_TURNI, []).some(t => t.turnista_id === turnistaId)

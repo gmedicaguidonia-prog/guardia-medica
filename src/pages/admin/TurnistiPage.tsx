@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Save, X, Users, Shield, User, UserCog, Crown, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil } from 'lucide-react'
+import { Plus, Trash2, Save, X, Users, Shield, User, UserCog, Crown, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy } from 'lucide-react'
 import { store } from '../../lib/store'
 import { LIVELLI_PERSONALE, nomeCompleto, gruppiPerLivello } from '../../types'
 import { ATTIVAZIONE_DA } from '../../lib/constants'
@@ -35,6 +35,17 @@ export function TurnistiPage() {
   const { data: personale = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
   const confermato = attivazioni.includes(0)
+  const { data: meseSorgente } = useQuery<string | null>({ queryKey: ['ultimo-mese-personale', postazioneId, meseKey], queryFn: () => store.ultimoMesePersonale(postazioneId!, meseKey), enabled: !!postazioneId })
+  const [iniziato, setIniziato] = useState(false)
+  const meseLabel = (k: string) => { const [a, m] = k.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
+  async function copiaPersonale() {
+    if (!meseSorgente) return
+    const src = await store.getPersonaleMese(postazioneId!, meseSorgente)
+    const anagr = new Set(turnisti.map(t => t.id))
+    for (const p of src) if (anagr.has(p.turnista_id)) await store.addTurnistaMese(postazioneId!, meseKey, p.turnista_id, p.livello)
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Personale di ${MESI[mese - 1]} ${anno} copiato da ${meseLabel(meseSorgente)}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+    await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
+  }
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const livMese = useMemo(() => new Map(personale.map(p => [p.turnista_id, p.livello])), [personale])
@@ -134,6 +145,22 @@ export function TurnistiPage() {
       {Header}
       {errore && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errore}</div>}
 
+      {personale.length === 0 && !iniziato ? (
+        /* ── Gate iniziale: copia il personale dal mese precedente o parti da zero ── */
+        <div className="card p-8 text-center space-y-4">
+          <Users size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+          <div>
+            <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Personale di {MESI[mese - 1]} {anno}</h3>
+            {meseSorgente
+              ? <p className="text-sm text-stone-600 mt-1">Puoi copiarlo dall'ultimo mese configurato (<strong>{meseLabel(meseSorgente)}</strong>) e poi modificarlo, oppure partire da zero.</p>
+              : <p className="text-sm text-stone-600 mt-1">Non c'è un mese precedente da cui copiare: aggiungi le persone in servizio questo mese.</p>}
+          </div>
+          <div className="flex gap-2 justify-center flex-wrap">
+            {meseSorgente && <button onClick={copiaPersonale} className="btn-primary text-sm"><Copy size={16} /> Copia da {meseLabel(meseSorgente)}</button>}
+            <button onClick={() => setIniziato(true)} className={`${meseSorgente ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Aggiungi a mano</button>
+          </div>
+        </div>
+      ) : (<>
       {/* ── Personale di QUESTO mese ── */}
       <div className="card p-4 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -196,6 +223,8 @@ export function TurnistiPage() {
           ))}
       </div>
 
+      </>)}
+
       {/* ── Gestione anagrafica (collassabile) ── */}
       <div className="card overflow-hidden">
         <button onClick={() => setApriAnagrafica(o => !o)} className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-stone-50 transition-colors">
@@ -242,13 +271,13 @@ export function TurnistiPage() {
               <tbody className="divide-y divide-gray-100">
                 {gruppiPerLivello(turnisti).map(g => (
                   <Fragment key={g.liv}>
-                    <tr><td colSpan={3} className="px-1 py-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: BADGE[g.liv].fg }}>{g.label} · {g.items.length}</td></tr>
+                    <tr><td colSpan={4} className="px-1 py-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: BADGE[g.liv].fg }}>{g.label} · {g.items.length}</td></tr>
                     {g.items.map(t => editId === t.id ? (
                       <tr key={t.id} className="bg-blue-50/40">
                         <td className="px-1 py-1.5"><div className="flex gap-1"><input value={eCognome} onChange={e => setECognome(e.target.value)} className="input py-0.5 text-xs w-full" placeholder="Cognome" autoFocus /><input value={eNome} onChange={e => setENome(e.target.value)} className="input py-0.5 text-xs w-full" placeholder="Nome" /></div></td>
                         <td className="px-1 py-1.5"><input value={eEmail} onChange={e => setEEmail(e.target.value)} type="email" className="input py-0.5 text-xs w-full" /></td>
+                        <td className="px-1 py-1.5"><select value={eLiv} onChange={e => setELiv(e.target.value as Livello)} className="input py-0.5 text-xs w-full">{LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}</select></td>
                         <td className="px-1 py-1.5"><div className="flex gap-1 justify-end items-center">
-                          <select value={eLiv} onChange={e => setELiv(e.target.value as Livello)} className="input py-0.5 text-xs">{LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}</select>
                           <button onClick={salvaEdit} disabled={saving} className="btn-primary py-0.5 px-2 text-xs gap-1"><Save size={11} /></button>
                           <button onClick={() => setEditId(null)} className="btn-secondary py-0.5 px-1.5 text-xs"><X size={11} /></button>
                         </div></td>
@@ -256,6 +285,7 @@ export function TurnistiPage() {
                     ) : (
                       <tr key={t.id} className="hover:bg-stone-50 group">
                         <td className="px-1 py-2 font-medium text-stone-800">{nomeCompleto(t)}</td>
+                        <td className="px-1 py-2 font-mono text-xs text-gray-600">{t.email}</td>
                         <td className="px-1 py-2"><LivelloBadge livello={t.livello} /></td>
                         <td className="px-1 py-2"><div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => startEdit(t)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica"><Pencil size={13} /></button>
@@ -265,7 +295,7 @@ export function TurnistiPage() {
                     ))}
                   </Fragment>
                 ))}
-                {turnisti.length === 0 && !isLoading && <tr><td colSpan={3} className="px-1 py-3 text-center text-stone-500 text-sm">Anagrafica vuota.</td></tr>}
+                {turnisti.length === 0 && !isLoading && <tr><td colSpan={4} className="px-1 py-3 text-center text-stone-500 text-sm">Anagrafica vuota.</td></tr>}
               </tbody>
             </table>
             <p className="text-[11px] text-stone-400">Il <strong>livello di default</strong> dell’anagrafica viene proposto quando aggiungi una persona a un mese; poi puoi cambiarne il ruolo mese per mese qui sopra. Chi ha storico non è cancellabile (per non lasciare buchi nei mesi passati).</p>
