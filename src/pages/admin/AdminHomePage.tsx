@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, ArrowRightLeft, Bell, ChevronLeft, Chevron
 import { store } from '../../lib/store'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
+import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { NOTIFICA_CATEGORIE, categoriaNotifica } from '../../types'
 import type { ConfigVersione, DesiderataFinestra, Notifica } from '../../types'
 
@@ -38,6 +39,7 @@ function PlaceholderCard({ Icon, titolo, descr }: { Icon: typeof ArrowRightLeft;
 export function AdminHomePage() {
   const navigate = useNavigate()
   const { postazioneId, postazioneAttiva } = usePostazione()
+  const { meseKey, setMeseAnno } = useMeseSelezionato()
   const meseProssimo = meseKeyOffset(1)
   const { data: versioni = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all', postazioneId], queryFn: () => store.getVersioni(postazioneId!), enabled: !!postazioneId })
   const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseProssimo], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseProssimo), enabled: !!postazioneId })
@@ -48,19 +50,18 @@ export function AdminHomePage() {
   useEffect(() => { if (postazioneId) store.cleanupNotifiche(postazioneId).catch(() => {}) }, [postazioneId])
   // tempo reale: nuovi eventi compaiono nel Centro Notifiche senza ricaricare
   useRealtimePostazione(postazioneId, [{ tabella: 'notifiche', invalida: [['notifiche-admin', postazioneId]] }])
-  const meseCorr = meseKeyOffset(0)
-  // mostro gli eventi del mese in corso (o futuri) + tutti i non letti; quando un mese
-  // è passato ed è tutto letto, sparisce. Raggruppo per MESE poi per CATEGORIA.
-  const notificheVisibili = useMemo(() => notifiche.filter(n => n.mese >= meseCorr || !n.letta), [notifiche, meseCorr])
-  const perMese = useMemo(() => {
-    const mesi = [...new Set(notificheVisibili.map(n => n.mese))].sort((a, b) => b.localeCompare(a))
-    return mesi.map(mese => {
-      const dentro = notificheVisibili.filter(n => n.mese === mese)
-      const categorie = NOTIFICA_CATEGORIE.map(c => ({ ...c, items: dentro.filter(n => categoriaNotifica(n.tipo) === c.key) })).filter(g => g.items.length)
-      return { mese, categorie, nonLette: dentro.filter(n => !n.letta).length }
-    }).filter(m => m.categorie.length)
-  }, [notificheVisibili])
-  const nonLette = notificheVisibili.filter(n => !n.letta).length
+  // Il CORPO mostra le notifiche del MESE SELEZIONATO (raggruppate per categoria);
+  // un riepilogo a chip dà visibilità ai NON letti degli ALTRI mesi (anche non mostrati).
+  const notificheMese = useMemo(() => notifiche.filter(n => n.mese === meseKey), [notifiche, meseKey])
+  const categorieMese = useMemo(() => NOTIFICA_CATEGORIE.map(c => ({ ...c, items: notificheMese.filter(n => categoriaNotifica(n.tipo) === c.key) })).filter(g => g.items.length), [notificheMese])
+  const nonLetteMese = notificheMese.filter(n => !n.letta).length
+  const nonLetteTot = notifiche.filter(n => !n.letta).length
+  const riepilogoMesi = useMemo(() => {
+    const m = new Map<string, number>()
+    notifiche.forEach(n => { if (!n.letta && n.mese !== meseKey) m.set(n.mese, (m.get(n.mese) ?? 0) + 1) })
+    return [...m.entries()].map(([mese, count]) => ({ mese, count })).sort((a, b) => b.mese.localeCompare(a.mese))
+  }, [notifiche, meseKey])
+  const vaiAlMese = (mese: string) => { const [a, m] = mese.split('-').map(Number); setMeseAnno(a, m) }
   // paginazione per sezione (mese|categoria): max 6 messaggi, poi selettore pagine
   const PER_PAGINA = 6
   const [pagine, setPagine] = useState<Record<string, number>>({})
@@ -130,50 +131,66 @@ export function AdminHomePage() {
           </div>
         </section>
 
-        {/* Centro Notifiche — per mese, poi per categoria (in fondo) */}
-        {perMese.length > 0 && (
+        {/* Centro Notifiche — mese selezionato + riepilogo altri mesi (in fondo) */}
+        {notifiche.length > 0 && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5"><Bell size={13} /> Centro Notifiche{nonLette > 0 ? ` · ${nonLette} non lett${nonLette === 1 ? 'a' : 'e'}` : ''}</h2>
-              {nonLette > 0 && <button onClick={() => marca(notificheVisibili.filter(n => !n.letta).map(n => n.id))} className="ml-auto text-[11px] text-stone-500 hover:text-stone-700">Segna tutte lette</button>}
+              <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5"><Bell size={13} /> Centro Notifiche{nonLetteTot > 0 ? ` · ${nonLetteTot} non lett${nonLetteTot === 1 ? 'a' : 'e'}` : ''}</h2>
+              {nonLetteTot > 0 && <button onClick={() => marca(notifiche.filter(n => !n.letta).map(n => n.id))} className="ml-auto text-[11px] text-stone-500 hover:text-stone-700">Segna tutte lette</button>}
             </div>
-            {perMese.map(m => (
-              <div key={m.mese} className="card p-3 space-y-2.5">
-                <h3 className="text-base font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>{meseLabel(m.mese)}{m.nonLette > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>{m.nonLette} non lett{m.nonLette === 1 ? 'a' : 'e'}</span>}</h3>
-                {m.categorie.map(c => {
-                  const key = `${m.mese}|${c.key}`
-                  const totPag = Math.ceil(c.items.length / PER_PAGINA)
-                  const pag = Math.min(pagine[key] ?? 0, Math.max(0, totPag - 1))
-                  const vis = c.items.slice(pag * PER_PAGINA, pag * PER_PAGINA + PER_PAGINA)
-                  return (
-                    <div key={c.key}>
-                      <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: '#476540' }}>{c.label}{c.items.length > PER_PAGINA && <span className="text-stone-400 font-semibold normal-case"> · {c.items.length} messaggi</span>}</p>
-                      <div className="space-y-1">
-                        {vis.map(n => (
-                          <div key={n.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: n.letta ? '#f7f8f4' : '#fff7ed' }}>
-                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: n.letta ? 'transparent' : '#f59e0b' }} />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm block leading-tight" style={{ color: n.letta ? '#78716c' : '#3a3d30', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
-                              <span className="text-[10px] text-stone-400">{n.autore ? `${n.autore} · ` : ''}{fmtDT(n.created_at)}</span>
-                            </div>
-                            {n.target
-                              ? <button onClick={() => vai(n)} className="btn-primary text-[11px] py-0.5 px-2 shrink-0">Vai</button>
-                              : !n.letta && <button onClick={() => marca([n.id])} className="text-[11px] text-stone-500 hover:text-stone-700 shrink-0">ok</button>}
-                          </div>
-                        ))}
-                      </div>
-                      {totPag > 1 && (
-                        <div className="flex items-center justify-center gap-3 mt-1.5">
-                          <button onClick={() => setPagina(key, Math.max(0, pag - 1))} disabled={pag === 0} className="p-0.5 rounded disabled:opacity-30 text-stone-500 hover:text-stone-700" title="Più recenti"><ChevronLeft size={15} /></button>
-                          <span className="text-[10px] text-stone-400">{pag + 1} / {totPag}</span>
-                          <button onClick={() => setPagina(key, Math.min(totPag - 1, pag + 1))} disabled={pag >= totPag - 1} className="p-0.5 rounded disabled:opacity-30 text-stone-500 hover:text-stone-700" title="Più vecchi"><ChevronRight size={15} /></button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+
+            {/* riepilogo NON letti degli ALTRI mesi (anche passati): clic per andarci */}
+            {riepilogoMesi.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {riepilogoMesi.map(r => (
+                  <button key={r.mese} onClick={() => vaiAlMese(r.mese)} title={`Vai alle notifiche di ${meseLabel(r.mese)}`}
+                    className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-transform hover:scale-[1.03]" style={{ background: '#fff7ed', color: '#92400e', border: '1px solid #fed7aa' }}>
+                    <span className="font-semibold">{meseLabel(r.mese)}</span>
+                    <span className="px-1.5 rounded-full text-[10px] font-bold" style={{ background: '#f59e0b', color: '#fff' }}>{r.count}</span>
+                    <span className="text-stone-500">{r.count === 1 ? 'nuova' : 'nuove'}</span>
+                  </button>
+                ))}
               </div>
-            ))}
+            )}
+
+            {/* corpo: notifiche del MESE SELEZIONATO, per categoria */}
+            <div className="card p-3 space-y-2.5">
+              <h3 className="text-base font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>{meseLabel(meseKey)}{nonLetteMese > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>{nonLetteMese} non lett{nonLetteMese === 1 ? 'a' : 'e'}</span>}</h3>
+              {categorieMese.length === 0 ? (
+                <p className="text-xs text-stone-400 italic">Nessuna notifica per {meseLabel(meseKey)}.</p>
+              ) : categorieMese.map(c => {
+                const key = `${meseKey}|${c.key}`
+                const totPag = Math.ceil(c.items.length / PER_PAGINA)
+                const pag = Math.min(pagine[key] ?? 0, Math.max(0, totPag - 1))
+                const vis = c.items.slice(pag * PER_PAGINA, pag * PER_PAGINA + PER_PAGINA)
+                return (
+                  <div key={c.key}>
+                    <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: '#476540' }}>{c.label}{c.items.length > PER_PAGINA && <span className="text-stone-400 font-semibold normal-case"> · {c.items.length} messaggi</span>}</p>
+                    <div className="space-y-1">
+                      {vis.map(n => (
+                        <div key={n.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: n.letta ? '#f7f8f4' : '#fff7ed' }}>
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: n.letta ? 'transparent' : '#f59e0b' }} />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm block leading-tight" style={{ color: n.letta ? '#78716c' : '#3a3d30', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
+                            <span className="text-[10px] text-stone-400">{n.autore ? `${n.autore} · ` : ''}{fmtDT(n.created_at)}</span>
+                          </div>
+                          {n.target
+                            ? <button onClick={() => vai(n)} className="btn-primary text-[11px] py-0.5 px-2 shrink-0">Vai</button>
+                            : !n.letta && <button onClick={() => marca([n.id])} className="text-[11px] text-stone-500 hover:text-stone-700 shrink-0">ok</button>}
+                        </div>
+                      ))}
+                    </div>
+                    {totPag > 1 && (
+                      <div className="flex items-center justify-center gap-3 mt-1.5">
+                        <button onClick={() => setPagina(key, Math.max(0, pag - 1))} disabled={pag === 0} className="p-0.5 rounded disabled:opacity-30 text-stone-500 hover:text-stone-700" title="Più recenti"><ChevronLeft size={15} /></button>
+                        <span className="text-[10px] text-stone-400">{pag + 1} / {totPag}</span>
+                        <button onClick={() => setPagina(key, Math.min(totPag - 1, pag + 1))} disabled={pag >= totPag - 1} className="p-0.5 rounded disabled:opacity-30 text-stone-500 hover:text-stone-700" title="Più vecchi"><ChevronRight size={15} /></button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </section>
         )}
       </div>
