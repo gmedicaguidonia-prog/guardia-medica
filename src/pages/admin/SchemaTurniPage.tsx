@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, AlertTriangle, ChevronLeft, ChevronRight, Copy, Info } from 'lucide-react'
 import { store } from '../../lib/store'
@@ -126,6 +127,7 @@ function TurnoCard({ turno, onDelete, onDirty, prima }: {
 
 export function SchemaTurniPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { confirm, notify, confirmState } = useConfirm()
   const { setHasUnsaved } = useUnsaved()
   const { postazioneId, postazioneAttiva } = usePostazione()
@@ -149,6 +151,8 @@ export function SchemaTurniPage() {
   const { data: sorgenteCopia } = useQuery<ConfigVersione | null>({ queryKey: ['ultima-config-con-turni', postazioneId, meseKey], queryFn: () => store.ultimaConfigConTurni(postazioneId!, meseKey), enabled: !!postazioneId && nuovaProcedura })
   const attivo1 = attivazioni.includes(1)
   const mostraGate = nuovaProcedura && !attivo1
+  // passo ① Personale: prerequisito obbligatorio (numero interno 0) dalla nuova procedura
+  const personaleOk = !nuovaProcedura || attivazioni.includes(0)
 
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
   const handleDirty = useCallback((id: string, dirty: boolean) => {
@@ -326,6 +330,14 @@ export function SchemaTurniPage() {
 
       {loadingVer ? (
         <p className="text-sm text-stone-500">Caricamento…</p>
+      ) : !personaleOk ? (
+        /* ── Gate passo ① Personale: prima di tutto va confermato il personale del mese ── */
+        <div className="card p-8 text-center space-y-3">
+          <UsersIcon size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+          <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Completa prima il Personale (passo ①)</h3>
+          <p className="text-sm text-stone-600">Per <strong>{MESI[mese - 1]} {anno}</strong> conferma prima chi è in servizio nel mese e con quale ruolo, poi potrai configurare i turni.</p>
+          <button onClick={() => navigate('/admin/turnisti')} className="btn-primary text-sm mx-auto"><UsersIcon size={15} /> Vai al Personale</button>
+        </div>
       ) : mostraGate ? (
         /* ── Gate di attivazione del mese (nuova procedura sequenziale) ── */
         <div className="card p-8 text-center space-y-4">

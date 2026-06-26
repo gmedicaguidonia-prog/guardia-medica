@@ -406,6 +406,16 @@ const supaStore = {
     const { error } = await supabase.from('turnisti_mese').update({ livello }).match({ mese, turnista_id: turnistaId })
     if (error) throw error
   },
+  // true se l'appartenenza ha già storico (turni, desiderata o personale di qualche mese):
+  // in tal caso la cancellazione anagrafica va bloccata per non lasciare buchi nei mesi passati.
+  async turnistaHaStorico(turnistaId: string): Promise<boolean> {
+    const t = await supabase.from('turni').select('id', { count: 'exact', head: true }).eq('turnista_id', turnistaId)
+    if ((t.count ?? 0) > 0) return true
+    const d = await supabase.from('desiderata').select('id', { count: 'exact', head: true }).eq('turnista_id', turnistaId)
+    if ((d.count ?? 0) > 0) return true
+    const m = await supabase.from('turnisti_mese').select('turnista_id', { count: 'exact', head: true }).eq('turnista_id', turnistaId)
+    return (m.count ?? 0) > 0
+  },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
     const { error } = await supabase.from('turnisti_mese').delete().match({ mese, turnista_id: turnistaId })
     if (error) throw error
@@ -1023,6 +1033,11 @@ const localStore = {
   },
   async setLivelloMese(_postazioneId: string, mese: string, turnistaId: string, livello: Livello): Promise<void> {
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string; postazione_id?: string; livello?: Livello }[]>(LS_TURNISTI_MESE, []).map(x => x.mese === mese && x.turnista_id === turnistaId ? { ...x, livello } : x))
+  },
+  async turnistaHaStorico(turnistaId: string): Promise<boolean> {
+    return read<WithPost<Turno>[]>(LS_TURNI, []).some(t => t.turnista_id === turnistaId)
+      || read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).some(d => d.turnista_id === turnistaId)
+      || read<{ turnista_id: string }[]>(LS_TURNISTI_MESE, []).some(x => x.turnista_id === turnistaId)
   },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.mese === mese && x.turnista_id === turnistaId)))

@@ -105,7 +105,7 @@ export function DesiderataPage() {
   }, [local])
 
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
-  // Una griglia per foglio (passo ③ Impaginazione): righe = (giorno, turno) di quel foglio
+  // Una griglia per foglio (passo ④ Impaginazione): righe = (giorno, turno) di quel foglio
   const righePerFoglio = useMemo(() => fogliConTurni.map(fc => {
     const out: { ds: string; d: Date; turno: TurnoSchema }[] = []
     giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
@@ -217,7 +217,7 @@ export function DesiderataPage() {
         : { label: 'Attiva · da pubblicare', bg: '#e5e7eb', fg: '#374151', br: '#d1d5db' }
 
   async function attivaRaccolta() {
-    if (!versione || schema.length === 0) { showWarn(`Non ci sono turni configurati per ${MESI[mese - 1]} ${anno}: impostali prima in Configurazione Turni (passo ①), poi potrai attivare la raccolta.`); return }
+    if (!versione || schema.length === 0) { showWarn(`Non ci sono turni configurati per ${MESI[mese - 1]} ${anno}: impostali prima in Configurazione Turni (passo ②), poi potrai attivare la raccolta.`); return }
     try {
       await store.attivaDesiderata(postazioneId!, meseKey)
       await store.attivaPasso(postazioneId!, meseKey, 4)   // passo 4 della procedura sequenziale
@@ -270,16 +270,17 @@ export function DesiderataPage() {
   if (passi.nuovaProcedura && !passi.tuttiOk) return (
     <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
       <PrerequisitiPassi titolo={`Per fare le Desiderata di ${MESI[mese - 1]} ${anno} completa prima questi passi:`} onVai={navigate} passi={[
-        { n: '①', label: 'Configurazione Turni', ok: passi.passo1, to: '/admin/schema' },
-        { n: '②', label: 'Regole Turni', ok: passi.passo2, to: '/admin/regole' },
-        { n: '③', label: 'Impaginazione', ok: passi.passo3, to: '/admin/impaginazione' },
+        { n: '①', label: 'Personale', ok: passi.passoPersonale, to: '/admin/turnisti' },
+        { n: '②', label: 'Configurazione Turni', ok: passi.passo1, to: '/admin/schema' },
+        { n: '③', label: 'Regole Turni', ok: passi.passo2, to: '/admin/regole' },
+        { n: '④', label: 'Impaginazione', ok: passi.passo3, to: '/admin/impaginazione' },
       ]} />
     </div>
   )
   if (!versione || schema.length === 0) return (
     <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
       <div className="card p-5 flex items-start gap-3 mt-2"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
-        <p className="text-sm text-stone-600">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>. Impostala prima in <strong>Configurazione Turni</strong> (passo ①).</p>
+        <p className="text-sm text-stone-600">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>. Impostala prima in <strong>Configurazione Turni</strong> (passo ②).</p>
       </div>
     </div>
   )
@@ -287,7 +288,7 @@ export function DesiderataPage() {
     <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
       <div className="card p-5 flex items-start gap-3 mt-2"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
         <div>
-          <p className="text-sm text-stone-600 mb-2">Per <strong>{MESI[mese - 1]} {anno}</strong> manca l'<strong>impaginazione</strong>: prima di raccogliere le desiderata devi dividere i turni in fogli (passo ③).</p>
+          <p className="text-sm text-stone-600 mb-2">Per <strong>{MESI[mese - 1]} {anno}</strong> manca l'<strong>impaginazione</strong>: prima di raccogliere le desiderata devi dividere i turni in fogli (passo ④).</p>
           <button onClick={() => navigate('/admin/impaginazione')} className="btn-primary text-sm py-1.5 px-3 inline-flex items-center gap-1.5"><LayoutGrid size={14} /> Vai a Impaginazione</button>
         </div>
       </div>
@@ -479,7 +480,7 @@ export function DesiderataPage() {
         </aside>
         )}
 
-        {/* Una griglia per foglio (passo ③ Impaginazione) */}
+        {/* Una griglia per foglio (passo ④ Impaginazione) */}
         <div className="flex-1 min-w-0 space-y-4">
           {righePerFoglio.map(({ foglio, righe: righeF }) => (
           <div key={foglio.id} className="card overflow-auto">

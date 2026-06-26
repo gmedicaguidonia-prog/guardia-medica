@@ -561,9 +561,10 @@ export function GestioneTurniPage() {
     <div className="max-w-5xl mx-auto p-6">{Header}
       <div className="mt-4">
         <PrerequisitiPassi titolo={`Per comporre i Turni di ${MESI[mese - 1]} ${anno} completa prima questi passi (la Desiderata è facoltativa):`} onVai={navigate} passi={[
-          { n: '①', label: 'Configurazione Turni', ok: passi.passo1, to: '/admin/schema' },
-          { n: '②', label: 'Regole Turni', ok: passi.passo2, to: '/admin/regole' },
-          { n: '③', label: 'Impaginazione', ok: passi.passo3, to: '/admin/impaginazione' },
+          { n: '①', label: 'Personale', ok: passi.passoPersonale, to: '/admin/turnisti' },
+          { n: '②', label: 'Configurazione Turni', ok: passi.passo1, to: '/admin/schema' },
+          { n: '③', label: 'Regole Turni', ok: passi.passo2, to: '/admin/regole' },
+          { n: '④', label: 'Impaginazione', ok: passi.passo3, to: '/admin/impaginazione' },
         ]} />
       </div>
     </div>
@@ -572,7 +573,7 @@ export function GestioneTurniPage() {
     return (
       <div className="max-w-5xl mx-auto p-6">{Header}
         <div className="card p-5 flex items-start gap-3 mt-4"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
-          <p className="text-sm text-stone-600">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>. Impostala prima in <strong>Configurazione Turni</strong> (passo ①).</p>
+          <p className="text-sm text-stone-600">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>. Impostala prima in <strong>Configurazione Turni</strong> (passo ②).</p>
         </div>
       </div>
     )
@@ -582,7 +583,7 @@ export function GestioneTurniPage() {
       <div className="max-w-5xl mx-auto p-6">{Header}
         <div className="card p-5 flex items-start gap-3 mt-4"><AlertCircle className="shrink-0 mt-0.5" style={{ color: '#b45309' }} size={18} />
           <div>
-            <p className="text-sm text-stone-600 mb-2">Per <strong>{MESI[mese - 1]} {anno}</strong> manca l'<strong>impaginazione</strong>: prima di comporre i turni devi dividere i turni in fogli (passo ③).</p>
+            <p className="text-sm text-stone-600 mb-2">Per <strong>{MESI[mese - 1]} {anno}</strong> manca l'<strong>impaginazione</strong>: prima di comporre i turni devi dividere i turni in fogli (passo ④).</p>
             <button onClick={() => navigate('/admin/impaginazione')} className="btn-primary text-sm py-1.5 px-3 inline-flex items-center gap-1.5"><LayoutGrid size={14} /> Vai a Impaginazione</button>
           </div>
         </div>
@@ -836,7 +837,7 @@ export function GestioneTurniPage() {
           )}
         </aside>
 
-        {/* Una griglia per foglio (passo ③ Impaginazione) */}
+        {/* Una griglia per foglio (passo ④ Impaginazione) */}
         <div className="flex-1 min-w-0 space-y-4">
           {righePerFoglio.map(({ foglio, righe: righeF }) => (
           <div key={foglio.id} className="card overflow-auto">

@@ -9,8 +9,8 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 
-// Pagine numerate (1-5): in fondo mostrano "Cancella/Ripristina impostazioni mese"
-const ROTTE_NUMERATE = new Set(['/admin/schema', '/admin/regole', '/admin/impaginazione', '/admin/desiderata', '/admin/turni'])
+// Pagine numerate (1-6): in fondo mostrano "Cancella/Ripristina impostazioni mese"
+const ROTTE_NUMERATE = new Set(['/admin/turnisti', '/admin/schema', '/admin/regole', '/admin/impaginazione', '/admin/desiderata', '/admin/turni'])
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
@@ -18,12 +18,12 @@ const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); 
 const links: { to: string; label: string; Icon: typeof Home; num: number | null; adminOnly?: boolean }[] = [
   { to: '/admin/postazioni', label: 'Centro di Controllo',          Icon: SlidersHorizontal, num: null, adminOnly: true },
   { to: '/admin',            label: 'Home',                         Icon: Home,          num: null },
-  { to: '/admin/turnisti',   label: 'Personale',                    Icon: Users,         num: null },
-  { to: '/admin/schema',        label: 'Configurazione Turni',         Icon: CalendarClock, num: 1 },
-  { to: '/admin/regole',        label: 'Regole Turni',                 Icon: ListChecks,    num: 2 },
-  { to: '/admin/impaginazione', label: 'Impaginazione',                Icon: LayoutGrid,    num: 3 },
-  { to: '/admin/desiderata',    label: 'Desiderata - Indisponibilità', Icon: CalendarHeart, num: 4 },
-  { to: '/admin/turni',         label: 'Turni del Mese',               Icon: CalendarDays,  num: 5 },
+  { to: '/admin/turnisti',   label: 'Personale',                    Icon: Users,         num: 1 },
+  { to: '/admin/schema',        label: 'Configurazione Turni',         Icon: CalendarClock, num: 2 },
+  { to: '/admin/regole',        label: 'Regole Turni',                 Icon: ListChecks,    num: 3 },
+  { to: '/admin/impaginazione', label: 'Impaginazione',                Icon: LayoutGrid,    num: 4 },
+  { to: '/admin/desiderata',    label: 'Desiderata - Indisponibilità', Icon: CalendarHeart, num: 5 },
+  { to: '/admin/turni',         label: 'Turni del Mese',               Icon: CalendarDays,  num: 6 },
 ]
 
 const LS_COLLAPSED = 'gm_admin_collapsed'
