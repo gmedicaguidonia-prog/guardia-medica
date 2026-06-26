@@ -201,7 +201,9 @@ export function DesiderataPage() {
   const domaniStr = (() => { const d = new Date(oggi); d.setDate(d.getDate() + 1); return isoDate(d) })()
   const isPast = meseKey < meseCorrenteKey
   const attiva = !!finestra
-  const chiusa = attiva && (isPast || (!!finestra?.aperta_a && finestra.aperta_a < oggiStr))
+  // chiusa: se c'è una data di chiusura vale QUELLA (così una riapertura con aperta_a futura
+  // "scongela" anche un mese passato — riapertura eccezionale/debug); altrimenti vale il mese passato
+  const chiusa = attiva && (finestra?.aperta_a ? finestra.aperta_a < oggiStr : isPast)
   const readonly = chiusa   // raccolta chiusa → griglia statica (sola lettura)
   const aperta = attiva && !chiusa && !!finestra?.aperta_da && !!finestra?.aperta_a && finestra.aperta_da <= oggiStr && oggiStr <= finestra.aperta_a
   const programmata = attiva && !chiusa && !aperta && !!finestra?.aperta_da && oggiStr < finestra.aperta_da
@@ -234,7 +236,7 @@ export function DesiderataPage() {
     })
     if (!ok) return
     try {
-      await store.setDesiderataFinestra(postazioneId!, meseKey, finestra.aperta_da, domaniStr)
+      await store.setDesiderataFinestra(postazioneId!, meseKey, finestra.aperta_da ?? oggiStr, domaniStr)
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} RIAPERTA fino al ${itDate(domaniStr)}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
     } catch (e) { console.error('[Desiderata] riapertura fallita:', e); void notify({ title: 'Errore', message: 'Errore nella riapertura della raccolta.' }) }
@@ -401,7 +403,7 @@ export function DesiderataPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <CalendarRange size={18} style={{ color: '#476540' }} />
           <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Pubblica calendario desiderata - Indisponibilità</span>
-          {chiusa && !isPast ? (
+          {chiusa ? (
             <button onClick={riapriRaccolta} title="Clicca per riaprire la raccolta (chiusura a domani)" className="text-[11px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition-transform hover:scale-105" style={{ background: stato.bg, color: stato.fg, border: `1px solid ${stato.br}`, cursor: 'pointer' }}>{stato.label} <RotateCcw size={11} /> riapri</button>
           ) : (
             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: stato.bg, color: stato.fg, border: `1px solid ${stato.br}` }}>{stato.label}</span>
@@ -409,7 +411,7 @@ export function DesiderataPage() {
         </div>
         {chiusa ? (
           <p className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
-            <Lock size={13} /> Raccolta chiusa{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''}. {isPast ? 'Mese concluso: non riapribile.' : 'Puoi riaprirla dal badge «Chiusa» qui sopra.'} La griglia è in sola lettura.
+            <Lock size={13} /> Raccolta chiusa{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''}. Puoi riaprirla dal badge «Chiusa» qui sopra (anche per un mese passato, come eccezione). La griglia è in sola lettura.
             {finestra?.aperta_da && finestra?.aperta_a && <span className="text-stone-400">· periodo {itDate(finestra.aperta_da)} → {itDate(finestra.aperta_a)}</span>}
           </p>
         ) : (
