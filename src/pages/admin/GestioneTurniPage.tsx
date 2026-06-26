@@ -615,7 +615,7 @@ export function GestioneTurniPage() {
     </span>
   )
   const dropStyle = (key: string): CSSProperties => {
-    const base: CSSProperties = { ...tdBase, minWidth: 150 }
+    const base: CSSProperties = { ...tdBase, width: 1, minWidth: 170 }
     if (overKey === key) return { ...base, border: '2px dashed #2e7d32', background: '#dcf5dc', boxShadow: 'inset 0 0 0 2px rgba(46,125,50,0.35)' }
     // durante il trascinamento: rosso dove il turnista è indisponibile, verde dove
     // è disponibile o non ha detto nulla (vale sia per i turni che per il reperibile)
@@ -835,17 +835,17 @@ export function GestioneTurniPage() {
         {/* Una griglia per foglio (passo ③ Impaginazione) */}
         <div className="flex-1 min-w-0 space-y-4">
           {righePerFoglio.map(({ foglio, righe: righeF }) => (
-          <div key={foglio.id} className="card overflow-auto">
+          <div key={foglio.id} className="card overflow-auto w-fit max-w-full">
             <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
               <LayoutGrid size={14} style={{ color: '#476540' }} />
               <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
             </div>
-          <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, left: 0, zIndex: 3, width: 1, whiteSpace: 'nowrap' }}>Turno</th>
-                <th style={thStyle}>Turnisti</th>
-                {showRep && <th style={thStyle}>Reperibile</th>}
+                <th style={{ ...thStyle, width: 1 }}>Turnisti</th>
+                {showRep && <th style={{ ...thStyle, width: 1 }}>Reperibile</th>}
               </tr>
             </thead>
             <tbody>
