@@ -198,6 +198,7 @@ export function DesiderataPage() {
   // ── stato della raccolta per il mese selezionato ──
   const meseCorrenteKey = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}`
   const oggiStr = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
+  const domaniStr = (() => { const d = new Date(oggi); d.setDate(d.getDate() + 1); return isoDate(d) })()
   const isPast = meseKey < meseCorrenteKey
   const attiva = !!finestra
   const chiusa = attiva && (isPast || (!!finestra?.aperta_a && finestra.aperta_a < oggiStr))
@@ -221,6 +222,22 @@ export function DesiderataPage() {
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
       await qc.invalidateQueries({ queryKey: ['attivazioni', postazioneId, meseKey] })
     } catch (e) { console.error(e); void notify({ title: 'Errore', message: 'Errore nell\'attivazione della raccolta.' }) }
+  }
+  // Riapri una raccolta CHIUSA (clic sul badge "Chiusa"): nuova chiusura = domani
+  async function riapriRaccolta() {
+    if (!finestra) return
+    const ok = await confirm({
+      title: 'Riaprire la raccolta?',
+      message: `La raccolta desiderata di ${MESI[mese - 1]} ${anno} è chiusa. Riaprirla può creare incongruenze: i turnisti potrebbero modificare disponibilità/indisponibilità già chiuse (magari su turni su cui hai già lavorato). Se confermi, la nuova data di chiusura sarà ${itDate(domaniStr)} (domani). Vuoi riaprirla?`,
+      confirmLabel: 'Sì, riapri fino a domani',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      await store.setDesiderataFinestra(postazioneId!, meseKey, finestra.aperta_da, domaniStr)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} RIAPERTA fino al ${itDate(domaniStr)}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
+      await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
+    } catch (e) { console.error('[Desiderata] riapertura fallita:', e); void notify({ title: 'Errore', message: 'Errore nella riapertura della raccolta.' }) }
   }
 
   const Header = (
@@ -384,11 +401,15 @@ export function DesiderataPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <CalendarRange size={18} style={{ color: '#476540' }} />
           <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Pubblica calendario desiderata - Indisponibilità</span>
-          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: stato.bg, color: stato.fg, border: `1px solid ${stato.br}` }}>{stato.label}</span>
+          {chiusa && !isPast ? (
+            <button onClick={riapriRaccolta} title="Clicca per riaprire la raccolta (chiusura a domani)" className="text-[11px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition-transform hover:scale-105" style={{ background: stato.bg, color: stato.fg, border: `1px solid ${stato.br}`, cursor: 'pointer' }}>{stato.label} <RotateCcw size={11} /> riapri</button>
+          ) : (
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: stato.bg, color: stato.fg, border: `1px solid ${stato.br}` }}>{stato.label}</span>
+          )}
         </div>
         {chiusa ? (
           <p className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
-            <Lock size={13} /> Raccolta chiusa{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''} — non più riapribile. La griglia è in sola lettura.
+            <Lock size={13} /> Raccolta chiusa{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''}. {isPast ? 'Mese concluso: non riapribile.' : 'Puoi riaprirla dal badge «Chiusa» qui sopra.'} La griglia è in sola lettura.
             {finestra?.aperta_da && finestra?.aperta_a && <span className="text-stone-400">· periodo {itDate(finestra.aperta_da)} → {itDate(finestra.aperta_a)}</span>}
           </p>
         ) : (
