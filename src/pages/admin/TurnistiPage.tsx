@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, useRef, useEffect } from 'react'
+import { Fragment, useMemo, useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Save, X, Users, Shield, User, UserCog, Crown, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy, RotateCcw, AlertTriangle } from 'lucide-react'
 import { store } from '../../lib/store'
@@ -34,7 +34,7 @@ export function TurnistiPage() {
   const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
 
   const { data: turnisti = [], isLoading } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
-  const { data: personale = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: personale = [], dataUpdatedAt } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId, refetchOnWindowFocus: false })
   const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
   const confermato = attivazioni.includes(0)
   const { data: meseSorgente } = useQuery<string | null>({ queryKey: ['ultimo-mese-personale', postazioneId, meseKey], queryFn: () => store.ultimoMesePersonale(postazioneId!, meseKey), enabled: !!postazioneId })
@@ -44,11 +44,14 @@ export function TurnistiPage() {
 
   // ── personale del mese STAGED (niente autosave: si salva con "Conferma") ──
   const serverMap = useMemo(() => new Map<string, Livello>(personale.map(p => [p.turnista_id, p.livello])), [personale])
-  const [staged, setStaged] = useState<Map<string, Livello>>(new Map())
+  const [staged, setStaged] = useState<Map<string, Livello>>(() => new Map())
   const [iniziato, setIniziato] = useState(false)
-  const editing = useRef(false)
-  useEffect(() => { if (!editing.current) setStaged(new Map(serverMap)) }, [serverMap])
-  useEffect(() => { editing.current = false; setIniziato(false); setStaged(new Map(serverMap)) }, [meseKey])   // eslint-disable-line react-hooks/exhaustive-deps
+  // La bozza si riallinea al server SOLO quando la query (ri)carica i dati del mese:
+  // primo caricamento, cambio mese, salvataggio o CANCELLAZIONE del mese (invalidate →
+  // refetch → dataUpdatedAt cambia). Durante l'editing locale non c'è refetch
+  // (refetchOnWindowFocus off), quindi la bozza in sospeso viene preservata.
+  useEffect(() => { setStaged(new Map(personale.map(p => [p.turnista_id, p.livello]))) }, [dataUpdatedAt])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setIniziato(false) }, [meseKey])
   const dirty = useMemo(() => {
     if (staged.size !== serverMap.size) return true
     for (const [k, v] of staged) if (serverMap.get(k) !== v) return true
@@ -68,17 +71,16 @@ export function TurnistiPage() {
   function cambiaMese(delta: number) { let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ } setMeseAnno(a, m) }
 
   // ── operazioni STAGED sul personale del mese (in memoria) ──
-  function aggiungiAlMese(t: Turnista) { editing.current = true; setStaged(prev => new Map(prev).set(t.id, t.livello)) }
-  function cambiaRuoloMese(id: string, livello: Livello) { editing.current = true; setStaged(prev => new Map(prev).set(id, livello)) }
-  function togliDalMese(id: string) { editing.current = true; setStaged(prev => { const n = new Map(prev); n.delete(id); return n }) }
+  function aggiungiAlMese(t: Turnista) { setStaged(prev => new Map(prev).set(t.id, t.livello)) }
+  function cambiaRuoloMese(id: string, livello: Livello) { setStaged(prev => new Map(prev).set(id, livello)) }
+  function togliDalMese(id: string) { setStaged(prev => { const n = new Map(prev); n.delete(id); return n }) }
   async function copiaPersonale() {
     if (!meseSorgente) return
     const src = await store.getPersonaleMese(postazioneId!, meseSorgente)
     const anagr = new Set(turnisti.map(t => t.id))
-    editing.current = true
     setStaged(prev => { const n = new Map(prev); for (const p of src) if (anagr.has(p.turnista_id)) n.set(p.turnista_id, p.livello); return n })
   }
-  function annulla() { editing.current = false; setStaged(new Map(serverMap)) }
+  function annulla() { setStaged(new Map(serverMap)) }
 
   const [salvando, setSalvando] = useState(false)
   async function confermaPersonale() {
@@ -89,7 +91,6 @@ export function TurnistiPage() {
       for (const id of serverMap.keys()) if (!staged.has(id)) await store.removeTurnistaMese(meseKey, id)
       if (nuovaProcedura) await store.attivaPasso(postazioneId!, meseKey, 0)
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Personale di ${MESI[mese - 1]} ${anno} ${nuovaProcedura ? 'confermato' : 'salvato'} (${staged.size} person${staged.size === 1 ? 'a' : 'e'}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
-      editing.current = false
       await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
       await qc.invalidateQueries({ queryKey: ['attivazioni', postazioneId, meseKey] })
     } catch (e) { console.error('[Personale] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio del personale.' }) }
