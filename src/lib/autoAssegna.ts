@@ -221,6 +221,17 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
   }
   // punteggio: più basso = più "indietro" = ha la precedenza
   const score = (tid: string, weekend: boolean) => weekend ? wknd.get(tid)! * 100000 + ore.get(tid)! : ore.get(tid)!
+  // adiacenza temporale: il turnista ha già un turno ATTACCATO a questo (fine→inizio o inizio→fine)?
+  const adiacente = (tid: string, slot: Slot): boolean => {
+    const [s, e] = intervallo(slot.ds, slot.t)
+    for (const [s2, e2] of busy.get(tid)!) if (e2 === s || s2 === e) return true
+    return false
+  }
+  // favorisce i BLOCCHI consecutivi (giorno+notte, notte+giorno): l'adiacenza "vale" ~un turno di
+  // vantaggio, senza stravolgere l'equità (chi è molto più indietro vince comunque). Il limite ore
+  // consecutive resta garantito a monte dal filtro candidati (se impostato).
+  const ADJ_BONUS = 11
+  const scoreAdj = (tid: string, slot: Slot) => score(tid, slot.weekend) - (adiacente(tid, slot) ? ADJ_BONUS : 0)
 
   const riempi = (soloVuoi: boolean) => {
     for (;;) {
@@ -233,7 +244,7 @@ export function autoAssegna(inp: AutoAssegnaInput): AutoAssegnaResult {
       }
       if (!best) break
       const sel = best
-      const tid = sel.cand.reduce((a, b) => (score(b, sel.slot.weekend) < score(a, sel.slot.weekend) ? b : a))
+      const tid = sel.cand.reduce((a, b) => (scoreAdj(b, sel.slot) < scoreAdj(a, sel.slot) ? b : a))
       poni(tid, sel.slot)
     }
   }
