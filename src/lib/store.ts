@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno } from '../types'
+import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -390,8 +390,20 @@ const supaStore = {
     if (error) throw error
     return (data ?? []).map(r => r.turnista_id as string)
   },
-  async addTurnistaMese(postazioneId: string, mese: string, turnistaId: string): Promise<void> {
-    const { error } = await supabase.from('turnisti_mese').upsert({ mese, turnista_id: turnistaId, postazione_id: postazioneId }, { onConflict: 'mese,turnista_id' })
+  async addTurnistaMese(postazioneId: string, mese: string, turnistaId: string, livello?: Livello): Promise<void> {
+    const row: Record<string, unknown> = { mese, turnista_id: turnistaId, postazione_id: postazioneId }
+    if (livello) row.livello = livello
+    const { error } = await supabase.from('turnisti_mese').upsert(row, { onConflict: 'mese,turnista_id' })
+    if (error) throw error
+  },
+  // personale "del mese" con ruolo congelato (per-mese)
+  async getPersonaleMese(postazioneId: string, mese: string): Promise<TurnistaMese[]> {
+    const { data, error } = await supabase.from('turnisti_mese').select('turnista_id, livello').eq('postazione_id', postazioneId).eq('mese', mese)
+    if (error) throw error
+    return (data ?? []).map(r => ({ turnista_id: r.turnista_id as string, livello: ((r.livello as string) ?? 'turnista') as Livello }))
+  },
+  async setLivelloMese(_postazioneId: string, mese: string, turnistaId: string, livello: Livello): Promise<void> {
+    const { error } = await supabase.from('turnisti_mese').update({ livello }).match({ mese, turnista_id: turnistaId })
     if (error) throw error
   },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
@@ -998,9 +1010,19 @@ const localStore = {
   async getTurnistiMese(postazioneId: string, mese: string): Promise<string[]> {
     return read<{ mese: string; turnista_id: string; postazione_id?: string }[]>(LS_TURNISTI_MESE, []).filter(x => x.mese === mese && (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId).map(x => x.turnista_id)
   },
-  async addTurnistaMese(postazioneId: string, mese: string, turnistaId: string): Promise<void> {
-    const l = read<{ mese: string; turnista_id: string; postazione_id?: string }[]>(LS_TURNISTI_MESE, [])
-    if (!l.some(x => x.mese === mese && x.turnista_id === turnistaId)) { l.push({ mese, turnista_id: turnistaId, postazione_id: postazioneId }); writeLs(LS_TURNISTI_MESE, l) }
+  async addTurnistaMese(postazioneId: string, mese: string, turnistaId: string, livello?: Livello): Promise<void> {
+    const l = read<{ mese: string; turnista_id: string; postazione_id?: string; livello?: Livello }[]>(LS_TURNISTI_MESE, [])
+    const ex = l.find(x => x.mese === mese && x.turnista_id === turnistaId)
+    if (ex) { if (livello) ex.livello = livello } else l.push({ mese, turnista_id: turnistaId, postazione_id: postazioneId, livello })
+    writeLs(LS_TURNISTI_MESE, l)
+  },
+  async getPersonaleMese(postazioneId: string, mese: string): Promise<TurnistaMese[]> {
+    return read<{ mese: string; turnista_id: string; postazione_id?: string; livello?: Livello }[]>(LS_TURNISTI_MESE, [])
+      .filter(x => x.mese === mese && (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
+      .map(x => ({ turnista_id: x.turnista_id, livello: (x.livello ?? 'turnista') as Livello }))
+  },
+  async setLivelloMese(_postazioneId: string, mese: string, turnistaId: string, livello: Livello): Promise<void> {
+    writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string; postazione_id?: string; livello?: Livello }[]>(LS_TURNISTI_MESE, []).map(x => x.mese === mese && x.turnista_id === turnistaId ? { ...x, livello } : x))
   },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.mese === mese && x.turnista_id === turnistaId)))

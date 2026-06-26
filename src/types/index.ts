@@ -60,6 +60,13 @@ export interface Turnista {
 export const LIVELLI_PERSONALE = LIVELLI.filter(l => l.value !== 'admin')
 
 /** Una postazione a cui l'utente appartiene (per la pagina pubblica). */
+// Personale "del mese": chi è in servizio in un dato mese e con quale ruolo (congelato per quel mese).
+// Indipendente dal ruolo globale in `turnisti`: i mesi passati restano fotografati.
+export interface TurnistaMese {
+  turnista_id: string
+  livello: Livello
+}
+
 export interface MiaPostazione {
   postazioneId: string
   nome: string
