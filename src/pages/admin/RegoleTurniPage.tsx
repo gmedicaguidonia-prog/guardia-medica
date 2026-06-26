@@ -507,7 +507,8 @@ export function RegoleTurniPage() {
           )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista.</span></div>}
         </aside>
 
-        <div className="flex-1 min-w-0 overflow-auto card">
+        <div className="flex-1 min-w-0 space-y-3">
+          <div className="overflow-auto card">
           <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
               <tr>
@@ -559,11 +560,10 @@ export function RegoleTurniPage() {
               ))}
             </tbody>
           </table>
-        </div>
-      </div>
+          </div>
 
-      {/* Regole speciali per turnista (trascina un nome dalla palette qui dentro) */}
-      <div data-speciali="1"
+          {/* Regole speciali per turnista — sotto la griglia, a destra dell'elenco turnisti */}
+          <div data-speciali="1"
         onDragOver={e => { e.preventDefault(); setOverSpe(true) }}
         onDragLeave={() => setOverSpe(false)}
         onDrop={e => { e.preventDefault(); setOverSpe(false); const tid = dragSource.current; dragSource.current = null; setDraggingId(null); if (tid) aggiungiRegolaTurnista(tid) }}
@@ -610,6 +610,8 @@ export function RegoleTurniPage() {
             </div>
           )
         })}
+          </div>
+        </div>
       </div>
 
       {/* Impostazioni sull'orario */}
