@@ -253,6 +253,10 @@ export function RegoleTurniPage() {
       if (sorgente.ore_max_settimana != null) await store.setOreMaxSettimana(nuova.id, sorgente.ore_max_settimana)
       if (sorgente.ore_max_consecutive != null) await store.setOreMaxConsecutive(nuova.id, sorgente.ore_max_consecutive)
       await store.setCambioAuto(nuova.id, sorgente.cambio_auto ?? true)
+      // regole speciali per turnista: si copiano per turnista_id (stabile tra i mesi), solo per chi è ancora nel personale
+      const turnistiIds = new Set(turnisti.map(t => t.id))
+      const srcSpe = await store.getRegoleTurnista(sorgente.id)
+      for (const rs of srcSpe) if (turnistiIds.has(rs.turnista_id)) await store.setRegolaTurnista(nuova.id, rs.turnista_id, rs.tipo, rs.valore)
     }
     await store.attivaPasso(postazioneId!, meseKey, 2)
     logRegoleAtt(`attivate (copiate da ${sorgente ? meseLabel(sorgente.valido_da) : 'periodo precedente'})`)
