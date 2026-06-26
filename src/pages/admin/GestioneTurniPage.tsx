@@ -617,7 +617,7 @@ export function GestioneTurniPage() {
   const dropStyle = (key: string, fill = false): CSSProperties => {
     // fill = ULTIMA colonna: si allarga fino a fine pagina (width auto), contenuto a sinistra.
     // Le altre colonne si adattano al contenuto (width 1) tenendo i turnisti su una riga.
-    const base: CSSProperties = { ...tdBase, width: fill ? 'auto' : 1, minWidth: 150, whiteSpace: 'nowrap', paddingRight: fill ? 10 : 22 }
+    const base: CSSProperties = { ...tdBase, width: fill ? 'auto' : 1, minWidth: 150, whiteSpace: 'nowrap', paddingRight: fill ? 10 : 44 }
     if (overKey === key) return { ...base, border: '2px dashed #2e7d32', background: '#dcf5dc', boxShadow: 'inset 0 0 0 2px rgba(46,125,50,0.35)' }
     // durante il trascinamento: rosso dove il turnista è indisponibile, verde dove
     // è disponibile o non ha detto nulla (vale sia per i turni che per il reperibile)
