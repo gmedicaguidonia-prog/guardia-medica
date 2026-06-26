@@ -110,6 +110,13 @@ export function RegoleTurniPage() {
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti), [turnisti])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
+  // ordine dei turnisti come nella palette di sinistra (ruolo + alfabetico): per ordinare le regole speciali
+  const ordineTid = useMemo(() => { const m = new Map<string, number>(); let i = 0; paletteGruppi.forEach(g => g.items.forEach(t => m.set(t.id, i++))); return m }, [paletteGruppi])
+  const speOrdinate = useMemo(() => [...speLocal].sort((a, b) => {
+    const oa = ordineTid.get(a.turnista_id) ?? 1e9, ob = ordineTid.get(b.turnista_id) ?? 1e9
+    if (oa !== ob) return oa - ob
+    return TIPI_REGOLA_TURNISTA.findIndex(t => t.value === a.tipo) - TIPI_REGOLA_TURNISTA.findIndex(t => t.value === b.tipo)
+  }), [speLocal, ordineTid])
   const coloreTurnista = (id: string) => ROLE_COLOR[tById.get(id)?.livello ?? 'turnista']
 
   // drag&drop
@@ -578,7 +585,7 @@ export function RegoleTurniPage() {
           <p className="text-xs text-stone-400 italic">Nessuna regola speciale. Verranno rispettate dall'Auto Assegnazione e segnalate (con possibilità di forzare) nell'assegnazione manuale.</p>
         )}
 
-        {speLocal.map(r => {
+        {speOrdinate.map(r => {
           const col = coloreTurnista(r.turnista_id)
           return (
             <div key={`${r.turnista_id}|${r.tipo}`} className="flex items-center gap-2 flex-wrap rounded-lg px-2 py-1.5" style={{ background: '#f7f8f4' }}>
