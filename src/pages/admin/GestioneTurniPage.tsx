@@ -98,6 +98,8 @@ export function GestioneTurniPage() {
   const [showImport, setShowImport] = useState(false)
   const [showStatoModal, setShowStatoModal] = useState(false)
   const [statoScelto, setStatoScelto] = useState<StatoCalendario>('non_pubblicato')
+  const [anomaliaDes, setAnomaliaDes] = useState(false)   // modal "raccolta desiderata ancora aperta"
+  const anomaliaRef = useRef<((v: 'chiudi' | 'lascia' | null) => void) | null>(null)
   const [savingStato, setSavingStato] = useState(false)
   // Ripristino versioni del calendario
   const [showRestore, setShowRestore] = useState(false)
@@ -183,6 +185,10 @@ export function GestioneTurniPage() {
   const desVuote = !desNonPub && desiderataMese.length === 0
   const desiderataWarn = desNonPub || desVuote
   const desiderataMsg = desNonPub ? 'Desiderata non pubblicate' : 'Nessuna desiderata inserita'
+  // anomalia logica: pubblicare il calendario mentre la raccolta desiderata è ancora aperta
+  const oggiStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
+  const ieriStr = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return isoDate(d) })()
+  const desAncoraAperta = !!finestraDes && (!finestraDes.aperta_a || finestraDes.aperta_a >= oggiStr)
 
   // ── drag&drop ──
   const dragSource = useRef<string | null>(null)
@@ -396,13 +402,31 @@ export function GestioneTurniPage() {
   }
 
   function apriStatoModal() { setStatoScelto(statoCal); setShowStatoModal(true) }
+  // modal a 3 scelte per l'anomalia "raccolta desiderata ancora aperta"
+  function chiediAnomaliaDes(): Promise<'chiudi' | 'lascia' | null> {
+    return new Promise(res => { anomaliaRef.current = res; setAnomaliaDes(true) })
+  }
+  function risolviAnomalia(v: 'chiudi' | 'lascia' | null) { setAnomaliaDes(false); anomaliaRef.current?.(v); anomaliaRef.current = null }
+
   async function salvaStato() {
     if (statoScelto !== 'non_pubblicato' && importati.size === 0) {
       void notify({ title: 'Importa prima i turnisti', message: `Per pubblicare o mettere in pianificazione il calendario di ${MESI[mese - 1]} ${anno} devi prima importare i turnisti del mese (pagina Desiderata o «Importa i turnisti»).` })
       return
     }
+    // anomalia: si pubblica il calendario ma la raccolta desiderata è ancora aperta
+    let chiudiDes = false
+    if (statoScelto !== 'non_pubblicato' && desAncoraAperta) {
+      const scelta = await chiediAnomaliaDes()
+      if (scelta === null) return
+      chiudiDes = scelta === 'chiudi'
+    }
     setSavingStato(true)
     try {
+      if (chiudiDes) {
+        await store.setDesiderataFinestra(postazioneId!, meseKey, finestraDes?.aperta_da ?? null, ieriStr)
+        store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} chiusa contestualmente alla pubblicazione del calendario.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
+        await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
+      }
       await store.setStatoCalendario(postazioneId!, meseKey, statoScelto)
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey,
         tipo: statoScelto === 'pianificazione' ? 'calendario_pianificazione' : statoScelto === 'non_pubblicato' ? 'calendario_nascosto' : 'calendario_pubblicato',
@@ -503,6 +527,25 @@ export function GestioneTurniPage() {
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowStatoModal(false)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
               <button onClick={salvaStato} disabled={savingStato} className="btn-primary text-sm py-1.5 px-4">{savingStato ? 'Salvo…' : 'Salva'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Anomalia: si pubblica il calendario ma la raccolta desiderata è ancora aperta */}
+      {anomaliaDes && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.55)' }} onClick={() => risolviAnomalia(null)}>
+          <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle size={20} style={{ color: '#b45309' }} />
+              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Raccolta desiderata ancora aperta</h3>
+            </div>
+            <p className="text-sm text-stone-600 mb-2">Stai per pubblicare il calendario di <strong>{MESI[mese - 1]} {anno}</strong>, ma la <strong>raccolta desiderata è ancora attiva</strong>{finestraDes?.aperta_a ? <> (fino al {itDate(finestraDes.aperta_a)})</> : null}. Non ha senso tenerla aperta mentre il calendario — anche parziale — è pubblicato: i turnisti potrebbero continuare a inserire desiderata su turni già assegnati.</p>
+            <p className="text-xs text-stone-500 mb-4">Come vuoi procedere?</p>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => risolviAnomalia('chiudi')} className="w-full text-sm font-semibold py-2 px-3 rounded-lg" style={{ background: '#2e7d32', color: '#fff' }}>Pubblica e chiudi la raccolta desiderata <span className="font-normal" style={{ opacity: 0.9 }}>(consigliato)</span></button>
+              <button onClick={() => risolviAnomalia('lascia')} className="w-full btn-secondary text-sm py-2 px-3">Pubblica lasciando aperta la raccolta</button>
+              <button onClick={() => risolviAnomalia(null)} className="w-full text-xs text-stone-500 py-1 hover:text-stone-700">Annulla</button>
             </div>
           </div>
         </div>
