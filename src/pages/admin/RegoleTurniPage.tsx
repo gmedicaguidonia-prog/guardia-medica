@@ -128,6 +128,7 @@ export function RegoleTurniPage() {
   useDragAutoScroll(!!draggingId)   // scroll automatico della pagina durante il trascinamento
   const [picker, setPicker] = useState<{ giorno: number; turno: TurnoSchema; x: number; y: number } | null>(null)
   const [warn, setWarn] = useState<string | null>(null)
+  const [avvisoEsterno, setAvvisoEsterno] = useState<string | null>(null)   // toast persistente "hai messo un esterno"
   const warnTimer = useRef<number | null>(null)
   function showWarn(msg: string) { setWarn(msg); if (warnTimer.current) clearTimeout(warnTimer.current); warnTimer.current = window.setTimeout(() => setWarn(null), 3500) }
   useEffect(() => () => { if (warnTimer.current) clearTimeout(warnTimer.current) }, [])
@@ -180,6 +181,7 @@ export function RegoleTurniPage() {
       set(`${giorno}|${turno.id}|${vietatoQui.slot}`, null)   // forzatura: tolgo il divieto
     }
     set(`${giorno}|${turno.id}|${free}`, tid)
+    if (tById.get(tid)?.livello === 'esterno') setAvvisoEsterno(nomeTurnista(tid))   // avviso non bloccante
   }
   // insieme dei "mai" attuali (per evidenziare le celle durante il trascinamento)
   const vietatoLocal = useMemo(() => {
@@ -686,6 +688,18 @@ export function RegoleTurniPage() {
             )) : <p className="text-xs text-stone-400 px-1.5 py-1">Nessun turnista.</p>}
           </div>
         </>
+      )}
+
+      {avvisoEsterno && (
+        <div className="fixed left-1/2 -translate-x-1/2 z-[60] px-4 w-full flex justify-center" style={{ top: 12 }} role="alert">
+          <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl shadow-2xl" style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderLeft: '5px solid #d97706', color: '#78350f', maxWidth: 580, animation: 'fadeSlideIn 180ms ease-out' }}>
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: '#b45309' }} />
+            <div className="flex-1">
+              <p className="text-sm font-medium leading-snug"><strong>{avvisoEsterno}</strong> è un <strong>esterno</strong>: l'Auto Assegnazione lo metterà <strong>solo su questo turno fisso</strong> (le Regole sono sempre rispettate), dando comunque priorità ai turnisti. Ogni altro suo turno va gestito a mano, come per tutti gli esterni.</p>
+              <button onClick={() => setAvvisoEsterno(null)} className="mt-2 text-xs font-bold px-3 py-1.5 rounded-lg" style={{ background: '#d97706', color: '#fff' }}>OK, ho letto</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {warn && (

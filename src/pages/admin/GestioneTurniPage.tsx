@@ -337,9 +337,11 @@ export function GestioneTurniPage() {
   function eseguiAuto(aggiungi: boolean) {
     const poolIds = turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno').map(t => t.id)
     if (!poolIds.length) { showWarn('Nessun turnista importato per questo mese: importa prima il personale.'); return }
+    // gli ESTERNI restano fuori dal pool/riempimento, ma i loro turni FISSI (Regole) vanno onorati
+    const extraFissi = turnisti.filter(t => importati.has(t.id) && t.livello === 'esterno').map(t => t.id)
     // "aggiungi": mantieni i turnisti già inseriti (slot ≥ 0); "sostituisci": riparti da zero
     const esistenti = aggiungi ? new Map([...local].filter(([k]) => +k.split('|')[2] >= 0)) : undefined
-    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, limitiTurnista, esistenti })
+    const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, limitiTurnista, extraFissi, esistenti })
     store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'auto_assegnazione', messaggio: `Auto Assegnazione ${aggiungi ? '(aggiunta)' : '(sostituzione)'} di ${MESI[mese - 1]} ${anno}: ${res.coperti} turni su ${res.totali}. Da salvare.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
     // base: in "aggiungi" mantengo tutto; in "sostituisci" tengo solo i reperibili
     const base = new Map<string, string>()
