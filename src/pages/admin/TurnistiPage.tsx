@@ -1,11 +1,12 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useMemo, useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Save, X, Users, Shield, User, UserCog, Crown, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy } from 'lucide-react'
+import { Plus, Trash2, Save, X, Users, Shield, User, UserCog, Crown, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy, RotateCcw, AlertTriangle } from 'lucide-react'
 import { store } from '../../lib/store'
 import { LIVELLI_PERSONALE, nomeCompleto, gruppiPerLivello } from '../../types'
 import { ATTIVAZIONE_DA } from '../../lib/constants'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+import { useUnsaved } from '../../contexts/UnsavedContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import type { Turnista, Livello, Utente, TurnistaMese } from '../../types'
@@ -27,6 +28,7 @@ function LivelloBadge({ livello }: { livello: Livello }) {
 export function TurnistiPage() {
   const qc = useQueryClient()
   const { confirm, notify, confirmState } = useConfirm()
+  const { setHasUnsaved } = useUnsaved()
   const { postazioneId, postazioneAttiva } = usePostazione()
   const { meseKey, mese, anno, setMeseAnno } = useMeseSelezionato()
   const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
@@ -36,53 +38,65 @@ export function TurnistiPage() {
   const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
   const confermato = attivazioni.includes(0)
   const { data: meseSorgente } = useQuery<string | null>({ queryKey: ['ultimo-mese-personale', postazioneId, meseKey], queryFn: () => store.ultimoMesePersonale(postazioneId!, meseKey), enabled: !!postazioneId })
-  const [iniziato, setIniziato] = useState(false)
   const meseLabel = (k: string) => { const [a, m] = k.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
+
+  const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
+
+  // ── personale del mese STAGED (niente autosave: si salva con "Conferma") ──
+  const serverMap = useMemo(() => new Map<string, Livello>(personale.map(p => [p.turnista_id, p.livello])), [personale])
+  const [staged, setStaged] = useState<Map<string, Livello>>(new Map())
+  const [iniziato, setIniziato] = useState(false)
+  const editing = useRef(false)
+  useEffect(() => { if (!editing.current) setStaged(new Map(serverMap)) }, [serverMap])
+  useEffect(() => { editing.current = false; setIniziato(false); setStaged(new Map(serverMap)) }, [meseKey])   // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = useMemo(() => {
+    if (staged.size !== serverMap.size) return true
+    for (const [k, v] of staged) if (serverMap.get(k) !== v) return true
+    return false
+  }, [staged, serverMap])
+  useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
+  useEffect(() => {
+    if (!dirty) return
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h)
+  }, [dirty])
+
+  const personaleTurnisti = useMemo(() => [...staged].map(([id, liv]) => { const t = tById.get(id); return t ? { ...t, livello: liv } : null }).filter((t): t is Turnista => !!t), [staged, tById])
+  const gruppiMese = useMemo(() => gruppiPerLivello(personaleTurnisti), [personaleTurnisti])
+  const nonNelMese = useMemo(() => gruppiPerLivello(turnisti.filter(t => !staged.has(t.id))), [turnisti, staged])
+
+  function cambiaMese(delta: number) { let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ } setMeseAnno(a, m) }
+
+  // ── operazioni STAGED sul personale del mese (in memoria) ──
+  function aggiungiAlMese(t: Turnista) { editing.current = true; setStaged(prev => new Map(prev).set(t.id, t.livello)) }
+  function cambiaRuoloMese(id: string, livello: Livello) { editing.current = true; setStaged(prev => new Map(prev).set(id, livello)) }
+  function togliDalMese(id: string) { editing.current = true; setStaged(prev => { const n = new Map(prev); n.delete(id); return n }) }
   async function copiaPersonale() {
     if (!meseSorgente) return
     const src = await store.getPersonaleMese(postazioneId!, meseSorgente)
     const anagr = new Set(turnisti.map(t => t.id))
-    for (const p of src) if (anagr.has(p.turnista_id)) await store.addTurnistaMese(postazioneId!, meseKey, p.turnista_id, p.livello)
-    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Personale di ${MESI[mese - 1]} ${anno} copiato da ${meseLabel(meseSorgente)}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
-    await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
+    editing.current = true
+    setStaged(prev => { const n = new Map(prev); for (const p of src) if (anagr.has(p.turnista_id)) n.set(p.turnista_id, p.livello); return n })
   }
+  function annulla() { editing.current = false; setStaged(new Map(serverMap)) }
 
-  const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
-  const livMese = useMemo(() => new Map(personale.map(p => [p.turnista_id, p.livello])), [personale])
-  // personale del mese come Turnista col livello DEL MESE → per raggruppare/colorare per ruolo-del-mese
-  const personaleTurnisti = useMemo(() => personale.map(p => { const t = tById.get(p.turnista_id); return t ? { ...t, livello: p.livello } : null }).filter((t): t is Turnista => !!t), [personale, tById])
-  const gruppiMese = useMemo(() => gruppiPerLivello(personaleTurnisti), [personaleTurnisti])
-  const nonNelMese = useMemo(() => gruppiPerLivello(turnisti.filter(t => !livMese.has(t.id))), [turnisti, livMese])
-
-  function cambiaMese(delta: number) { let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ } setMeseAnno(a, m) }
-
-  // ── Personale del mese ──
-  async function aggiungiAlMese(t: Turnista) {
-    await store.addTurnistaMese(postazioneId!, meseKey, t.id, t.livello)
-    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${nomeCompleto(t)} aggiunto al personale di ${MESI[mese - 1]} ${anno} (${t.livello}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
-    await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
-  }
-  async function cambiaRuoloMese(turnistaId: string, livello: Livello) {
-    await store.setLivelloMese(postazioneId!, meseKey, turnistaId, livello)
-    await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
-  }
-  async function togliDalMese(t: Turnista) {
-    if (!(await confirm({ title: 'Togli dal mese', message: `Togliere ${nomeCompleto(t)} dal personale di ${MESI[mese - 1]} ${anno}? Resta in anagrafica e negli altri mesi.`, confirmLabel: 'Togli', danger: true }))) return
-    await store.removeTurnistaMese(meseKey, t.id)
-    await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
-  }
-  const [salvandoConferma, setSalvandoConferma] = useState(false)
+  const [salvando, setSalvando] = useState(false)
   async function confermaPersonale() {
-    if (personale.length === 0) return
-    setSalvandoConferma(true)
+    if (staged.size === 0) return
+    setSalvando(true)
     try {
-      await store.attivaPasso(postazioneId!, meseKey, 0)
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Personale di ${MESI[mese - 1]} ${anno} confermato (${personale.length} person${personale.length === 1 ? 'a' : 'e'}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+      for (const [id, liv] of staged) { const srv = serverMap.get(id); if (srv === undefined) await store.addTurnistaMese(postazioneId!, meseKey, id, liv); else if (srv !== liv) await store.setLivelloMese(postazioneId!, meseKey, id, liv) }
+      for (const id of serverMap.keys()) if (!staged.has(id)) await store.removeTurnistaMese(meseKey, id)
+      if (nuovaProcedura) await store.attivaPasso(postazioneId!, meseKey, 0)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Personale di ${MESI[mese - 1]} ${anno} ${nuovaProcedura ? 'confermato' : 'salvato'} (${staged.size} person${staged.size === 1 ? 'a' : 'e'}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+      editing.current = false
+      await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
       await qc.invalidateQueries({ queryKey: ['attivazioni', postazioneId, meseKey] })
-    } finally { setSalvandoConferma(false) }
+    } catch (e) { console.error('[Personale] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio del personale.' }) }
+    finally { setSalvando(false) }
   }
 
-  // ── Anagrafica globale (aggiungere/togliere persone dal sistema) ──
+  // ── Anagrafica globale ──
   const [apriAnagrafica, setApriAnagrafica] = useState(false)
   const [nome, setNome] = useState(''); const [cognome, setCognome] = useState(''); const [email, setEmail] = useState('')
   const [utenteId, setUtenteId] = useState<string | null>(null)
@@ -129,7 +143,7 @@ export function TurnistiPage() {
       <Users size={22} style={{ color: '#476540' }} className="mt-1 shrink-0" />
       <div className="flex-1">
         <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Personale del mese{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
-        <p className="text-sm text-stone-600">Conferma chi è in servizio in <strong>{MESI[mese - 1]} {anno}</strong> e con quale ruolo. Ogni mese è indipendente: cambiare ruolo o togliere qualcuno non tocca i mesi passati.</p>
+        <p className="text-sm text-stone-600">Conferma chi è in servizio in <strong>{MESI[mese - 1]} {anno}</strong> e con quale ruolo. Ogni mese è indipendente: cambiare ruolo o togliere qualcuno non tocca i mesi passati. Ricordati di premere <strong>Conferma</strong>.</p>
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
@@ -139,20 +153,23 @@ export function TurnistiPage() {
     </div>
   )
 
+  const mostraGate = staged.size === 0 && !iniziato && !dirty
+  const mostraSalva = dirty || (nuovaProcedura && !confermato && staged.size > 0)
+
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-5">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       {Header}
       {errore && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errore}</div>}
 
-      {personale.length === 0 && !iniziato ? (
-        /* ── Gate iniziale: copia il personale dal mese precedente o parti da zero ── */
+      {mostraGate ? (
+        /* ── Gate iniziale: copia dal mese precedente o parti da zero ── */
         <div className="card p-8 text-center space-y-4">
           <Users size={32} className="mx-auto" style={{ color: '#9ab488' }} />
           <div>
             <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Personale di {MESI[mese - 1]} {anno}</h3>
             {meseSorgente
-              ? <p className="text-sm text-stone-600 mt-1">Puoi copiarlo dall'ultimo mese configurato (<strong>{meseLabel(meseSorgente)}</strong>) e poi modificarlo, oppure partire da zero.</p>
+              ? <p className="text-sm text-stone-600 mt-1">Puoi copiarlo dall'ultimo mese configurato (<strong>{meseLabel(meseSorgente)}</strong>) e poi modificarlo, oppure partire da zero. Dopo, premi <strong>Conferma</strong>.</p>
               : <p className="text-sm text-stone-600 mt-1">Non c'è un mese precedente da cui copiare: aggiungi le persone in servizio questo mese.</p>}
           </div>
           <div className="flex gap-2 justify-center flex-wrap">
@@ -161,18 +178,20 @@ export function TurnistiPage() {
           </div>
         </div>
       ) : (<>
-      {/* ── Personale di QUESTO mese ── */}
+      {/* ── Personale di QUESTO mese (staged) ── */}
       <div className="card p-4 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-sm font-bold" style={{ color: '#2b3c24' }}>In servizio a {MESI[mese - 1]} {anno}</h2>
-          <span className="text-xs text-stone-500">· {personale.length} person{personale.length === 1 ? 'a' : 'e'}</span>
-          {nuovaProcedura && (confermato
-            ? <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}><Check size={12} /> Personale confermato</span>
-            : <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}>Da confermare (passo ①)</span>)}
+          <span className="text-xs text-stone-500">· {staged.size} person{staged.size === 1 ? 'a' : 'e'}</span>
+          {dirty
+            ? <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={12} /> Modifiche non salvate</span>
+            : nuovaProcedura && (confermato
+              ? <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}><Check size={12} /> Personale confermato</span>
+              : <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}>Da confermare (passo ①)</span>)}
         </div>
 
-        {personale.length === 0 ? (
-          <p className="text-xs text-stone-400 italic">Nessuno in servizio questo mese. Aggiungi le persone dall’elenco qui sotto.</p>
+        {staged.size === 0 ? (
+          <p className="text-xs text-stone-400 italic">Nessuno in servizio questo mese. Aggiungi le persone dall’elenco qui sotto, poi premi Conferma.</p>
         ) : gruppiMese.map(g => (
           <div key={g.liv}>
             <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: BADGE[g.liv].fg }}>{g.label} · {g.items.length}</p>
@@ -180,24 +199,25 @@ export function TurnistiPage() {
               {g.items.map(t => (
                 <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: '#f7f8f4' }}>
                   <span className="text-sm font-medium flex-1 truncate" style={{ color: '#2b3c24' }}>{nomeCompleto(t)}</span>
-                  <select value={livMese.get(t.id) ?? 'turnista'} onChange={e => cambiaRuoloMese(t.id, e.target.value as Livello)} className="input text-xs py-1" style={{ width: 'auto' }} title="Ruolo per questo mese">
+                  <select value={staged.get(t.id) ?? 'turnista'} onChange={e => cambiaRuoloMese(t.id, e.target.value as Livello)} className="input text-xs py-1" style={{ width: 'auto' }} title="Ruolo per questo mese">
                     {LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
-                  <button onClick={() => togliDalMese(t)} title="Togli dal mese" className="p-1.5 rounded text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"><X size={14} /></button>
+                  <button onClick={() => togliDalMese(t.id)} title="Togli dal mese" className="p-1.5 rounded text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"><X size={14} /></button>
                 </div>
               ))}
             </div>
           </div>
         ))}
 
-        {nuovaProcedura && (
-          <div className="flex items-center gap-2 pt-1">
-            <button onClick={confermaPersonale} disabled={personale.length === 0 || salvandoConferma || confermato}
+        {(mostraSalva || dirty) && (
+          <div className="flex items-center gap-2 pt-1 flex-wrap">
+            <button onClick={confermaPersonale} disabled={staged.size === 0 || salvando}
               className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:cursor-default"
-              style={(personale.length > 0 && !confermato) ? { background: '#2e7d32', color: '#fff' } : { background: '#f3f4f6', color: '#9ca3af' }}>
-              <Check size={15} /> {confermato ? 'Personale confermato' : (salvandoConferma ? 'Confermo…' : 'Conferma personale del mese')}
+              style={(staged.size > 0 && !salvando) ? { background: '#2e7d32', color: '#fff' } : { background: '#f3f4f6', color: '#9ca3af' }}>
+              <Check size={15} /> {salvando ? 'Salvo…' : (nuovaProcedura ? 'Conferma personale del mese' : 'Salva personale')}
             </button>
-            <span className="text-[11px] text-stone-400">Necessario per procedere ai passi successivi.</span>
+            {dirty && <button onClick={annulla} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
+            {nuovaProcedura && <span className="text-[11px] text-stone-400">Necessario per procedere ai passi successivi.</span>}
           </div>
         )}
       </div>
@@ -222,7 +242,6 @@ export function TurnistiPage() {
             </div>
           ))}
       </div>
-
       </>)}
 
       {/* ── Gestione anagrafica (collassabile) ── */}
@@ -236,7 +255,6 @@ export function TurnistiPage() {
 
         {apriAnagrafica && (
           <div className="px-4 pb-4 space-y-3 border-t border-stone-100 pt-3">
-            {/* aggiungi nuova persona */}
             <div className="relative">
               <div className="grid sm:grid-cols-3 gap-3">
                 <div><label className="label text-xs flex items-center gap-1"><Search size={11} /> Nome *</label>
@@ -266,7 +284,6 @@ export function TurnistiPage() {
               <button onClick={aggiungiAnagrafica} disabled={saving} className="btn-primary text-sm ml-auto"><Plus size={15} /> Aggiungi in anagrafica</button>
             </div>
 
-            {/* elenco anagrafica */}
             <table className="w-full text-sm mt-1">
               <tbody className="divide-y divide-gray-100">
                 {gruppiPerLivello(turnisti).map(g => (
