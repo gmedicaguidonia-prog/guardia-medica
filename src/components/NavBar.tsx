@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw, MapPin, Crown, Package, PackageOpen } from 'lucide-react'
-import { puoGestire, nomeCompleto } from '../types'
+import { haAccessoAdmin, nomeCompleto } from '../types'
 import { usePostazione } from '../contexts/PostazioneContext'
 import { useDebug } from '../contexts/DebugContext'
 import { CentroMessaggi } from './CentroMessaggi'
@@ -31,7 +31,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   const { postazioni, postazioneId, setPostazioneId } = usePostazione()
   // Nella pagina pubblica "I miei turni" il selettore postazione è già nel corpo:
   // nasconderlo dalla navbar per non confondere.
-  const mostraSelettore = puoGestire(user.livello) && postazioni.length > 0 && loc.pathname !== '/turni'
+  const mostraSelettore = haAccessoAdmin(user) && postazioni.length > 0 && loc.pathname !== '/turni'
 
   // ── Debug: modalità Admin + Doppleganger (solo per l'admin reale) ──
   const { isRealAdmin, realUser, adminMode, doppleganger, setAdminMode, setDoppleganger } = useDebug()
@@ -41,7 +41,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   function attivaDoppleganger() {
     const u = utenti.find(x => x.id === dgScelto)
     if (!u) return
-    setDoppleganger({ id: u.id, email: u.email, livello: u.livello, nome: u.nome, cognome: u.cognome, postazioneId: u.postazioneId })
+    setDoppleganger({ id: u.id, email: u.email, livello: u.livello, nome: u.nome, cognome: u.cognome, postazioneId: u.postazioneId, isSupervisore: false, tuttePostazioni: false })
     setDebugModal(null)
   }
 
@@ -121,7 +121,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         {/* Link */}
         <div className="flex items-center gap-1 ml-1">
           {link('/turni', 'I miei turni', CalendarDays)}
-          {puoGestire(user.livello) && link('/admin', 'Admin', Settings)}
+          {haAccessoAdmin(user) && link('/admin', 'Admin', Settings)}
         </div>
 
         {/* Badge arancione "Aggiornamento disponibile" */}
@@ -163,9 +163,9 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         <div className="flex items-center gap-3 shrink-0">
           <span className="hidden lg:flex items-center gap-1.5 text-xs" style={{ color: '#9ab488' }}>
             {nomeCompleto(user) || user.email}
-            {!isRealAdmin && puoGestire(user.livello) && (
+            {!isRealAdmin && haAccessoAdmin(user) && (
               <span className="text-[10px] font-bold px-1 rounded" style={{ background: user.livello === 'admin' ? '#b91c1c' : '#a16207', color: '#fff' }}>
-                {user.livello === 'admin' ? 'ADMIN' : 'RESPONSABILE'}
+                {user.livello === 'admin' ? 'ADMIN' : 'SUPERVISORE'}
               </span>
             )}
           </span>

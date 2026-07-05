@@ -141,6 +141,8 @@ export function useAuth() {
              : livello === 'turnista' ? 'Turnista (DEV)' : 'Esterno (DEV)',
       cognome: null,
       postazioneId: 'dev-postazione-1',
+      isSupervisore:   livello === 'admin' || livello === 'responsabile',  // in DEV il "responsabile" simula un supervisore (per provare le viste admin)
+      tuttePostazioni: livello === 'admin',
     }
     persistDevUser(u); setUser(u)
   }

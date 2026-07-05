@@ -12,9 +12,11 @@ export const LIVELLI: { value: Livello; label: string }[] = [
   { value: 'esterno',      label: 'Esterno' },
 ]
 
-/** Livelli con poteri di gestione (admin + responsabile = gli ex-admin). */
-export function puoGestire(l: Livello | null | undefined): boolean {
-  return l === 'admin' || l === 'responsabile'
+/** Ha accesso all'amministrazione: è admin (globale) oppure Supervisore.
+ *  ⚠️ Il ruolo 'responsabile' del mese NON dà più accesso: è solo un'etichetta.
+ *  L'accesso si gestisce nella lista Supervisori (Centro di Controllo). */
+export function haAccessoAdmin(u: { livello: Livello; isSupervisore?: boolean } | null | undefined): boolean {
+  return !!u && (u.livello === 'admin' || !!u.isSupervisore)
 }
 
 // ─── Utente (identità globale: una persona, una email) ──────────────
@@ -353,4 +355,6 @@ export interface AuthUser {
   nome: string | null
   cognome: string | null
   postazioneId: string | null   // postazione di appartenenza (per turnisti/esterni)
+  isSupervisore: boolean        // ha accesso all'amministrazione (lista Supervisori)
+  tuttePostazioni: boolean      // supervisore di TUTTE le postazioni (presenti e future)
 }

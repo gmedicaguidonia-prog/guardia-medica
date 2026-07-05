@@ -95,8 +95,8 @@ const supaStore = {
     const { error } = await supabase.from('postazioni').delete().eq('id', id)
     if (error) throw error
   },
-  async getPostazioniGestite(utenteId: string): Promise<string[]> {
-    const { data, error } = await supabase.from('turnisti').select('postazione_id').eq('utente_id', utenteId).eq('livello', 'responsabile')
+  async getPostazioniSupervisione(utenteId: string): Promise<string[]> {
+    const { data, error } = await supabase.from('supervisore_postazioni').select('postazione_id').eq('utente_id', utenteId)
     if (error) throw error
     return (data ?? []).map(r => r.postazione_id as string)
   },
@@ -758,7 +758,7 @@ const localStore = {
   async deletePostazione(id: string): Promise<void> {
     writeLs(LS_POSTAZIONI, read<Postazione[]>(LS_POSTAZIONI, []).filter(p => p.id !== id))
   },
-  async getPostazioniGestite(_turnistaId: string): Promise<string[]> {
+  async getPostazioniSupervisione(_utenteId: string): Promise<string[]> {
     ensureSeed()
     return read<Postazione[]>(LS_POSTAZIONI, []).map(p => p.id)
   },
