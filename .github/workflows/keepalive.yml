@@ -1,13 +1,15 @@
 name: Keepalive (Supabase + cron Actions)
 
 # Evita che l'inattivita' prolungata "spenga" il progetto:
-#  - chiama la RPC public.ping() su Supabase  -> il progetto FREE non va in pausa
-#    (Supabase sospende i progetti dopo ~7 giorni SENZA richieste all'API/DB).
-#  - aggiorna un timestamp e fa un commit [skip ci] -> il repo resta "attivo",
-#    cosi' GitHub non disabilita i workflow schedulati (li spegne dopo 60 giorni
-#    di inattivita' del repository).
-# Il ping fa fallire il job (email di avviso) se Supabase non risponde 200.
-# Il commit e' best-effort: non fa fallire il job.
+#  1) chiama la RPC public.ping() su Supabase -> il progetto FREE non va in pausa
+#     (Supabase sospende dopo ~7 giorni SENZA richieste all'API/DB). Il ping usa
+#     una RPC SECURITY DEFINER che legge davvero il DB e risponde 200.
+#  2) aggiorna un timestamp sul branch SEPARATO "keepalive" (mai su main) -> il
+#     repo resta "attivo", cosi' GitHub non disabilita i workflow schedulati
+#     (spenti dopo 60 giorni di inattivita' del repository). Usa il GITHUB_TOKEN,
+#     nessun PAT extra. Il branch e' isolato: non tocca main ne' il deploy gh-pages.
+# Il ping fa FALLIRE il job (email di avviso) se Supabase non risponde 200.
+# L'heartbeat e' best-effort: un suo errore non fa fallire il job.
 
 on:
   schedule:
@@ -25,39 +27,45 @@ jobs:
   keepalive:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Ping Supabase (RPC ping)
+        env:
+          URL:  ${{ secrets.VITE_SUPABASE_URL }}
+          ANON: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
+          if [ -z "$URL" ] || [ -z "$ANON" ]; then
+            echo "::error::Secret VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY mancanti"; exit 1
+          fi
           code=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
-            -X POST "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/rpc/ping" \
-            -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{}')
+            -X POST "$URL/rest/v1/rpc/ping" \
+            -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
+            -H "Content-Type: application/json" -d '{}')
           echo "HTTP $code"
           cat /tmp/resp.json 2>/dev/null || true
           echo
           if [ "$code" != "200" ]; then
-            echo "::error::Ping Supabase fallito (HTTP $code) - il progetto potrebbe essere in pausa o offline"
-            exit 1
+            echo "::error::Ping Supabase fallito (HTTP $code) - progetto in pausa/offline?"; exit 1
           fi
           echo "Supabase attivo."
 
-      - name: Heartbeat commit (tiene vivo il cron di Actions)
+      - name: Heartbeat sul branch 'keepalive' (isolato da main/gh-pages)
+        env:
+          GH: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p .github
-          date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/keepalive.txt
-          git config user.name  "keepalive-bot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/keepalive.txt
-          if git diff --cached --quiet; then
-            echo "Nessuna modifica da committare."
-            exit 0
-          fi
-          git commit -m "chore: keepalive $(date -u +%Y-%m-%d) [skip ci]"
-          if ! git push; then
-            echo "Push diretto fallito, provo con rebase..."
-            git pull --rebase origin main && git push || echo "::warning::push keepalive rimandato al prossimo run"
+          OWNER='${{ github.repository_owner }}'
+          REPO='${{ github.event.repository.name }}'
+          BR=keepalive; FILE=last-ping.txt
+          TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          CONTENT=$(printf "%s\n" "keepalive $TS" | base64 -w0)
+          SHA=$(curl -s -H "Authorization: Bearer $GH" \
+            "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE?ref=$BR" \
+            | grep -oE '"sha":[[:space:]]*"[0-9a-f]{40}"' | head -1 | cut -d'"' -f4)
+          body="{\"message\":\"keepalive $TS\",\"content\":\"$CONTENT\",\"branch\":\"$BR\""
+          [ -n "$SHA" ] && body="$body,\"sha\":\"$SHA\""
+          body="$body}"
+          code=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT \
+            -H "Authorization: Bearer $GH" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE" -d "$body")
+          echo "contents PUT -> HTTP $code"
+          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+            echo "::warning::heartbeat non aggiornato (HTTP $code)"; head -c 400 /tmp/put.json 2>/dev/null || true
           fi
