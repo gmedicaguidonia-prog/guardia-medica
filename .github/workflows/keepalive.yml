@@ -1,0 +1,63 @@
+name: Keepalive (Supabase + cron Actions)
+
+# Evita che l'inattivita' prolungata "spenga" il progetto:
+#  - chiama la RPC public.ping() su Supabase  -> il progetto FREE non va in pausa
+#    (Supabase sospende i progetti dopo ~7 giorni SENZA richieste all'API/DB).
+#  - aggiorna un timestamp e fa un commit [skip ci] -> il repo resta "attivo",
+#    cosi' GitHub non disabilita i workflow schedulati (li spegne dopo 60 giorni
+#    di inattivita' del repository).
+# Il ping fa fallire il job (email di avviso) se Supabase non risponde 200.
+# Il commit e' best-effort: non fa fallire il job.
+
+on:
+  schedule:
+    - cron: '23 5 */2 * *'   # ogni 2 giorni, 05:23 UTC (orario decentrato: i cron "tondi" vengono spesso ritardati/saltati)
+  workflow_dispatch:          # esecuzione manuale dal tab Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ping Supabase (RPC ping)
+        run: |
+          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+            -X POST "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/rpc/ping" \
+            -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "HTTP $code"
+          cat /tmp/resp.json 2>/dev/null || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Ping Supabase fallito (HTTP $code) - il progetto potrebbe essere in pausa o offline"
+            exit 1
+          fi
+          echo "Supabase attivo."
+
+      - name: Heartbeat commit (tiene vivo il cron di Actions)
+        run: |
+          mkdir -p .github
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/keepalive.txt
+          git config user.name  "keepalive-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/keepalive.txt
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica da committare."
+            exit 0
+          fi
+          git commit -m "chore: keepalive $(date -u +%Y-%m-%d) [skip ci]"
+          if ! git push; then
+            echo "Push diretto fallito, provo con rebase..."
+            git pull --rebase origin main && git push || echo "::warning::push keepalive rimandato al prossimo run"
+          fi
