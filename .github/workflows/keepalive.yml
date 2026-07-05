@@ -2,19 +2,20 @@ name: Keepalive (Supabase + cron Actions)
 
 # Evita che l'inattivita' prolungata "spenga" il progetto:
 #  1) chiama la RPC public.ping() su Supabase -> il progetto FREE non va in pausa
-#     (Supabase sospende dopo ~7 giorni SENZA richieste all'API/DB). Il ping usa
-#     una RPC SECURITY DEFINER che legge davvero il DB e risponde 200.
+#     (Supabase sospende dopo ~7 giorni SENZA richieste all'API/DB). La RPC e'
+#     SECURITY DEFINER, legge davvero il DB e risponde 200.
 #  2) aggiorna un timestamp sul branch SEPARATO "keepalive" (mai su main) -> il
 #     repo resta "attivo", cosi' GitHub non disabilita i workflow schedulati
-#     (spenti dopo 60 giorni di inattivita' del repository). Usa il GITHUB_TOKEN,
-#     nessun PAT extra. Il branch e' isolato: non tocca main ne' il deploy gh-pages.
+#     (spenti dopo 60 giorni di inattivita' del repo). Usa il GITHUB_TOKEN (niente
+#     PAT extra) e CREA il branch da solo se manca. Il branch e' isolato: non
+#     tocca main ne' il deploy gh-pages.
 # Il ping fa FALLIRE il job (email di avviso) se Supabase non risponde 200.
 # L'heartbeat e' best-effort: un suo errore non fa fallire il job.
 
 on:
   schedule:
     - cron: '23 5 */2 * *'   # ogni 2 giorni, 05:23 UTC (orario decentrato: i cron "tondi" vengono spesso ritardati/saltati)
-  workflow_dispatch:          # esecuzione manuale dal tab Actions
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -39,33 +40,39 @@ jobs:
             -X POST "$URL/rest/v1/rpc/ping" \
             -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
             -H "Content-Type: application/json" -d '{}')
-          echo "HTTP $code"
-          cat /tmp/resp.json 2>/dev/null || true
-          echo
+          echo "HTTP $code"; cat /tmp/resp.json 2>/dev/null || true; echo
           if [ "$code" != "200" ]; then
             echo "::error::Ping Supabase fallito (HTTP $code) - progetto in pausa/offline?"; exit 1
           fi
           echo "Supabase attivo."
 
-      - name: Heartbeat sul branch 'keepalive' (isolato da main/gh-pages)
+      - name: Heartbeat sul branch 'keepalive' (auto-creato, isolato da main)
         env:
-          GH: ${{ secrets.GITHUB_TOKEN }}
+          GH:       ${{ secrets.GITHUB_TOKEN }}
+          REPO:     ${{ github.repository }}   # owner/repo, sempre valorizzato
+          BASE_SHA: ${{ github.sha }}
         run: |
-          OWNER='${{ github.repository_owner }}'
-          REPO='${{ github.event.repository.name }}'
           BR=keepalive; FILE=last-ping.txt
           TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          CONTENT=$(printf "%s\n" "keepalive $TS" | base64 -w0)
-          SHA=$(curl -s -H "Authorization: Bearer $GH" \
-            "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE?ref=$BR" \
+          AUTH="Authorization: Bearer $GH"
+          ACC="Accept: application/vnd.github+json"
+          # crea il branch se non esiste (parte dallo SHA corrente)
+          exists=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" "https://api.github.com/repos/$REPO/git/ref/heads/$BR")
+          if [ "$exists" = "404" ]; then
+            echo "Branch $BR assente: lo creo da $BASE_SHA"
+            curl -s -X POST -H "$AUTH" -H "$ACC" "https://api.github.com/repos/$REPO/git/refs" \
+              -d "{\"ref\":\"refs/heads/$BR\",\"sha\":\"$BASE_SHA\"}" -o /dev/null -w "  create ref -> %{http_code}\n"
+          fi
+          # sha del file (se gia' presente) per l'update
+          SHA=$(curl -s -H "$AUTH" "https://api.github.com/repos/$REPO/contents/$FILE?ref=$BR" \
             | grep -oE '"sha":[[:space:]]*"[0-9a-f]{40}"' | head -1 | cut -d'"' -f4)
+          CONTENT=$(printf "%s\n" "keepalive $TS" | base64 -w0)
           body="{\"message\":\"keepalive $TS\",\"content\":\"$CONTENT\",\"branch\":\"$BR\""
           [ -n "$SHA" ] && body="$body,\"sha\":\"$SHA\""
           body="$body}"
-          code=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT \
-            -H "Authorization: Bearer $GH" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$OWNER/$REPO/contents/$FILE" -d "$body")
-          echo "contents PUT -> HTTP $code"
+          code=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "$AUTH" -H "$ACC" \
+            "https://api.github.com/repos/$REPO/contents/$FILE" -d "$body")
+          echo "PUT $FILE -> HTTP $code"
           if [ "$code" != "200" ] && [ "$code" != "201" ]; then
             echo "::warning::heartbeat non aggiornato (HTTP $code)"; head -c 400 /tmp/put.json 2>/dev/null || true
           fi
