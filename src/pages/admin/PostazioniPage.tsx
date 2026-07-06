@@ -232,7 +232,7 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
           <label className="label text-xs">Aggiungi amministratore</label>
           <select value={nuovo} onChange={e => setNuovo(e.target.value)} className="input text-sm">
             <option value="">— scegli una persona —</option>
-            {candidati.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)} — {u.email}</option>)}
+            {candidati.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)}</option>)}
           </select>
         </div>
         <button onClick={promuovi} disabled={busy || !nuovo} className="btn-primary text-sm"><UserPlus size={15} /> Rendi admin</button>
@@ -262,18 +262,29 @@ function SupervisoriBox() {
   const { data: utenti = [] } = useQuery<UtenteAdmin[]>({ queryKey: ['utenti'], queryFn: () => store.getUtenti() })
   const { data: postazioni = [] } = useQuery<Postazione[]>({ queryKey: ['postazioni'], queryFn: () => store.getPostazioni() })
   const [nuovo, setNuovo] = useState('')
+  const [nuovaPost, setNuovaPost] = useState('')
   const [busy, setBusy] = useState(false)
   const [espanso, setEspanso] = useState<string | null>(null)
   const [nNome, setNNome] = useState(''); const [nCognome, setNCognome] = useState(''); const [nEmail, setNEmail] = useState('')
 
+  const TUTTE = '__tutte__'
+  const postOrd = [...postazioni].sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
+  const nomePost = (id: string) => postazioni.find(p => p.id === id)?.nome ?? '—'
+  const postOrdinate = (ids: string[]) => [...ids].sort((a, b) => nomePost(a).localeCompare(nomePost(b), 'it'))
   const supIds = new Set(supervisori.map(s => s.id))
   // gli admin hanno già accesso a tutto: non ha senso elencarli come supervisori
   const candidati = utenti.filter(u => !u.admin && !supIds.has(u.id))
+  const inval = () => qc.invalidateQueries({ queryKey: ['supervisori'] })
 
   async function aggiungi() {
     if (!nuovo) return
     setBusy(true)
-    try { await store.addSupervisore(nuovo); setEspanso(nuovo); setNuovo(''); await qc.invalidateQueries({ queryKey: ['supervisori'] }) }
+    try {
+      await store.addSupervisore(nuovo)
+      if (nuovaPost === TUTTE) await store.setSupervisoreTutte(nuovo, true)
+      else if (nuovaPost) await store.setSupervisorePostazioni(nuovo, [nuovaPost])
+      setNuovo(''); setNuovaPost(''); await inval()
+    }
     catch (e) { void notify({ title: 'Operazione non riuscita', message: `${(e as Error).message ?? ''}` }) }
     finally { setBusy(false) }
   }
@@ -287,13 +298,21 @@ function SupervisoriBox() {
     try { await store.removeSupervisore(s.id); if (espanso === s.id) setEspanso(null); await qc.invalidateQueries({ queryKey: ['supervisori'] }) }
     catch (e) { void notify({ title: 'Operazione non riuscita', message: `${(e as Error).message ?? ''}` }) }
   }
-  async function toggleTutte(s: Supervisore) {
-    try { await store.setSupervisoreTutte(s.id, !s.tuttePostazioni); await qc.invalidateQueries({ queryKey: ['supervisori'] }) }
+  // menu a tendina "+ aggiungi": una postazione, oppure «Tutte» (svuota le singole → ricompaiono nel menu)
+  async function aggiungiDaMenu(s: Supervisore, val: string) {
+    if (!val) return
+    try {
+      if (val === TUTTE) { await store.setSupervisorePostazioni(s.id, []); await store.setSupervisoreTutte(s.id, true) }
+      else { if (s.tuttePostazioni) await store.setSupervisoreTutte(s.id, false); await store.setSupervisorePostazioni(s.id, [...s.postazioni, val]) }
+      await inval()
+    } catch (e) { void notify({ title: 'Errore', message: `${(e as Error).message ?? ''}` }) }
+  }
+  async function togliPostazione(s: Supervisore, pid: string) {
+    try { await store.setSupervisorePostazioni(s.id, s.postazioni.filter(x => x !== pid)); await inval() }
     catch (e) { void notify({ title: 'Errore', message: `${(e as Error).message ?? ''}` }) }
   }
-  async function togglePostazione(s: Supervisore, pid: string) {
-    const next = s.postazioni.includes(pid) ? s.postazioni.filter(x => x !== pid) : [...s.postazioni, pid]
-    try { await store.setSupervisorePostazioni(s.id, next); await qc.invalidateQueries({ queryKey: ['supervisori'] }) }
+  async function togliTutte(s: Supervisore) {
+    try { await store.setSupervisoreTutte(s.id, false); await inval() }
     catch (e) { void notify({ title: 'Errore', message: `${(e as Error).message ?? ''}` }) }
   }
   async function creaNuovo() {
@@ -318,52 +337,65 @@ function SupervisoriBox() {
 
       {isLoading ? <p className="text-sm text-stone-500">Caricamento…</p> : (
         <div className="space-y-1.5">
-          {supervisori.map(s => (
-            <div key={s.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
-              <div className="flex items-center gap-2 px-2.5 py-1.5">
-                <KeyRound size={14} style={{ color: '#476540' }} className="shrink-0" />
-                <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{s.cognome} {s.nome}</span>
-                <span className="text-xs text-stone-500 hidden sm:inline">{s.email}</span>
-                <div className="flex-1" />
-                {s.tuttePostazioni
-                  ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#dbeafe', color: '#1e40af' }}>Tutte le postazioni</span>
-                  : <span className="text-[11px] text-stone-500">{s.postazioni.length} postazion{s.postazioni.length === 1 ? 'e' : 'i'}</span>}
-                <button onClick={() => setEspanso(espanso === s.id ? null : s.id)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica postazioni"><Pencil size={13} /></button>
-                <button onClick={() => rimuovi(s)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Rimuovi supervisore"><Trash2 size={13} /></button>
-              </div>
-              {espanso === s.id && (
-                <div className="px-3 pb-2.5 pt-1.5 border-t" style={{ borderColor: '#e5e7df', background: '#fbfcfa' }}>
-                  <label className="flex items-center gap-2 text-sm py-1 cursor-pointer">
-                    <input type="checkbox" checked={s.tuttePostazioni} onChange={() => toggleTutte(s)} />
-                    <span className="font-medium" style={{ color: '#1e40af' }}>Tutte le postazioni (anche quelle future)</span>
-                  </label>
-                  {!s.tuttePostazioni && (
-                    postazioni.length === 0
-                      ? <p className="text-xs text-stone-400 pl-6">Nessuna postazione disponibile.</p>
-                      : <div className="grid sm:grid-cols-2 gap-x-4 pl-6">
-                          {postazioni.map(p => (
-                            <label key={p.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
-                              <input type="checkbox" checked={s.postazioni.includes(p.id)} onChange={() => togglePostazione(s, p.id)} />
-                              <span style={{ color: '#2b3c24' }}>{p.nome}</span>
-                            </label>
-                          ))}
-                        </div>
-                  )}
+          {supervisori.map(s => {
+            const mod = espanso === s.id
+            const disponibili = postOrd.filter(p => s.tuttePostazioni || !s.postazioni.includes(p.id))
+            return (
+              <div key={s.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
+                <div className="flex items-center gap-2 px-2.5 py-1.5">
+                  <KeyRound size={14} style={{ color: '#476540' }} className="shrink-0" />
+                  <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{s.cognome} {s.nome}</span>
+                  <span className="text-xs text-stone-500 hidden sm:inline">{s.email}</span>
+                  <div className="flex-1" />
+                  <button onClick={() => setEspanso(mod ? null : s.id)} className={`p-1.5 rounded ${mod ? 'text-blue-600 bg-blue-50' : 'text-stone-500 hover:text-blue-600 hover:bg-blue-50'}`} title="Modifica postazioni"><Pencil size={13} /></button>
+                  <button onClick={() => rimuovi(s)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Rimuovi supervisore"><Trash2 size={13} /></button>
                 </div>
-              )}
-            </div>
-          ))}
+                {/* badge postazioni: sempre visibili, con X solo quando è in modifica (matita) */}
+                <div className="flex flex-wrap items-center gap-1 px-2.5 pb-1.5">
+                  {s.tuttePostazioni ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold pl-2 pr-1.5 py-0.5 rounded-full" style={{ background: '#dbeafe', color: '#1e40af' }}>
+                      Tutte le postazioni
+                      {mod && <button onClick={() => togliTutte(s)} className="rounded-full hover:bg-black/10 p-0.5" title="Togli"><X size={11} /></button>}
+                    </span>
+                  ) : s.postazioni.length ? postOrdinate(s.postazioni).map(pid => (
+                    <span key={pid} className="inline-flex items-center gap-1 text-[11px] font-medium pl-2 pr-1.5 py-0.5 rounded-full" style={{ background: '#e6efe1', color: '#2f5227' }}>
+                      {nomePost(pid)}
+                      {mod && <button onClick={() => togliPostazione(s, pid)} className="rounded-full hover:bg-black/10 p-0.5" title="Togli"><X size={11} /></button>}
+                    </span>
+                  )) : <span className="text-[11px] text-stone-400 italic">nessuna postazione assegnata</span>}
+                </div>
+                {/* in modifica: menu a tendina per aggiungere una postazione (o «Tutte») */}
+                {mod && (
+                  <div className="px-2.5 pb-2.5">
+                    <select value="" onChange={e => aggiungiDaMenu(s, e.target.value)} className="input text-xs" style={{ maxWidth: 260 }}>
+                      <option value="">+ aggiungi postazione…</option>
+                      {!s.tuttePostazioni && <option value={TUTTE}>Tutte le postazioni</option>}
+                      {disponibili.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )
+          })}
           {supervisori.length === 0 && <p className="text-sm text-stone-500">Nessun supervisore. Aggiungine uno qui sotto.</p>}
         </div>
       )}
 
-      {/* Aggiungi da elenco (persona già nel sistema) */}
-      <div className="flex items-end gap-2 pt-1">
-        <div className="flex-1">
+      {/* Aggiungi da elenco: scegli persona (alfabetico) + postazione (o «Tutte») */}
+      <div className="flex flex-wrap items-end gap-2 pt-1">
+        <div className="flex-1" style={{ minWidth: 150 }}>
           <label className="label text-xs">Aggiungi supervisore</label>
           <select value={nuovo} onChange={e => setNuovo(e.target.value)} className="input text-sm">
             <option value="">— scegli una persona —</option>
-            {candidati.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)} — {u.email}</option>)}
+            {candidati.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)}</option>)}
+          </select>
+        </div>
+        <div className="flex-1" style={{ minWidth: 150 }}>
+          <label className="label text-xs">Postazione</label>
+          <select value={nuovaPost} onChange={e => setNuovaPost(e.target.value)} className="input text-sm">
+            <option value="">— scegli postazione —</option>
+            <option value={TUTTE}>Tutte le postazioni</option>
+            {postOrd.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
         </div>
         <button onClick={aggiungi} disabled={busy || !nuovo} className="btn-primary text-sm"><UserPlus size={15} /> Rendi supervisore</button>
