@@ -41,7 +41,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   function attivaDoppleganger() {
     const u = utenti.find(x => x.id === dgScelto)
     if (!u) return
-    setDoppleganger({ id: u.id, email: u.email, livello: u.livello, nome: u.nome, cognome: u.cognome, postazioneId: u.postazioneId, isSupervisore: false, tuttePostazioni: false })
+    setDoppleganger({ id: u.id, email: u.email, livello: u.livello, nome: u.nome, cognome: u.cognome, postazioneId: u.postazioneId, isSupervisore: u.isSupervisore, tuttePostazioni: u.tuttePostazioni })
     setDebugModal(null)
   }
 

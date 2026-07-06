@@ -35,6 +35,8 @@ export interface UtenteImpersonabile {
   email: string
   livello: Livello
   postazioneId: string | null
+  isSupervisore: boolean
+  tuttePostazioni: boolean
 }
 
 /** Utente con il flag amministratore globale (riquadro "Amministratori"). */

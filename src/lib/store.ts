@@ -589,21 +589,25 @@ const supaStore = {
 
   // ── Debug "doppleganger": tutti gli utenti con livello max dalle appartenenze ──
   async getUtentiImpersonabili(): Promise<UtenteImpersonabile[]> {
-    const [u, m] = await Promise.all([
+    const [u, m, s] = await Promise.all([
       supabase.from('utenti').select('id, nome, cognome, email'),
       supabase.from('turnisti').select('utente_id, livello, postazione_id'),
+      supabase.from('supervisori').select('utente_id, tutte_postazioni'),
     ])
     if (u.error) throw u.error
     if (m.error) throw m.error
+    if (s.error) throw s.error
     const info = new Map<string, { livello: Livello; postazioneId: string }>()
     ;(m.data ?? []).forEach(r => {
       const uid = r.utente_id as string, lv = r.livello as Livello
       const cur = info.get(uid)
       if (!cur || (RANK_LIVELLO[lv] ?? 0) > (RANK_LIVELLO[cur.livello] ?? 0)) info.set(uid, { livello: lv, postazioneId: r.postazione_id as string })
     })
+    const sup = new Map<string, boolean>()
+    ;(s.data ?? []).forEach(r => sup.set(r.utente_id as string, r.tutte_postazioni as boolean))
     return (u.data ?? []).map(x => {
       const i = info.get(x.id as string)
-      return { id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', livello: (i?.livello ?? 'esterno') as Livello, postazioneId: i?.postazioneId ?? null }
+      return { id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', livello: (i?.livello ?? 'esterno') as Livello, postazioneId: i?.postazioneId ?? null, isSupervisore: sup.has(x.id as string), tuttePostazioni: sup.get(x.id as string) ?? false }
     }).sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
   },
 
@@ -1187,7 +1191,7 @@ const localStore = {
     read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
       const cur = map.get(t.utente_id)
       if (!cur || (RANK_LIVELLO[t.livello] ?? 0) > (RANK_LIVELLO[cur.livello] ?? 0)) {
-        map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, livello: t.livello, postazioneId: t.postazione_id ?? null })
+        map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, livello: t.livello, postazioneId: t.postazione_id ?? null, isSupervisore: t.livello === 'admin' || t.livello === 'responsabile', tuttePostazioni: t.livello === 'admin' })
       }
     })
     return [...map.values()].sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
