@@ -17,7 +17,7 @@ import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import type { TurnoSchema, Turnista, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata, AuthUser } from '../../types'
+import type { TurnoSchema, Turnista, TurnistaMese, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata, AuthUser } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -53,7 +53,7 @@ export function DesiderataPage() {
   const { data: versione, isLoading: loadingVer } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
-  const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
   const navigate = useNavigate()
@@ -63,7 +63,7 @@ export function DesiderataPage() {
   useRealtimePostazione(postazioneId, [
     { tabella: 'desiderata',          invalida: [['desiderata', postazioneId]] },
     { tabella: 'desiderata_finestra', invalida: [['desiderata-finestra', postazioneId]] },
-    { tabella: 'turnisti_mese',       invalida: [['turnisti-mese', postazioneId]] },
+    { tabella: 'turnisti_mese',       invalida: [['personale-mese', postazioneId]] },
   ])
 
   // serverMap: chiave `data|turnoId|turnistaId` → tipo ('desiderata'|'indisponibilita')
@@ -84,10 +84,11 @@ export function DesiderataPage() {
   }, [dirty])
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
-  const importati = useMemo(() => new Set(turnistiMese), [turnistiMese])
-  // palette = solo i turnisti importati per questo mese, divisi per ruolo
-  // palette/import desiderata = solo turnisti e responsabili (gli esterni non esprimono desiderata)
-  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno')), [turnisti, importati])
+  const importati = useMemo(() => new Set(personaleMese.map(p => p.turnista_id)), [personaleMese])
+  const ruoloMese = useMemo(() => new Map(personaleMese.map(p => [p.turnista_id, p.livello] as const)), [personaleMese])
+  const livMese = (id: string): Livello => ruoloMese.get(id) ?? tById.get(id)?.livello ?? 'turnista'
+  // palette/import desiderata = personale del mese con ruolo-del-mese turnista/responsabile (gli esterni-del-mese non esprimono desiderata)
+  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno').map(t => ({ ...t, livello: livMese(t.id) }))), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   // candidati da importare (non ancora nella palette)
   const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id) && t.livello !== 'esterno')), [turnisti, importati])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
@@ -127,7 +128,7 @@ export function DesiderataPage() {
   const pickerCandidati = useMemo(() => {
     if (!picker) return []
     const inCella = new Set(byCell.get(`${picker.ds}|${picker.turnoId}|${picker.tipo}`) ?? [])
-    return turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno' && !inCella.has(t.id)).slice().sort(cmpTurnisti)
+    return turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno' && !inCella.has(t.id)).slice().sort(cmpTurnisti)
   }, [picker, byCell, turnisti, importati])
 
   useEffect(() => {
@@ -165,8 +166,8 @@ export function DesiderataPage() {
     } catch (e) { console.error('[Desiderata] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }) }
     finally { setSaving(false) }
   }
-  async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
-  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
+  async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id, tById.get(id)?.livello); qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] }) }
+  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] }) }
 
   // ── finestra di raccolta (periodo aperto ai turnisti) ──
   const [finDa, setFinDa] = useState(''); const [finA, setFinA] = useState('')
@@ -326,11 +327,11 @@ export function DesiderataPage() {
         onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
         onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
         className="rounded-md px-2 py-1 pr-6 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity"
-        style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
+        style={{ background: ROLE_COLOR[livMese(t.id)].bg, color: ROLE_COLOR[livMese(t.id)].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
         title={`Trascina ${nomeCompleto(t)}`}>{nomeCompleto(t)}</div>
       <button onClick={() => rimuoviDalMese(t.id)} title="Togli dal mese"
         className="absolute top-1/2 -translate-y-1/2 right-1 opacity-60 hover:opacity-100 transition-opacity"
-        style={{ color: ROLE_COLOR[t.livello].fg }}><X size={11} strokeWidth={3} /></button>
+        style={{ color: ROLE_COLOR[livMese(t.id)].fg }}><X size={11} strokeWidth={3} /></button>
     </div>
   )
   const Badge = (ds: string, turnoId: string, tid: string, tipo: TipoDesiderata) => (
@@ -390,7 +391,7 @@ export function DesiderataPage() {
                 <div className="flex flex-wrap gap-2">
                   {g.items.map(t => (
                     <button key={t.id} onClick={() => importaTurnista(t.id)} className="rounded-md px-2 py-1 text-xs font-medium shadow-sm border border-white/60 hover:scale-105 transition-transform"
-                      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg }}>{nomeCompleto(t)} <span className="font-bold opacity-60">＋</span></button>
+                      style={{ background: ROLE_COLOR[livMese(t.id)].bg, color: ROLE_COLOR[livMese(t.id)].fg }}>{nomeCompleto(t)} <span className="font-bold opacity-60">＋</span></button>
                   ))}
                 </div>
               </div>
@@ -534,7 +535,7 @@ export function DesiderataPage() {
             {pickerCandidati.length ? pickerCandidati.map(t => (
               <button key={t.id} onClick={() => { set(`${picker.ds}|${picker.turnoId}|${t.id}`, picker.tipo); setPicker(null) }}
                 className="flex items-center gap-1.5 w-full text-left px-1.5 py-1 rounded hover:bg-stone-100 text-xs">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ROLE_COLOR[t.livello].fg }} />
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ROLE_COLOR[livMese(t.id)].fg }} />
                 <span className="truncate">{nomeCompleto(t)}</span>
               </button>
             )) : <p className="text-xs text-stone-400 px-1.5 py-1">tutti già inseriti</p>}

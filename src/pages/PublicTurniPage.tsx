@@ -10,7 +10,7 @@ import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
 import { useRealtimePostazione } from '../hooks/useRealtime'
 import { useDebug } from '../contexts/DebugContext'
-import type { AuthUser, TurnoSchema, Turno, Turnista, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
+import type { AuthUser, TurnoSchema, Turno, Turnista, TurnistaMese, Livello, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -53,7 +53,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'turni' && statoCal !== 'non_pubblicato' })
   const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'desiderata' })
-  const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
+  const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
   const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneId], queryFn: () => store.getMesiConContenuto(postazioneId!), enabled: !!postazioneId })
 
@@ -65,7 +65,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     { tabella: 'richieste_turno',     invalida: [['richieste', postazioneId]] },
     { tabella: 'desiderata',          invalida: [['desiderata', postazioneId]] },
     { tabella: 'desiderata_finestra', invalida: [['desiderata-finestra', postazioneId]] },
-    { tabella: 'turnisti_mese',       invalida: [['turnisti-mese', postazioneId]] },
+    { tabella: 'turnisti_mese',       invalida: [['personale-mese', postazioneId]] },
   ])
 
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
@@ -113,10 +113,14 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     return m
   }, [desiderata])
   // colonne della matrice = solo i turnisti IMPORTATI per il mese (non tutta la postazione)
-  const importatiMese = useMemo(() => new Set(turnistiMese), [turnistiMese])
-  // un turnista può esprimere desiderata SOLO se è tra quelli importati per il mese
+  const importatiMese = useMemo(() => new Set(personaleMese.map(p => p.turnista_id)), [personaleMese])
+  const ruoloMese = useMemo(() => new Map(personaleMese.map(p => [p.turnista_id, p.livello] as const)), [personaleMese])
+  const livGlob = useMemo(() => new Map(personale.map(p => [p.id, p.livello])), [personale])
+  const livMese = (id: string): Livello => ruoloMese.get(id) ?? livGlob.get(id) ?? 'turnista'
+  // un turnista può esprimere desiderata SOLO se è nel personale del mese
   const sonoImportato = !!mia && importatiMese.has(mia.membershipId)
-  const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id) && t.livello !== 'esterno').sort(cmpTurnisti), [personale, importatiMese])
+  // colonne = personale del mese con ruolo-del-mese turnista/responsabile (gli esterni-del-mese non compaiono)
+  const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id) && livMese(t.id) !== 'esterno').sort(cmpTurnisti), [personale, importatiMese, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   // responsabili della postazione (mostrati nel div postazione)
   const responsabili = useMemo(() => personale.filter(t => t.livello === 'responsabile').sort(cmpTurnisti), [personale])
 
@@ -233,7 +237,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 {mie.map(m => <option key={m.postazioneId} value={m.postazioneId}>{m.nome}</option>)}
               </select>
             ) : <span className="text-sm" style={{ color: '#3a3d30' }}>{mie[0].nome}</span>}
-            {mia && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#eef3ea', color: '#476540' }}>sei {mia.livello}</span>}
+            {mia && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#eef3ea', color: '#476540' }}>sei {sonoImportato ? livMese(mia.membershipId) : mia.livello}</span>}
 
             {/* Responsabile/i della postazione (allineati a destra) */}
             <div className="flex items-center gap-1.5 ml-auto">
@@ -345,7 +349,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
           {/* ───── DESIDERATA ───── */}
           {tab === 'desiderata' && (
-            mia?.livello === 'esterno' && !adminMode ? (
+            mia && livMese(mia.membershipId) === 'esterno' && !adminMode ? (
               <Avviso>Come <strong>esterno</strong> non puoi accedere alle desiderata/indisponibilità. Puoi però vedere il <strong>Calendario Turni</strong> e candidarti ai turni scoperti.</Avviso>
             ) : desStato === 'assente' ? (
               <Avviso>La raccolta <strong>desiderata / indisponibilità</strong> di {MESI[mese - 1]} {anno} non è ancora stata pubblicata.</Avviso>
