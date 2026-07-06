@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { MapPin, Plus, Trash2, Pencil, Save, X, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText } from 'lucide-react'
+import { MapPin, Plus, Trash2, Pencil, Save, X, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText, KeyRound } from 'lucide-react'
 import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { ADMIN_EMAIL } from '../../lib/constants'
 import { nomeCompleto } from '../../types'
-import type { AuthUser, Postazione, UtenteAdmin, LogPostazione } from '../../types'
+import type { AuthUser, Postazione, UtenteAdmin, Supervisore, LogPostazione } from '../../types'
 
 function fmtDT(iso: string) {
   return new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -134,6 +134,9 @@ export function PostazioniPage() {
       {/* Blocco: Amministratori */}
       <AmministratoriBox user={user} />
 
+      {/* Blocco: Supervisori (accesso all'amministrazione, per postazione) */}
+      <SupervisoriBox />
+
       {/* Blocco: Log Postazioni — storico eventi globali (non si cancella con la postazione) */}
       <div className="card p-4 space-y-3">
         <div>
@@ -246,6 +249,137 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
           <button onClick={creaNuovo} disabled={busy || !nEmail.trim() || !nNome.trim()} className="btn-secondary text-sm"><UserPlus size={14} /> Crea admin</button>
         </div>
         <p className="text-[11px] text-stone-400 mt-1">Accederà con quell'account Google. Sarà <strong>solo</strong> amministratore, senza appartenenze a postazioni (a meno che tu non lo aggiunga al personale).</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Riquadro gestione Supervisori (accesso all'amministrazione, per postazione) ───
+function SupervisoriBox() {
+  const qc = useQueryClient()
+  const { confirm, notify, confirmState } = useConfirm()
+  const { data: supervisori = [], isLoading } = useQuery<Supervisore[]>({ queryKey: ['supervisori'], queryFn: () => store.getSupervisori() })
+  const { data: utenti = [] } = useQuery<UtenteAdmin[]>({ queryKey: ['utenti'], queryFn: () => store.getUtenti() })
+  const { data: postazioni = [] } = useQuery<Postazione[]>({ queryKey: ['postazioni'], queryFn: () => store.getPostazioni() })
+  const [nuovo, setNuovo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [espanso, setEspanso] = useState<string | null>(null)
+  const [nNome, setNNome] = useState(''); const [nCognome, setNCognome] = useState(''); const [nEmail, setNEmail] = useState('')
+
+  const supIds = new Set(supervisori.map(s => s.id))
+  // gli admin hanno già accesso a tutto: non ha senso elencarli come supervisori
+  const candidati = utenti.filter(u => !u.admin && !supIds.has(u.id))
+
+  async function aggiungi() {
+    if (!nuovo) return
+    setBusy(true)
+    try { await store.addSupervisore(nuovo); setEspanso(nuovo); setNuovo(''); await qc.invalidateQueries({ queryKey: ['supervisori'] }) }
+    catch (e) { void notify({ title: 'Operazione non riuscita', message: `${(e as Error).message ?? ''}` }) }
+    finally { setBusy(false) }
+  }
+  async function rimuovi(s: Supervisore) {
+    const ok = await confirm({
+      title: 'Rimuovi supervisore',
+      message: `Togliere l'accesso all'amministrazione a ${s.cognome} ${s.nome}? Non potrà più entrare in Admin (effetto al prossimo accesso). Le sue appartenenze e i suoi turni restano intatti.`,
+      confirmLabel: 'Rimuovi', danger: true,
+    })
+    if (!ok) return
+    try { await store.removeSupervisore(s.id); if (espanso === s.id) setEspanso(null); await qc.invalidateQueries({ queryKey: ['supervisori'] }) }
+    catch (e) { void notify({ title: 'Operazione non riuscita', message: `${(e as Error).message ?? ''}` }) }
+  }
+  async function toggleTutte(s: Supervisore) {
+    try { await store.setSupervisoreTutte(s.id, !s.tuttePostazioni); await qc.invalidateQueries({ queryKey: ['supervisori'] }) }
+    catch (e) { void notify({ title: 'Errore', message: `${(e as Error).message ?? ''}` }) }
+  }
+  async function togglePostazione(s: Supervisore, pid: string) {
+    const next = s.postazioni.includes(pid) ? s.postazioni.filter(x => x !== pid) : [...s.postazioni, pid]
+    try { await store.setSupervisorePostazioni(s.id, next); await qc.invalidateQueries({ queryKey: ['supervisori'] }) }
+    catch (e) { void notify({ title: 'Errore', message: `${(e as Error).message ?? ''}` }) }
+  }
+  async function creaNuovo() {
+    if (!nEmail.trim() || !nNome.trim()) return
+    setBusy(true)
+    try {
+      await store.creaUtenteSupervisore(nNome, nCognome, nEmail)
+      setNNome(''); setNCognome(''); setNEmail('')
+      await qc.invalidateQueries({ queryKey: ['supervisori'] }); await qc.invalidateQueries({ queryKey: ['utenti'] })
+    }
+    catch (e) { void notify({ title: 'Operazione non riuscita', message: `${(e as Error).message ?? ''}` }) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="card p-4 space-y-3">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      <div>
+        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><KeyRound size={15} style={{ color: '#476540' }} /> Supervisori</h2>
+        <p className="text-xs text-stone-500 mt-0.5">Chi può <strong>entrare in amministrazione</strong> e gestire i turni delle postazioni indicate, a prescindere dal ruolo del mese. L'accesso è stabile e lo decidi solo tu. Gli <strong>admin</strong> hanno già accesso a tutto e non serve elencarli qui.</p>
+      </div>
+
+      {isLoading ? <p className="text-sm text-stone-500">Caricamento…</p> : (
+        <div className="space-y-1.5">
+          {supervisori.map(s => (
+            <div key={s.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
+              <div className="flex items-center gap-2 px-2.5 py-1.5">
+                <KeyRound size={14} style={{ color: '#476540' }} className="shrink-0" />
+                <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{s.cognome} {s.nome}</span>
+                <span className="text-xs text-stone-500 hidden sm:inline">{s.email}</span>
+                <div className="flex-1" />
+                {s.tuttePostazioni
+                  ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#dbeafe', color: '#1e40af' }}>Tutte le postazioni</span>
+                  : <span className="text-[11px] text-stone-500">{s.postazioni.length} postazion{s.postazioni.length === 1 ? 'e' : 'i'}</span>}
+                <button onClick={() => setEspanso(espanso === s.id ? null : s.id)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica postazioni"><Pencil size={13} /></button>
+                <button onClick={() => rimuovi(s)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Rimuovi supervisore"><Trash2 size={13} /></button>
+              </div>
+              {espanso === s.id && (
+                <div className="px-3 pb-2.5 pt-1.5 border-t" style={{ borderColor: '#e5e7df', background: '#fbfcfa' }}>
+                  <label className="flex items-center gap-2 text-sm py-1 cursor-pointer">
+                    <input type="checkbox" checked={s.tuttePostazioni} onChange={() => toggleTutte(s)} />
+                    <span className="font-medium" style={{ color: '#1e40af' }}>Tutte le postazioni (anche quelle future)</span>
+                  </label>
+                  {!s.tuttePostazioni && (
+                    postazioni.length === 0
+                      ? <p className="text-xs text-stone-400 pl-6">Nessuna postazione disponibile.</p>
+                      : <div className="grid sm:grid-cols-2 gap-x-4 pl-6">
+                          {postazioni.map(p => (
+                            <label key={p.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                              <input type="checkbox" checked={s.postazioni.includes(p.id)} onChange={() => togglePostazione(s, p.id)} />
+                              <span style={{ color: '#2b3c24' }}>{p.nome}</span>
+                            </label>
+                          ))}
+                        </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+          {supervisori.length === 0 && <p className="text-sm text-stone-500">Nessun supervisore. Aggiungine uno qui sotto.</p>}
+        </div>
+      )}
+
+      {/* Aggiungi da elenco (persona già nel sistema) */}
+      <div className="flex items-end gap-2 pt-1">
+        <div className="flex-1">
+          <label className="label text-xs">Aggiungi supervisore</label>
+          <select value={nuovo} onChange={e => setNuovo(e.target.value)} className="input text-sm">
+            <option value="">— scegli una persona —</option>
+            {candidati.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)} — {u.email}</option>)}
+          </select>
+        </div>
+        <button onClick={aggiungi} disabled={busy || !nuovo} className="btn-primary text-sm"><UserPlus size={15} /> Rendi supervisore</button>
+      </div>
+      {candidati.length === 0 && <p className="text-xs text-stone-400">Nessuna persona da aggiungere (gli altri sono già admin o supervisori).</p>}
+
+      {/* Crea nuovo supervisore "puro" (persona non ancora nel sistema) */}
+      <div className="pt-2 mt-1" style={{ borderTop: '1px solid #eef0ea' }}>
+        <label className="label text-xs">Oppure aggiungi una persona non ancora nel sistema</label>
+        <div className="flex flex-wrap items-end gap-2">
+          <input value={nNome} onChange={e => setNNome(e.target.value)} placeholder="Nome" className="input text-sm" style={{ maxWidth: 120 }} />
+          <input value={nCognome} onChange={e => setNCognome(e.target.value)} placeholder="Cognome" className="input text-sm" style={{ maxWidth: 130 }} />
+          <input value={nEmail} onChange={e => setNEmail(e.target.value)} type="email" placeholder="email del login Google" className="input text-sm flex-1" style={{ minWidth: 170 }} onKeyDown={e => e.key === 'Enter' && creaNuovo()} />
+          <button onClick={creaNuovo} disabled={busy || !nEmail.trim() || !nNome.trim()} className="btn-secondary text-sm"><UserPlus size={14} /> Crea supervisore</button>
+        </div>
+        <p className="text-[11px] text-stone-400 mt-1">Accederà con quell'account Google. Poi apri la <strong>matita</strong> accanto al suo nome per scegliere le postazioni (o spunta «Tutte»).</p>
       </div>
     </div>
   )

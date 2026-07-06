@@ -35,8 +35,6 @@ export interface UtenteImpersonabile {
   email: string
   livello: Livello
   postazioneId: string | null
-  isSupervisore: boolean
-  tuttePostazioni: boolean
 }
 
 /** Utente con il flag amministratore globale (riquadro "Amministratori"). */
@@ -46,6 +44,16 @@ export interface UtenteAdmin {
   cognome: string
   email: string
   admin: boolean
+}
+
+/** Supervisore = chi ha accesso all'amministrazione (indipendente dal ruolo del mese). */
+export interface Supervisore {
+  id: string          // = utente_id
+  nome: string
+  cognome: string
+  email: string
+  tuttePostazioni: boolean   // true = tutte (anche future); ignora l'elenco sotto
+  postazioni: string[]       // id delle postazioni gestite
 }
 
 // ─── Turnista = APPARTENENZA (utente × postazione × livello) ─────────

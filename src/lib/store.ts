@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno } from '../types'
+import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -589,25 +589,21 @@ const supaStore = {
 
   // ── Debug "doppleganger": tutti gli utenti con livello max dalle appartenenze ──
   async getUtentiImpersonabili(): Promise<UtenteImpersonabile[]> {
-    const [u, m, s] = await Promise.all([
+    const [u, m] = await Promise.all([
       supabase.from('utenti').select('id, nome, cognome, email'),
       supabase.from('turnisti').select('utente_id, livello, postazione_id'),
-      supabase.from('supervisori').select('utente_id, tutte_postazioni'),
     ])
     if (u.error) throw u.error
     if (m.error) throw m.error
-    if (s.error) throw s.error
     const info = new Map<string, { livello: Livello; postazioneId: string }>()
     ;(m.data ?? []).forEach(r => {
       const uid = r.utente_id as string, lv = r.livello as Livello
       const cur = info.get(uid)
       if (!cur || (RANK_LIVELLO[lv] ?? 0) > (RANK_LIVELLO[cur.livello] ?? 0)) info.set(uid, { livello: lv, postazioneId: r.postazione_id as string })
     })
-    const sup = new Map<string, boolean>()
-    ;(s.data ?? []).forEach(r => sup.set(r.utente_id as string, r.tutte_postazioni as boolean))
     return (u.data ?? []).map(x => {
       const i = info.get(x.id as string)
-      return { id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', livello: (i?.livello ?? 'esterno') as Livello, postazioneId: i?.postazioneId ?? null, isSupervisore: sup.has(x.id as string), tuttePostazioni: sup.get(x.id as string) ?? false }
+      return { id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', livello: (i?.livello ?? 'esterno') as Livello, postazioneId: i?.postazioneId ?? null }
     }).sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
   },
 
@@ -636,6 +632,68 @@ const supaStore = {
       return
     }
     const { error } = await supabase.from('utenti').insert({ nome: nome.trim(), cognome: cognome.trim(), email: em, admin: true })
+    if (error) throw error
+  },
+
+  // ── Supervisori (accesso all'amministrazione, indipendente dal ruolo del mese) ──
+  async getSupervisori(): Promise<Supervisore[]> {
+    const [s, sp, u] = await Promise.all([
+      supabase.from('supervisori').select('utente_id, tutte_postazioni'),
+      supabase.from('supervisore_postazioni').select('utente_id, postazione_id'),
+      supabase.from('utenti').select('id, nome, cognome, email'),
+    ])
+    if (s.error) throw s.error
+    if (sp.error) throw sp.error
+    if (u.error) throw u.error
+    const uById = new Map((u.data ?? []).map(x => [x.id as string, x]))
+    const post = new Map<string, string[]>()
+    ;(sp.data ?? []).forEach(r => {
+      const k = r.utente_id as string
+      if (!post.has(k)) post.set(k, [])
+      post.get(k)!.push(r.postazione_id as string)
+    })
+    return (s.data ?? []).map(r => {
+      const ut = uById.get(r.utente_id as string)
+      return {
+        id: r.utente_id as string,
+        nome: (ut?.nome as string) ?? '', cognome: (ut?.cognome as string) ?? '', email: (ut?.email as string) ?? '',
+        tuttePostazioni: !!r.tutte_postazioni,
+        postazioni: post.get(r.utente_id as string) ?? [],
+      }
+    }).sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+  },
+  async addSupervisore(utenteId: string): Promise<void> {
+    const { error } = await supabase.from('supervisori').upsert({ utente_id: utenteId }, { onConflict: 'utente_id' })
+    if (error) throw error
+  },
+  async removeSupervisore(utenteId: string): Promise<void> {
+    const { error } = await supabase.from('supervisori').delete().eq('utente_id', utenteId)
+    if (error) throw error
+  },
+  async setSupervisoreTutte(utenteId: string, tutte: boolean): Promise<void> {
+    const { error } = await supabase.from('supervisori').update({ tutte_postazioni: tutte }).eq('utente_id', utenteId)
+    if (error) throw error
+  },
+  async setSupervisorePostazioni(utenteId: string, postazioniIds: string[]): Promise<void> {
+    const { error: e1 } = await supabase.from('supervisore_postazioni').delete().eq('utente_id', utenteId)
+    if (e1) throw e1
+    if (postazioniIds.length) {
+      const { error: e2 } = await supabase.from('supervisore_postazioni').insert(postazioniIds.map(pid => ({ utente_id: utenteId, postazione_id: pid })))
+      if (e2) throw e2
+    }
+  },
+  async creaUtenteSupervisore(nome: string, cognome: string, email: string): Promise<void> {
+    const em = email.trim().toLowerCase()
+    const { data: ex, error: e1 } = await supabase.from('utenti').select('id').ilike('email', em).limit(1)
+    if (e1) throw e1
+    let id = ex && ex[0] ? (ex[0] as { id: string }).id : null
+    if (!id) {
+      const { data, error } = await supabase.from('utenti').insert({ nome: nome.trim(), cognome: cognome.trim(), email: em, admin: false }).select('id').limit(1)
+      if (error) throw error
+      id = (data?.[0] as { id: string } | undefined)?.id ?? null
+    }
+    if (!id) throw new Error('Creazione utente non riuscita.')
+    const { error } = await supabase.from('supervisori').upsert({ utente_id: id }, { onConflict: 'utente_id' })
     if (error) throw error
   },
 
@@ -1191,7 +1249,7 @@ const localStore = {
     read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
       const cur = map.get(t.utente_id)
       if (!cur || (RANK_LIVELLO[t.livello] ?? 0) > (RANK_LIVELLO[cur.livello] ?? 0)) {
-        map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, livello: t.livello, postazioneId: t.postazione_id ?? null, isSupervisore: t.livello === 'admin' || t.livello === 'responsabile', tuttePostazioni: t.livello === 'admin' })
+        map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, livello: t.livello, postazioneId: t.postazione_id ?? null })
       }
     })
     return [...map.values()].sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
@@ -1223,6 +1281,44 @@ const localStore = {
     }
     extra.push({ id: uid(), nome: nome.trim(), cognome: cognome.trim(), email: em, admin: true })
     writeLs('gm_dev_extra_utenti', extra)
+  },
+
+  // ── Supervisori (DEV) ──
+  async getSupervisori(): Promise<Supervisore[]> {
+    ensureSeed()
+    const sup = read<{ utenteId: string; tuttePostazioni: boolean; postazioni: string[] }[]>('gm_dev_supervisori', [])
+    const nameMap = new Map<string, { nome: string; cognome: string; email: string }>()
+    read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => { if (!nameMap.has(t.utente_id)) nameMap.set(t.utente_id, { nome: t.nome, cognome: t.cognome, email: t.email }) })
+    read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!nameMap.has(u.id)) nameMap.set(u.id, { nome: u.nome, cognome: u.cognome, email: u.email }) })
+    return sup.map(s => ({ id: s.utenteId, nome: nameMap.get(s.utenteId)?.nome ?? '', cognome: nameMap.get(s.utenteId)?.cognome ?? '', email: nameMap.get(s.utenteId)?.email ?? '', tuttePostazioni: s.tuttePostazioni, postazioni: s.postazioni }))
+      .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+  },
+  async addSupervisore(utenteId: string): Promise<void> {
+    const sup = read<{ utenteId: string; tuttePostazioni: boolean; postazioni: string[] }[]>('gm_dev_supervisori', [])
+    if (!sup.some(s => s.utenteId === utenteId)) sup.push({ utenteId, tuttePostazioni: false, postazioni: [] })
+    writeLs('gm_dev_supervisori', sup)
+  },
+  async removeSupervisore(utenteId: string): Promise<void> {
+    writeLs('gm_dev_supervisori', read<{ utenteId: string }[]>('gm_dev_supervisori', []).filter(s => s.utenteId !== utenteId))
+  },
+  async setSupervisoreTutte(utenteId: string, tutte: boolean): Promise<void> {
+    const sup = read<{ utenteId: string; tuttePostazioni: boolean; postazioni: string[] }[]>('gm_dev_supervisori', [])
+    const s = sup.find(x => x.utenteId === utenteId); if (s) s.tuttePostazioni = tutte
+    writeLs('gm_dev_supervisori', sup)
+  },
+  async setSupervisorePostazioni(utenteId: string, postazioniIds: string[]): Promise<void> {
+    const sup = read<{ utenteId: string; tuttePostazioni: boolean; postazioni: string[] }[]>('gm_dev_supervisori', [])
+    const s = sup.find(x => x.utenteId === utenteId); if (s) s.postazioni = postazioniIds
+    writeLs('gm_dev_supervisori', sup)
+  },
+  async creaUtenteSupervisore(nome: string, cognome: string, email: string): Promise<void> {
+    const em = email.trim().toLowerCase()
+    const inTurnisti = read<WithPost<Turnista>[]>(LS_TURNISTI, []).find(t => t.email.toLowerCase() === em)
+    const extra = read<UtenteAdmin[]>('gm_dev_extra_utenti', [])
+    let id = inTurnisti?.utente_id ?? extra.find(u => u.email.toLowerCase() === em)?.id
+    if (!id) { id = uid(); extra.push({ id, nome: nome.trim(), cognome: cognome.trim(), email: em, admin: false }); writeLs('gm_dev_extra_utenti', extra) }
+    const sup = read<{ utenteId: string; tuttePostazioni: boolean; postazioni: string[] }[]>('gm_dev_supervisori', [])
+    if (!sup.some(s => s.utenteId === id)) { sup.push({ utenteId: id, tuttePostazioni: false, postazioni: [] }); writeLs('gm_dev_supervisori', sup) }
   },
 
   // ── Notifiche (DEV) ──
