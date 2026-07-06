@@ -145,6 +145,7 @@ export function TurnistiPage() {
       <div className="flex-1">
         <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Personale del mese{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
         <p className="text-sm text-stone-600">Conferma chi è in servizio in <strong>{MESI[mese - 1]} {anno}</strong> e con quale ruolo. Ogni mese è indipendente: cambiare ruolo o togliere qualcuno non tocca i mesi passati. Ricordati di premere <strong>Conferma</strong>.</p>
+        <p className="text-[11px] text-stone-500 mt-1">Il <strong>ruolo</strong> (responsabile / turnista / esterno) è solo un'etichetta di questo mese e <strong>non</strong> dà accesso all'amministrazione: chi può entrare e gestire i turni si decide in <strong>Centro di Controllo → Supervisori</strong>.</p>
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
