@@ -19,7 +19,7 @@ import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser, BackupTurni } from '../../types'
+import type { TurnoSchema, Turnista, TurnistaMese, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser, BackupTurni } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -59,7 +59,7 @@ export function GestioneTurniPage() {
   const { data: schema = [] }   = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
   const { data: turni = [] }    = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId })
-  const { data: turnistiMese = [] } = useQuery<string[]>({ queryKey: ['turnisti-mese', postazioneId, meseKey], queryFn: () => store.getTurnistiMese(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: regoleVer } = useQuery<RegolaVersione | null>({ queryKey: ['regole-versione', postazioneId, meseKey], queryFn: () => store.getRegoleVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: regole = [] } = useQuery<RegolaTurno[]>({ queryKey: ['regole', regoleVer?.id], queryFn: () => store.getRegole(regoleVer!.id), enabled: !!regoleVer })
   const { data: regoleSpeciali = [] } = useQuery<RegolaTurnista[]>({ queryKey: ['regole-turnista', regoleVer?.id], queryFn: () => store.getRegoleTurnista(regoleVer!.id), enabled: !!regoleVer })
@@ -116,9 +116,12 @@ export function GestioneTurniPage() {
   }, [dirty])
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
-  const importati = useMemo(() => new Set(turnistiMese), [turnistiMese])
-  // palette = solo i turnisti importati per questo mese, divisi per livello
-  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id))), [turnisti, importati])
+  const importati = useMemo(() => new Set(personaleMese.map(p => p.turnista_id)), [personaleMese])
+  // ruolo CONGELATO del mese (turnisti_mese.livello): fonte di verità per palette/colori/pool
+  const ruoloMese = useMemo(() => new Map(personaleMese.map(p => [p.turnista_id, p.livello] as const)), [personaleMese])
+  const livMese = (id: string): Livello => ruoloMese.get(id) ?? tById.get(id)?.livello ?? 'turnista'
+  // palette = solo il personale di questo mese, diviso per ruolo-del-mese
+  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   // riepilogo auto-aggiornante (in base a ciò che è in tabella): T turni, N notti, F festivi, PF prefestivi
   const riepilogo = useMemo(() => {
     const stat = new Map<string, { T: number; N: number; F: number; PF: number }>()
@@ -133,12 +136,12 @@ export function GestioneTurniPage() {
       if (isFestivo(date)) s.F++; else if (isPrefestivo(date)) s.PF++
       stat.set(tid, s)
     }
-    return gruppiPerLivello(turnisti.filter(t => stat.has(t.id))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
-  }, [local, schema, turnisti])
-  // candidati da importare (non ancora nella palette), divisi per livello
+    return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
+  }, [local, schema, turnisti, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
+  // candidati da importare (non ancora nella palette), divisi per livello globale
   const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id))), [turnisti, importati])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
-  const coloreTurnista = (id: string) => ROLE_COLOR[tById.get(id)?.livello ?? 'turnista']
+  const coloreTurnista = (id: string) => ROLE_COLOR[livMese(id)]
   // Ore assegnate per turnista nel mese (esclude il reperibile = slot -1)
   const durataById = useMemo(() => { const m = new Map<string, number>(); schema.forEach(c => m.set(c.id, oreTurno(c.ora_inizio, c.ora_fine))); return m }, [schema])
   // scelta di ciascun turnista per (giorno|turno) — per evidenziare le celle durante il trascinamento
@@ -174,7 +177,7 @@ export function GestioneTurniPage() {
   }, [righe, local])
   const coperturaOk = copertura.totali > 0 && copertura.coperti >= copertura.totali
   // pre-controllo Auto Assegnazione
-  const poolAuto = useMemo(() => turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno'), [turnisti, importati])
+  const poolAuto = useMemo(() => turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno'), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   const slotTotali = useMemo(() => righe.reduce((n, r) => n + r.turno.n_turnisti, 0), [righe])
   const nVorrei = useMemo(() => { const pool = new Set(poolAuto.map(t => t.id)); return desiderataMese.filter(d => d.tipo === 'desiderata' && pool.has(d.turnista_id)).length }, [desiderataMese, poolAuto])
   const regolePresenti = !!regoleVer && regole.length > 0
@@ -299,8 +302,8 @@ export function GestioneTurniPage() {
     const ok = await confirm({ title: 'Aggiungi reperibile', message: 'Aggiungere la colonna “Reperibile” per assegnare un reperibile a ogni turno?', confirmLabel: 'Aggiungi' })
     if (ok) setMostraRepMesi(prev => { const n = new Set(prev); n.add(meseKey); return n })
   }
-  async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
-  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] }) }
+  async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id, tById.get(id)?.livello); qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] }) }
+  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] }) }
   // Importa: se ci sono turnisti con desiderata non ancora importati, propone di
   // importarli in automatico; poi apre comunque il modal per gli altri.
   async function apriImporta() {
@@ -312,8 +315,8 @@ export function GestioneTurniPage() {
         confirmLabel: 'Sì, importa',
       })
       if (ok) {
-        for (const id of desIds) await store.addTurnistaMese(postazioneId!, meseKey, id)
-        await qc.invalidateQueries({ queryKey: ['turnisti-mese', postazioneId, meseKey] })
+        for (const id of desIds) await store.addTurnistaMese(postazioneId!, meseKey, id, tById.get(id)?.livello)
+        await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
       }
     }
     setShowImport(true)
@@ -335,10 +338,10 @@ export function GestioneTurniPage() {
 
   // ── Auto Assegnazione ──
   function eseguiAuto(aggiungi: boolean) {
-    const poolIds = turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno').map(t => t.id)
-    if (!poolIds.length) { showWarn('Nessun turnista importato per questo mese: importa prima il personale.'); return }
-    // gli ESTERNI restano fuori dal pool/riempimento, ma i loro turni FISSI (Regole) vanno onorati
-    const extraFissi = turnisti.filter(t => importati.has(t.id) && t.livello === 'esterno').map(t => t.id)
+    const poolIds = turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno').map(t => t.id)
+    if (!poolIds.length) { showWarn('Nessun turnista nel personale di questo mese: definiscilo prima nel passo ① Personale.'); return }
+    // gli ESTERNI (ruolo del mese) restano fuori dal pool/riempimento, ma i loro turni FISSI (Regole) vanno onorati
+    const extraFissi = turnisti.filter(t => importati.has(t.id) && livMese(t.id) === 'esterno').map(t => t.id)
     // "aggiungi": mantieni i turnisti già inseriti (slot ≥ 0); "sostituisci": riparti da zero
     const esistenti = aggiungi ? new Map([...local].filter(([k]) => +k.split('|')[2] >= 0)) : undefined
     const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, limitiTurnista, extraFissi, esistenti })
@@ -395,7 +398,7 @@ export function GestioneTurniPage() {
     if (copertura.totali === 0 || copertura.coperti / copertura.totali < 0.8) {
       showWarn('Per assegnare le reperibilità i turni devono essere coperti almeno all’80% del totale.'); return
     }
-    const poolIds = turnisti.filter(t => importati.has(t.id) && t.livello !== 'esterno').map(t => t.id)
+    const poolIds = turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno').map(t => t.id)
     const { rep, assegnati } = autoReperibilita({ giorni: giorniDelMese(anno, mese), schema, poolIds, desiderata: desiderataMese, assegnazioni: local })
     if (!assegnati) { showWarn('Nessuna reperibilità assegnabile: nessuna disponibilità libera e compatibile.'); return }
     const nuovo = new Map(local); rep.forEach((v, k) => nuovo.set(k, v))
@@ -600,7 +603,7 @@ export function GestioneTurniPage() {
           onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
           onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
           className="rounded-md px-2 py-1 pr-6 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity flex items-center gap-1"
-          style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
+          style={{ background: ROLE_COLOR[livMese(t.id)].bg, color: ROLE_COLOR[livMese(t.id)].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
           title={`Trascina ${nomeCompleto(t)} — ${fmtOre(ore)} ore assegnate`}>
           <span className="truncate flex-1">{nomeCompleto(t)}</span>
           <span className="shrink-0 font-bold text-[10px] rounded px-1" style={{ background: 'rgba(0,0,0,0.10)' }}>{fmtOre(ore)}h</span>
