@@ -174,7 +174,7 @@ export function DesiderataPage() {
   const [finMsg, setFinMsg] = useState<string | null>(null)
   useEffect(() => { setFinDa(finestra?.aperta_da ?? ''); setFinA(finestra?.aperta_a ?? '') }, [finestra])
   async function salvaFinestra() {
-    if (importati.size === 0) { showWarn('Importa prima almeno un turnista per il mese (pulsante «Importa i turnisti»): senza turnisti non c\'è chi possa esprimere le desiderata.'); return }
+    if (importati.size === 0) { showWarn('Aggiungi prima almeno una persona al personale del mese (passo ① Personale o pulsante «Aggiungi al personale»): senza non c\'è chi possa esprimere le desiderata.'); return }
     if (!finDa || !finA) { showWarn('Imposta sia la data di apertura sia quella di chiusura prima di pubblicare.'); return }
     if (finDa > finA) { showWarn('La data di apertura non può essere successiva a quella di chiusura.'); return }
     if (finA >= primoDelMese) { showWarn(`La chiusura deve cadere entro il ${itDate(ultimoMesePrec)} (il giorno prima dell'inizio di ${MESI[mese - 1]} ${anno}): le desiderata vanno raccolte prima che il mese cominci.`); return }
@@ -381,7 +381,7 @@ export function DesiderataPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowImport(false)}>
           <div className="card w-full max-w-md p-5 max-h-[80vh] overflow-auto" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Importa turnisti · {MESI[mese - 1]} {anno}</h3>
+              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Aggiungi al personale del mese · {MESI[mese - 1]} {anno}</h3>
               <button onClick={() => setShowImport(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
             </div>
             <p className="text-xs text-stone-500 mb-3">Clicca un turnista per aggiungerlo alla palette del mese (chi può esprimere desiderata).</p>
@@ -423,9 +423,9 @@ export function DesiderataPage() {
               <input type="date" value={finDa} max={ultimoMesePrec} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>chiusura
               <input type="date" value={finA} max={ultimoMesePrec} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
-            <button onClick={salvaFinestra} disabled={!finDa || !finA || importati.size === 0} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={importati.size === 0 ? 'Importa prima i turnisti del mese' : !finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
+            <button onClick={salvaFinestra} disabled={!finDa || !finA || importati.size === 0} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={importati.size === 0 ? 'Definisci prima il personale del mese' : !finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
             {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
-            {importati.size === 0 && <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: '#b45309' }}><AlertTriangle size={13} /> Importa prima i turnisti del mese (pulsante «Importa i turnisti»).</span>}
+            {importati.size === 0 && <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: '#b45309' }}><AlertTriangle size={13} /> Definisci prima il personale del mese (passo ① o pulsante «Aggiungi al personale»).</span>}
           </div>
         )}
         {!chiusa && (
@@ -444,7 +444,7 @@ export function DesiderataPage() {
       {/* Barra azioni / salvataggio (nascosta quando la griglia è in sola lettura) */}
       {!readonly && (
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={() => setShowImport(true)} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
+        <button onClick={() => setShowImport(true)} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Aggiungi al personale</button>
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
           {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
@@ -477,7 +477,7 @@ export function DesiderataPage() {
               <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
-          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista importato. Usa “Importa i turnisti”.</span></div>}
+          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessuno nel personale del mese. Definiscilo nel passo ① Personale (o col pulsante «Aggiungi al personale»).</span></div>}
         </aside>
         )}
 

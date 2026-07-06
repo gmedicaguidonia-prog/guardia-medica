@@ -415,7 +415,7 @@ export function GestioneTurniPage() {
 
   async function salvaStato() {
     if (statoScelto !== 'non_pubblicato' && importati.size === 0) {
-      void notify({ title: 'Importa prima i turnisti', message: `Per pubblicare o mettere in pianificazione il calendario di ${MESI[mese - 1]} ${anno} devi prima importare i turnisti del mese (pagina Desiderata o «Importa i turnisti»).` })
+      void notify({ title: 'Manca il personale del mese', message: `Per pubblicare o mettere in pianificazione il calendario di ${MESI[mese - 1]} ${anno} devi prima definire il personale del mese (passo ① Personale, o col pulsante «Aggiungi al personale»).` })
       return
     }
     // anomalia: si pubblica il calendario ma la raccolta desiderata è ancora aperta
@@ -524,7 +524,7 @@ export function GestioneTurniPage() {
                       <span className="font-bold text-sm" style={{ color: sel ? st.fg : '#374151' }}>{s.label}</span>
                     </div>
                     <p className="text-xs text-stone-500 mt-1" style={{ marginLeft: 22 }}>{s.descr}</p>
-                    {bloccato && <p className="text-[11px] mt-1 font-medium flex items-center gap-1" style={{ marginLeft: 22, color: '#b45309' }}><AlertTriangle size={12} /> Importa prima i turnisti del mese.</p>}
+                    {bloccato && <p className="text-[11px] mt-1 font-medium flex items-center gap-1" style={{ marginLeft: 22, color: '#b45309' }}><AlertTriangle size={12} /> Definisci prima il personale del mese (passo ①).</p>}
                   </button>
                 )
               })}
@@ -707,7 +707,7 @@ export function GestioneTurniPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowImport(false)}>
           <div className="card w-full max-w-md p-5 max-h-[80vh] overflow-auto" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Importa turnisti · {MESI[mese - 1]} {anno}</h3>
+              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Aggiungi al personale del mese · {MESI[mese - 1]} {anno}</h3>
               <button onClick={() => setShowImport(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
             </div>
             <p className="text-xs text-stone-500 mb-3">Clicca un turnista per aggiungerlo alla palette del mese (chi farà le rotazioni).</p>
@@ -730,7 +730,7 @@ export function GestioneTurniPage() {
 
       {/* Barra azioni / salvataggio */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={apriImporta} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Importa i turnisti</button>
+        <button onClick={apriImporta} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Aggiungi al personale</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         {showRep && <button onClick={eseguiReperibilita} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95" style={{ background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }} title="Riempi le reperibilità con le disponibilità libere (richiede turni coperti almeno all’80%)"><Phone size={14} /> Assegna Reperibilità</button>}
         <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={
@@ -803,7 +803,7 @@ export function GestioneTurniPage() {
               <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
-          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista importato. Usa “Importa i turnisti”.</span></div>}
+          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessuno nel personale del mese. Definiscilo nel passo ① Personale (o col pulsante «Aggiungi al personale»).</span></div>}
 
           {/* Riepilogo turni assegnati (auto-aggiornante in base alla tabella) */}
           {riepilogo.length > 0 && (

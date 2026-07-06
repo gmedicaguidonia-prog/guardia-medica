@@ -35,7 +35,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
 
   // ── Debug: modalità Admin + Doppleganger (solo per l'admin reale) ──
   const { isRealAdmin, realUser, adminMode, doppleganger, setAdminMode, setDoppleganger } = useDebug()
-  const { data: utenti = [] } = useQuery<UtenteImpersonabile[]>({ queryKey: ['utenti-impersonabili'], queryFn: () => store.getUtentiImpersonabili(), enabled: isRealAdmin })
+  const { data: utenti = [], refetch: refetchImpersonabili } = useQuery<UtenteImpersonabile[]>({ queryKey: ['utenti-impersonabili'], queryFn: () => store.getUtentiImpersonabili(), enabled: isRealAdmin, staleTime: 0 })
   const [debugModal, setDebugModal] = useState<'admin' | 'doppleganger' | null>(null)
   const [dgScelto, setDgScelto] = useState('')
   function attivaDoppleganger() {
@@ -184,7 +184,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
                 ADMIN
                 {adminMode && <Crown size={12} className="absolute -top-2.5 -right-1.5" style={{ color: '#facc15' }} fill="#facc15" />}
               </button>
-              <button onClick={() => { setDgScelto(realUser?.id ?? ''); setDebugModal('doppleganger') }} title="Doppleganger (debug) — fingiti un altro utente"
+              <button onClick={() => { refetchImpersonabili(); setDgScelto(realUser?.id ?? ''); setDebugModal('doppleganger') }} title="Doppleganger (debug) — fingiti un altro utente"
                 className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded transition-all"
                 style={doppleganger
                   ? { background: '#3a2e0a', color: '#fde68a', border: '2px solid #facc15', boxShadow: '0 0 8px rgba(250,204,21,0.6)' }
