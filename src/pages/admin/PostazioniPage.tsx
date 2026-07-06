@@ -265,6 +265,7 @@ function SupervisoriBox() {
   const [nuovaPost, setNuovaPost] = useState('')
   const [busy, setBusy] = useState(false)
   const [espanso, setEspanso] = useState<string | null>(null)
+  const [selMenu, setSelMenu] = useState('')   // postazione scelta nel menu "+ aggiungi" (riga in modifica)
   const [nNome, setNNome] = useState(''); const [nCognome, setNCognome] = useState(''); const [nEmail, setNEmail] = useState('')
 
   const TUTTE = '__tutte__'
@@ -347,7 +348,7 @@ function SupervisoriBox() {
                   <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{s.cognome} {s.nome}</span>
                   <span className="text-xs text-stone-500 hidden sm:inline">{s.email}</span>
                   <div className="flex-1" />
-                  <button onClick={() => setEspanso(mod ? null : s.id)} className={`p-1.5 rounded ${mod ? 'text-blue-600 bg-blue-50' : 'text-stone-500 hover:text-blue-600 hover:bg-blue-50'}`} title="Modifica postazioni"><Pencil size={13} /></button>
+                  <button onClick={() => { setEspanso(mod ? null : s.id); setSelMenu('') }} className={`p-1.5 rounded ${mod ? 'text-blue-600 bg-blue-50' : 'text-stone-500 hover:text-blue-600 hover:bg-blue-50'}`} title="Modifica postazioni"><Pencil size={13} /></button>
                   <button onClick={() => rimuovi(s)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Rimuovi supervisore"><Trash2 size={13} /></button>
                 </div>
                 {/* badge postazioni: sempre visibili, con X solo quando è in modifica (matita) */}
@@ -364,14 +365,15 @@ function SupervisoriBox() {
                     </span>
                   )) : <span className="text-[11px] text-stone-400 italic">nessuna postazione assegnata</span>}
                 </div>
-                {/* in modifica: menu a tendina per aggiungere una postazione (o «Tutte») */}
+                {/* in modifica: menu a tendina + pulsante "Aggiungi" (una postazione o «Tutte») */}
                 {mod && (
-                  <div className="px-2.5 pb-2.5">
-                    <select value="" onChange={e => aggiungiDaMenu(s, e.target.value)} className="input text-xs" style={{ maxWidth: 260 }}>
-                      <option value="">+ aggiungi postazione…</option>
+                  <div className="px-2.5 pb-2.5 flex items-center gap-2">
+                    <select value={selMenu} onChange={e => setSelMenu(e.target.value)} className="input text-xs" style={{ maxWidth: 220 }}>
+                      <option value="">— scegli postazione —</option>
                       {!s.tuttePostazioni && <option value={TUTTE}>Tutte le postazioni</option>}
                       {disponibili.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                     </select>
+                    <button onClick={async () => { await aggiungiDaMenu(s, selMenu); setSelMenu('') }} disabled={!selMenu} className="btn-primary text-xs py-1 px-2.5"><Plus size={13} /> Aggiungi</button>
                   </div>
                 )}
               </div>
