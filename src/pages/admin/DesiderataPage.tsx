@@ -74,7 +74,6 @@ export function DesiderataPage() {
   }, [desiderata])
   const { local, dirty, set, diff, discard } = useStagedAssignments(serverMap, meseKey)
   const [saving, setSaving] = useState(false)
-  const [showImport, setShowImport] = useState(false)
 
   useEffect(() => { setHasUnsaved(dirty); return () => setHasUnsaved(false) }, [dirty, setHasUnsaved])
   useEffect(() => {
@@ -89,8 +88,6 @@ export function DesiderataPage() {
   const livMese = (id: string): Livello => ruoloMese.get(id) ?? tById.get(id)?.livello ?? 'turnista'
   // palette/import desiderata = personale del mese con ruolo-del-mese turnista/responsabile (gli esterni-del-mese non esprimono desiderata)
   const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno').map(t => ({ ...t, livello: livMese(t.id) }))), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
-  // candidati da importare (non ancora nella palette)
-  const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id) && t.livello !== 'esterno')), [turnisti, importati])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
 
   // raggruppa il contenuto delle celle: `data|turnoId|tipo` → [turnistaId]
@@ -166,15 +163,13 @@ export function DesiderataPage() {
     } catch (e) { console.error('[Desiderata] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }) }
     finally { setSaving(false) }
   }
-  async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id, tById.get(id)?.livello); qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] }) }
-  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] }) }
 
   // ── finestra di raccolta (periodo aperto ai turnisti) ──
   const [finDa, setFinDa] = useState(''); const [finA, setFinA] = useState('')
   const [finMsg, setFinMsg] = useState<string | null>(null)
   useEffect(() => { setFinDa(finestra?.aperta_da ?? ''); setFinA(finestra?.aperta_a ?? '') }, [finestra])
   async function salvaFinestra() {
-    if (importati.size === 0) { showWarn('Aggiungi prima almeno una persona al personale del mese (passo ① Personale o pulsante «Aggiungi al personale»): senza non c\'è chi possa esprimere le desiderata.'); return }
+    if (importati.size === 0) { showWarn('Definisci prima il personale del mese (passo ① Personale): senza non c\'è chi possa esprimere le desiderata.'); return }
     if (!finDa || !finA) { showWarn('Imposta sia la data di apertura sia quella di chiusura prima di pubblicare.'); return }
     if (finDa > finA) { showWarn('La data di apertura non può essere successiva a quella di chiusura.'); return }
     if (finA >= primoDelMese) { showWarn(`La chiusura deve cadere entro il ${itDate(ultimoMesePrec)} (il giorno prima dell'inizio di ${MESI[mese - 1]} ${anno}): le desiderata vanno raccolte prima che il mese cominci.`); return }
@@ -321,18 +316,13 @@ export function DesiderataPage() {
   }
 
   const PaletteBadge = (t: Turnista) => (
-    <div key={t.id} className="relative">
-      <div draggable={true}
-        onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
-        onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
-        onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
-        className="rounded-md px-2 py-1 pr-6 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity"
-        style={{ background: ROLE_COLOR[livMese(t.id)].bg, color: ROLE_COLOR[livMese(t.id)].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
-        title={`Trascina ${nomeCompleto(t)}`}>{nomeCompleto(t)}</div>
-      <button onClick={() => rimuoviDalMese(t.id)} title="Togli dal mese"
-        className="absolute top-1/2 -translate-y-1/2 right-1 opacity-60 hover:opacity-100 transition-opacity"
-        style={{ color: ROLE_COLOR[livMese(t.id)].fg }}><X size={11} strokeWidth={3} /></button>
-    </div>
+    <div key={t.id} draggable={true}
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
+      onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
+      onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
+      className="rounded-md px-2 py-1 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity"
+      style={{ background: ROLE_COLOR[livMese(t.id)].bg, color: ROLE_COLOR[livMese(t.id)].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
+      title={`Trascina ${nomeCompleto(t)}`}>{nomeCompleto(t)}</div>
   )
   const Badge = (ds: string, turnoId: string, tid: string, tipo: TipoDesiderata) => (
     <span data-badge key={tid} className="relative rounded px-2 py-0.5 text-[11px] font-semibold shadow-sm" style={{ background: COL[tipo].badge, color: '#fff' }}>
@@ -376,31 +366,6 @@ export function DesiderataPage() {
     <div className="p-4 sm:p-6 space-y-4">
       {Header}
 
-      {/* Modal: importa turnisti per il mese (chi può esprimere desiderata) */}
-      {showImport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowImport(false)}>
-          <div className="card w-full max-w-md p-5 max-h-[80vh] overflow-auto" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Aggiungi al personale del mese · {MESI[mese - 1]} {anno}</h3>
-              <button onClick={() => setShowImport(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
-            </div>
-            <p className="text-xs text-stone-500 mb-3">Clicca un turnista per aggiungerlo alla palette del mese (chi può esprimere desiderata).</p>
-            {importGruppi.length ? importGruppi.map(g => (
-              <div key={g.liv} className="mb-3">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h4>
-                <div className="flex flex-wrap gap-2">
-                  {g.items.map(t => (
-                    <button key={t.id} onClick={() => importaTurnista(t.id)} className="rounded-md px-2 py-1 text-xs font-medium shadow-sm border border-white/60 hover:scale-105 transition-transform"
-                      style={{ background: ROLE_COLOR[livMese(t.id)].bg, color: ROLE_COLOR[livMese(t.id)].fg }}>{nomeCompleto(t)} <span className="font-bold opacity-60">＋</span></button>
-                  ))}
-                </div>
-              </div>
-            )) : <span className="text-xs text-stone-400">Tutti i turnisti sono già nella palette.</span>}
-            <div className="flex justify-end mt-2"><button onClick={() => setShowImport(false)} className="btn-primary text-sm py-1.5 px-3">Fatto</button></div>
-          </div>
-        </div>
-      )}
-
       {/* Pubblicazione raccolta */}
       <div className="card p-3 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -425,7 +390,7 @@ export function DesiderataPage() {
               <input type="date" value={finA} max={ultimoMesePrec} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <button onClick={salvaFinestra} disabled={!finDa || !finA || importati.size === 0} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={importati.size === 0 ? 'Definisci prima il personale del mese' : !finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
             {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
-            {importati.size === 0 && <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: '#b45309' }}><AlertTriangle size={13} /> Definisci prima il personale del mese (passo ① o pulsante «Aggiungi al personale»).</span>}
+            {importati.size === 0 && <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: '#b45309' }}><AlertTriangle size={13} /> Definisci prima il personale del mese (passo ① Personale).</span>}
           </div>
         )}
         {!chiusa && (
@@ -444,7 +409,6 @@ export function DesiderataPage() {
       {/* Barra azioni / salvataggio (nascosta quando la griglia è in sola lettura) */}
       {!readonly && (
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={() => setShowImport(true)} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Aggiungi al personale</button>
         {dirty && <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={13} /> Modifiche non salvate</span>}
         <div className="ml-auto flex items-center gap-2">
           {dirty && <button onClick={discard} className="btn-secondary text-xs py-1.5 px-3"><RotateCcw size={13} /> Annulla</button>}
@@ -477,7 +441,7 @@ export function DesiderataPage() {
               <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
-          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessuno nel personale del mese. Definiscilo nel passo ① Personale (o col pulsante «Aggiungi al personale»).</span></div>}
+          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessuno nel personale del mese: definiscilo nel passo ① Personale.</span></div>}
         </aside>
         )}
 

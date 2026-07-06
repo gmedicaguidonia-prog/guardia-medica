@@ -95,7 +95,6 @@ export function GestioneTurniPage() {
   const [autoAnim, setAutoAnim] = useState(false)
   const autoTimer = useRef<number | null>(null)
   useEffect(() => () => { if (autoTimer.current) clearInterval(autoTimer.current) }, [])
-  const [showImport, setShowImport] = useState(false)
   const [showStatoModal, setShowStatoModal] = useState(false)
   const [statoScelto, setStatoScelto] = useState<StatoCalendario>('non_pubblicato')
   const [anomaliaDes, setAnomaliaDes] = useState(false)   // modal "raccolta desiderata ancora aperta"
@@ -138,8 +137,6 @@ export function GestioneTurniPage() {
     }
     return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
   }, [local, schema, turnisti, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
-  // candidati da importare (non ancora nella palette), divisi per livello globale
-  const importGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => !importati.has(t.id))), [turnisti, importati])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
   const coloreTurnista = (id: string) => ROLE_COLOR[livMese(id)]
   // Ore assegnate per turnista nel mese (esclude il reperibile = slot -1)
@@ -302,25 +299,6 @@ export function GestioneTurniPage() {
     const ok = await confirm({ title: 'Aggiungi reperibile', message: 'Aggiungere la colonna “Reperibile” per assegnare un reperibile a ogni turno?', confirmLabel: 'Aggiungi' })
     if (ok) setMostraRepMesi(prev => { const n = new Set(prev); n.add(meseKey); return n })
   }
-  async function importaTurnista(id: string) { await store.addTurnistaMese(postazioneId!, meseKey, id, tById.get(id)?.livello); qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] }) }
-  async function rimuoviDalMese(id: string) { await store.removeTurnistaMese(meseKey, id); qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] }) }
-  // Importa: se ci sono turnisti con desiderata non ancora importati, propone di
-  // importarli in automatico; poi apre comunque il modal per gli altri.
-  async function apriImporta() {
-    const desIds = [...new Set(desiderataMese.map(d => d.turnista_id))].filter(id => tById.has(id) && !importati.has(id))
-    if (desIds.length > 0) {
-      const ok = await confirm({
-        title: 'Turnisti dalle desiderata',
-        message: `Ci sono ${desIds.length} turnist${desIds.length === 1 ? 'a' : 'i'} con desiderata non ancora important${desIds.length === 1 ? 'o' : 'i'} per ${MESI[mese - 1]} ${anno}. Vuoi importarl${desIds.length === 1 ? 'o' : 'i'} automaticamente?`,
-        confirmLabel: 'Sì, importa',
-      })
-      if (ok) {
-        for (const id of desIds) await store.addTurnistaMese(postazioneId!, meseKey, id, tById.get(id)?.livello)
-        await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
-      }
-    }
-    setShowImport(true)
-  }
   async function salva() {
     setSaving(true)
     try {
@@ -415,7 +393,7 @@ export function GestioneTurniPage() {
 
   async function salvaStato() {
     if (statoScelto !== 'non_pubblicato' && importati.size === 0) {
-      void notify({ title: 'Manca il personale del mese', message: `Per pubblicare o mettere in pianificazione il calendario di ${MESI[mese - 1]} ${anno} devi prima definire il personale del mese (passo ① Personale, o col pulsante «Aggiungi al personale»).` })
+      void notify({ title: 'Manca il personale del mese', message: `Per pubblicare o mettere in pianificazione il calendario di ${MESI[mese - 1]} ${anno} devi prima definire il personale del mese nel passo ① Personale.` })
       return
     }
     // anomalia: si pubblica il calendario ma la raccolta desiderata è ancora aperta
@@ -597,20 +575,15 @@ export function GestioneTurniPage() {
   const PaletteBadge = (t: Turnista) => {
     const ore = oreByTurnista.get(t.id) ?? 0
     return (
-      <div key={t.id} className="relative">
-        <div draggable={true}
-          onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
-          onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
-          onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
-          className="rounded-md px-2 py-1 pr-6 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity flex items-center gap-1"
-          style={{ background: ROLE_COLOR[livMese(t.id)].bg, color: ROLE_COLOR[livMese(t.id)].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
-          title={`Trascina ${nomeCompleto(t)} — ${fmtOre(ore)} ore assegnate`}>
-          <span className="truncate flex-1">{nomeCompleto(t)}</span>
-          <span className="shrink-0 font-bold text-[10px] rounded px-1" style={{ background: 'rgba(0,0,0,0.10)' }}>{fmtOre(ore)}h</span>
-        </div>
-        <button onClick={() => rimuoviDalMese(t.id)} title="Togli dal mese"
-          className="absolute top-1/2 -translate-y-1/2 right-1 opacity-60 hover:opacity-100 transition-opacity"
-          style={{ color: ROLE_COLOR[t.livello].fg }}><X size={11} strokeWidth={3} /></button>
+      <div key={t.id} draggable={true}
+        onDragStart={e => { e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', t.id); dragSource.current = t.id; setDraggingId(t.id) }}
+        onDragEnd={() => { setDraggingId(null); setOverKey(null); dragSource.current = null }}
+        onTouchStart={() => { dragSource.current = t.id; touchActive.current = true; setDraggingId(t.id) }}
+        className="rounded-md px-2 py-1 text-xs font-medium select-none shadow-sm border border-white/60 transition-opacity flex items-center gap-1"
+        style={{ background: ROLE_COLOR[livMese(t.id)].bg, color: ROLE_COLOR[livMese(t.id)].fg, cursor: 'grab', opacity: draggingId === t.id ? 0.4 : 1, touchAction: 'none' }}
+        title={`Trascina ${nomeCompleto(t)} — ${fmtOre(ore)} ore assegnate`}>
+        <span className="truncate flex-1">{nomeCompleto(t)}</span>
+        <span className="shrink-0 font-bold text-[10px] rounded px-1" style={{ background: 'rgba(0,0,0,0.10)' }}>{fmtOre(ore)}h</span>
       </div>
     )
   }
@@ -702,35 +675,10 @@ export function GestioneTurniPage() {
         </div>
       )}
 
-      {/* Modal: importa turnisti per il mese */}
-      {showImport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowImport(false)}>
-          <div className="card w-full max-w-md p-5 max-h-[80vh] overflow-auto" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Aggiungi al personale del mese · {MESI[mese - 1]} {anno}</h3>
-              <button onClick={() => setShowImport(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
-            </div>
-            <p className="text-xs text-stone-500 mb-3">Clicca un turnista per aggiungerlo alla palette del mese (chi farà le rotazioni).</p>
-            {importGruppi.length ? importGruppi.map(g => (
-              <div key={g.liv} className="mb-3">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h4>
-                <div className="flex flex-wrap gap-2">
-                  {g.items.map(t => (
-                    <button key={t.id} onClick={() => importaTurnista(t.id)} className="rounded-md px-2 py-1 text-xs font-medium shadow-sm border border-white/60 hover:scale-105 transition-transform"
-                      style={{ background: ROLE_COLOR[t.livello].bg, color: ROLE_COLOR[t.livello].fg }}>{nomeCompleto(t)} <span className="font-bold opacity-60">＋</span></button>
-                  ))}
-                </div>
-              </div>
-            )) : <span className="text-xs text-stone-400">Tutti i turnisti sono già nella palette.</span>}
-            <div className="flex justify-end mt-2"><button onClick={() => setShowImport(false)} className="btn-primary text-sm py-1.5 px-3">Fatto</button></div>
-          </div>
-        </div>
-      )}
       {Header}
 
       {/* Barra azioni / salvataggio */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={apriImporta} className="btn-secondary text-sm py-1.5 px-3"><UserPlus size={14} /> Aggiungi al personale</button>
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         {showRep && <button onClick={eseguiReperibilita} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95" style={{ background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }} title="Riempi le reperibilità con le disponibilità libere (richiede turni coperti almeno all’80%)"><Phone size={14} /> Assegna Reperibilità</button>}
         <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={
@@ -803,7 +751,7 @@ export function GestioneTurniPage() {
               <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
-          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessuno nel personale del mese. Definiscilo nel passo ① Personale (o col pulsante «Aggiungi al personale»).</span></div>}
+          )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessuno nel personale del mese: definiscilo nel passo ① Personale.</span></div>}
 
           {/* Riepilogo turni assegnati (auto-aggiornante in base alla tabella) */}
           {riepilogo.length > 0 && (
