@@ -86,10 +86,14 @@ export interface MiaPostazione {
   livello: Livello
 }
 
-/** Nominativo completo nella forma "Cognome Nome". */
+/** Capitalizza ogni parola: iniziale maiuscola, resto minuscolo. "MARIO de luca" → "Mario De Luca". */
+export function capNome(s: string | null | undefined): string {
+  return (s ?? '').toLowerCase().replace(/(^|[\s'’\-])(\p{L})/gu, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
+}
+/** Nominativo completo nella forma "Cognome Nome" (con iniziali maiuscole). */
 export function nomeCompleto(t: { nome?: string | null; cognome?: string | null }): string {
-  const c = (t.cognome ?? '').trim()
-  const n = (t.nome ?? '').trim()
+  const c = capNome((t.cognome ?? '').trim())
+  const n = capNome((t.nome ?? '').trim())
   return [c, n].filter(Boolean).join(' ')
 }
 /** Comparatore alfabetico per "Cognome Nome" (ordinamento italiano). */

@@ -292,7 +292,7 @@ function SupervisoriBox() {
   async function rimuovi(s: Supervisore) {
     const ok = await confirm({
       title: 'Rimuovi supervisore',
-      message: `Togliere l'accesso all'amministrazione a ${s.cognome} ${s.nome}? Non potrà più entrare in Admin (effetto al prossimo accesso). Le sue appartenenze e i suoi turni restano intatti.`,
+      message: `Togliere l'accesso all'amministrazione a ${nomeCompleto(s)}? Non potrà più entrare in Admin (effetto al prossimo accesso). Le sue appartenenze e i suoi turni restano intatti.`,
       confirmLabel: 'Rimuovi', danger: true,
     })
     if (!ok) return
@@ -345,7 +345,7 @@ function SupervisoriBox() {
               <div key={s.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
                 <div className="flex items-center gap-2 px-2.5 py-1.5">
                   <KeyRound size={14} style={{ color: '#476540' }} className="shrink-0" />
-                  <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{s.cognome} {s.nome}</span>
+                  <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{nomeCompleto(s)}</span>
                   <span className="text-xs text-stone-500 hidden sm:inline">{s.email}</span>
                   <div className="flex-1" />
                   <button onClick={() => { setEspanso(mod ? null : s.id); setSelMenu('') }} className={`p-1.5 rounded ${mod ? 'text-blue-600 bg-blue-50' : 'text-stone-500 hover:text-blue-600 hover:bg-blue-50'}`} title="Modifica postazioni"><Pencil size={13} /></button>

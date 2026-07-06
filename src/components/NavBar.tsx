@@ -247,7 +247,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
               <>
                 <p className="text-sm text-stone-600 mb-2">Vuoi attivare la modalità doppleganger fingendoti chi?</p>
                 <select value={dgScelto} onChange={e => setDgScelto(e.target.value)} className="input text-sm w-full mb-4">
-                  {utenti.map(u => <option key={u.id} value={u.id}>{u.cognome} {u.nome} — {u.livello}{u.id === realUser?.id ? ' (io)' : ''}</option>)}
+                  {utenti.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)} — {u.livello}{u.id === realUser?.id ? ' (io)' : ''}</option>)}
                 </select>
                 <div className="flex justify-end gap-2">
                   <button onClick={() => setDebugModal(null)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>

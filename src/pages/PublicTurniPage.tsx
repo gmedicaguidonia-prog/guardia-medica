@@ -10,7 +10,7 @@ import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
 import { useRealtimePostazione } from '../hooks/useRealtime'
 import { useDebug } from '../contexts/DebugContext'
-import type { AuthUser, TurnoSchema, Turno, Turnista, TurnistaMese, Livello, MiaPostazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
+import type { AuthUser, TurnoSchema, Turno, Turnista, TurnistaMese, Livello, MiaPostazione, Postazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -38,10 +38,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
   // postazioni dell'utente
   const { data: mie = [], isLoading: loadingMie } = useQuery<MiaPostazione[]>({ queryKey: ['mie-postazioni', user?.id], queryFn: () => store.getMiePostazioni(user!.id), enabled: !!user })
+  const { data: tuttePost = [] } = useQuery<Postazione[]>({ queryKey: ['postazioni'], queryFn: () => store.getPostazioni(), enabled: !!user && adminMode })
   // postazione ricordata per la sessione (chiave condivisa con l'admin)
   const [postazioneId, setPostazioneId] = useState<string | null>(() => { try { return localStorage.getItem('gm_postazione') } catch { return null } })
   function scegliPostazione(id: string) { try { localStorage.setItem('gm_postazione', id) } catch { /* ignore */ } setPostazioneId(id) }
-  useEffect(() => { if (mie.length && (!postazioneId || !mie.some(m => m.postazioneId === postazioneId))) setPostazioneId(mie[0].postazioneId) }, [mie, postazioneId])
+  // in "god mode" (admin reale) il selettore mostra TUTTE le postazioni, non solo le proprie
+  const opzioni = useMemo<{ postazioneId: string; nome: string }[]>(() =>
+    adminMode && tuttePost.length ? tuttePost.map(p => ({ postazioneId: p.id, nome: p.nome }))
+                                  : mie.map(m => ({ postazioneId: m.postazioneId, nome: m.nome })), [adminMode, tuttePost, mie])
+  useEffect(() => { if (opzioni.length && (!postazioneId || !opzioni.some(o => o.postazioneId === postazioneId))) setPostazioneId(opzioni[0].postazioneId) }, [opzioni, postazioneId])
   const mia = mie.find(m => m.postazioneId === postazioneId) ?? null
 
   // dati del mese per la postazione selezionata
@@ -224,7 +229,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
         <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>I miei turni</h1>
       </div>
 
-      {mie.length === 0 ? (
+      {opzioni.length === 0 ? (
         <Avviso>{loadingMie ? 'Caricamento…' : 'Non sei ancora inserito nel personale di nessuna postazione. Chiedi al responsabile di aggiungerti.'}</Avviso>
       ) : (
         <>
@@ -232,11 +237,11 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           <div className="card p-3 flex items-center gap-2 flex-wrap">
             <MapPin size={16} style={{ color: '#476540' }} />
             <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Postazione:</span>
-            {mie.length > 1 ? (
+            {opzioni.length > 1 ? (
               <select value={postazioneId ?? ''} onChange={e => scegliPostazione(e.target.value)} className="input text-sm w-auto">
-                {mie.map(m => <option key={m.postazioneId} value={m.postazioneId}>{m.nome}</option>)}
+                {opzioni.map(o => <option key={o.postazioneId} value={o.postazioneId}>{o.nome}</option>)}
               </select>
-            ) : <span className="text-sm" style={{ color: '#3a3d30' }}>{mie[0].nome}</span>}
+            ) : <span className="text-sm" style={{ color: '#3a3d30' }}>{opzioni[0].nome}</span>}
             {mia && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#eef3ea', color: '#476540' }}>sei {sonoImportato ? livMese(mia.membershipId) : mia.livello}</span>}
 
             {/* Responsabile/i della postazione (allineati a destra) */}
