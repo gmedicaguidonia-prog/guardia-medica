@@ -4,6 +4,7 @@ import { Trash2, AlertTriangle, History } from 'lucide-react'
 import { store } from '../lib/store'
 import { useConfirm } from '../hooks/useConfirm'
 import { ConfirmModal } from './ConfirmModal'
+import { useFinalizzato } from '../hooks/useFinalizzato'
 
 const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
 const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -21,10 +22,12 @@ export function CancellaMeseButton({ postazioneId, meseKey, anno, mese }: { post
   const [openRip, setOpenRip] = useState(false)
   const [busy, setBusy] = useState(false)
   const { data: snap } = useQuery({ queryKey: ['setup-backup', postazioneId, meseKey], queryFn: () => store.getSetupBackup(postazioneId!, meseKey), enabled: !!postazioneId })
+  const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente cancellazione/ripristino
   if (!postazioneId) return null
   const nomeMese = MESI[mese - 1].toUpperCase()
 
   async function cancella() {
+    if (finalizzato) { setOpenDel(false); void notify({ title: 'Mese finalizzato', message: `${MESI[mese - 1]} ${anno} è bloccato: sbloccalo dalla pagina ⑧ Finalizzazione prima di cancellarne le impostazioni.` }); return }
     setBusy(true)
     try {
       await store.cancellaMese(postazioneId!, meseKey)
@@ -35,6 +38,7 @@ export function CancellaMeseButton({ postazioneId, meseKey, anno, mese }: { post
     finally { setBusy(false) }
   }
   async function ripristina() {
+    if (finalizzato) { setOpenRip(false); void notify({ title: 'Mese finalizzato', message: `${MESI[mese - 1]} ${anno} è bloccato: sbloccalo dalla pagina ⑧ Finalizzazione prima di ripristinarlo.` }); return }
     setBusy(true)
     try {
       await store.ripristinaMese(postazioneId!, meseKey)
