@@ -185,7 +185,8 @@ export function SchemaTurniPage() {
   }
 
   async function configuraMese() {
-    await store.creaVersione(postazioneId!, meseKey)
+    const tutteV = await store.getVersioni(postazioneId!)
+    if (!tutteV.some(v => v.valido_da === meseKey)) await store.creaVersione(postazioneId!, meseKey)
     await qc.invalidateQueries({ queryKey: ['versione'] })
   }
 
@@ -248,7 +249,10 @@ export function SchemaTurniPage() {
   async function copiaPrecedente() {
     if (!(await assicuraContinuita())) return
     const sorgente = await store.ultimaConfigConTurni(postazioneId!, meseKey)
-    const nuova = await store.creaVersione(postazioneId!, meseKey)
+    // riusa la versione già esistente per QUESTO mese (es. la coda creata dallo scorporo),
+    // altrimenti creane una — evita versioni duplicate sullo stesso mese
+    const tutteV = await store.getVersioni(postazioneId!)
+    const nuova = tutteV.find(v => v.valido_da === meseKey) ?? await store.creaVersione(postazioneId!, meseKey)
     if (sorgente) {
       const turni = await store.getSchemaVersione(sorgente.id)
       for (const t of turni) await store.addTurnoSchema(nuova.id, { nome: t.nome, ora_inizio: t.ora_inizio, ora_fine: t.ora_fine, n_turnisti: t.n_turnisti, ricorrenza: t.ricorrenza, giorni_custom: t.giorni_custom })
@@ -259,7 +263,8 @@ export function SchemaTurniPage() {
   }
   async function attivaNuovaVuota() {
     if (!(await assicuraContinuita())) return
-    await store.creaVersione(postazioneId!, meseKey)
+    const tutteV = await store.getVersioni(postazioneId!)
+    if (!tutteV.some(v => v.valido_da === meseKey)) await store.creaVersione(postazioneId!, meseKey)
     await store.attivaPasso(postazioneId!, meseKey, 1)
     logAttiva('attivata (nuova configurazione vuota)')
     await ricaricaAttivazione()
