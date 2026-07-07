@@ -32,20 +32,21 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const qc = useQueryClient()
   const oggi = new Date()
   const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
-  const { adminMode } = useDebug()   // "god mode": l'admin reale bypassa i controlli di autorizzazione lato vista
+  const { adminMode, doppleganger } = useDebug()   // "god mode": l'admin reale bypassa i controlli di autorizzazione lato vista
+  const godMode = adminMode && !doppleganger   // ⚠️ la god mode NON si applica mentre impersoni qualcuno (Doppleganger): vedi ESATTAMENTE come lui
   const oggiStr = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
   const [tab, setTab] = useState<'turni' | 'desiderata'>('turni')
 
   // postazioni dell'utente
   const { data: mie = [], isLoading: loadingMie } = useQuery<MiaPostazione[]>({ queryKey: ['mie-postazioni', user?.id], queryFn: () => store.getMiePostazioni(user!.id), enabled: !!user })
-  const { data: tuttePost = [] } = useQuery<Postazione[]>({ queryKey: ['postazioni'], queryFn: () => store.getPostazioni(), enabled: !!user && adminMode })
+  const { data: tuttePost = [] } = useQuery<Postazione[]>({ queryKey: ['postazioni'], queryFn: () => store.getPostazioni(), enabled: !!user && godMode })
   // postazione ricordata per la sessione (chiave condivisa con l'admin)
   const [postazioneId, setPostazioneId] = useState<string | null>(() => { try { return localStorage.getItem('gm_postazione') } catch { return null } })
   function scegliPostazione(id: string) { try { localStorage.setItem('gm_postazione', id) } catch { /* ignore */ } setPostazioneId(id) }
   // in "god mode" (admin reale) il selettore mostra TUTTE le postazioni, non solo le proprie
   const opzioni = useMemo<{ postazioneId: string; nome: string }[]>(() =>
-    adminMode && tuttePost.length ? tuttePost.map(p => ({ postazioneId: p.id, nome: p.nome }))
-                                  : mie.map(m => ({ postazioneId: m.postazioneId, nome: m.nome })), [adminMode, tuttePost, mie])
+    godMode && tuttePost.length ? tuttePost.map(p => ({ postazioneId: p.id, nome: p.nome }))
+                                : mie.map(m => ({ postazioneId: m.postazioneId, nome: m.nome })), [godMode, tuttePost, mie])
   useEffect(() => { if (opzioni.length && (!postazioneId || !opzioni.some(o => o.postazioneId === postazioneId))) setPostazioneId(opzioni[0].postazioneId) }, [opzioni, postazioneId])
   const mia = mie.find(m => m.postazioneId === postazioneId) ?? null
 
@@ -131,7 +132,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
-    if (!sonoImportato && !adminMode) return   // non importato per il mese: non può esprimere desiderata
+    if (!sonoImportato && !godMode) return   // non importato per il mese: non può esprimere desiderata
     await store.setDesiderata(postazioneId!, ds, turnoId, mia.membershipId, tipo)
     await qc.invalidateQueries({ queryKey: ['desiderata', postazioneId, anno, mese] })
   }
@@ -203,7 +204,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     : fin.aperta_a < oggiStr ? 'chiusa'
     : 'aperta'
   const pubblicheMode = !!fin?.pubbliche            // desiderata visibili a tutti (vista a colonne)
-  const desEditabile = desStato === 'aperta' && (sonoImportato || adminMode)   // solo a raccolta aperta e se importato per il mese
+  const desEditabile = desStato === 'aperta' && (sonoImportato || godMode)   // solo a raccolta aperta e se importato per il mese
   // avviso evidente SOPRA il calendario desiderata (in qualunque forma): fino a quando è attivo
   const avvisoChiusura = desEditabile && fin?.aperta_a ? (
     <div className="card p-3 flex items-start gap-2" style={{ background: '#fef3c7', border: '1px solid #fbbf24' }}>
@@ -223,7 +224,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   )
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-4">
+    <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 space-y-4">
       <div className="flex items-center gap-2">
         <CalendarDays size={22} style={{ color: '#476540' }} />
         <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>I miei turni</h1>
@@ -285,7 +286,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   </div>
                 )}
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-auto">
+                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
                     <LayoutGrid size={14} style={{ color: '#476540' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
@@ -354,7 +355,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
           {/* ───── DESIDERATA ───── */}
           {tab === 'desiderata' && (
-            mia && livMese(mia.membershipId) === 'esterno' && !adminMode ? (
+            mia && livMese(mia.membershipId) === 'esterno' && !godMode ? (
               <Avviso>Come <strong>esterno</strong> non puoi accedere alle desiderata/indisponibilità. Puoi però vedere il <strong>Calendario Turni</strong> e candidarti ai turni scoperti.</Avviso>
             ) : desStato === 'assente' ? (
               <Avviso>La raccolta <strong>desiderata / indisponibilità</strong> di {MESI[mese - 1]} {anno} non è ancora stata pubblicata.</Avviso>
@@ -362,9 +363,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               <Avviso>La raccolta desiderata di {MESI[mese - 1]} {anno} aprirà il <strong>{itDate(fin!.aperta_da!)}</strong>.</Avviso>
             ) : !versione || schema.length === 0 || !impaginazioneOk ? (
               <Avviso>Non ci sono turni configurati per {MESI[mese - 1]} {anno}.</Avviso>
-            ) : (!sonoImportato && !adminMode) ? (
+            ) : (!sonoImportato && !godMode) ? (
               <Avviso>Non risulti tra i turnisti di <strong>{MESI[mese - 1]} {anno}</strong>: per questo mese non puoi esprimere desiderata / indisponibilità. Se pensi sia un errore, contatta il tuo responsabile.</Avviso>
-            ) : (pubblicheMode || adminMode) ? (
+            ) : (pubblicheMode || godMode) ? (
               /* ── DESIDERATA PUBBLICHE (o god mode admin): una colonna per turnista, modifichi la tua ── */
               <>
                 {avvisoChiusura}
@@ -374,7 +375,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     : <>Raccolta chiusa{fin?.aperta_a ? ` il ${itDate(fin.aperta_a)}` : ''} — sola lettura.</>}
                 </p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-auto">
+                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
                     <LayoutGrid size={14} style={{ color: '#476540' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
@@ -455,7 +456,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 {avvisoChiusura}
                 <p className="text-xs text-stone-500">Per ogni turno indica se lo <strong style={{ color: '#166534' }}>vorresti</strong> o se <strong style={{ color: '#b91c1c' }}>non puoi</strong>.</p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-auto">
+                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
                     <LayoutGrid size={14} style={{ color: '#476540' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
