@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, UserCog } from 'lucide-react'
+import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
@@ -10,6 +10,7 @@ import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
 import { useRealtimePostazione } from '../hooks/useRealtime'
 import { useDebug } from '../contexts/DebugContext'
+import { IconaLivello } from '../components/IconaLivello'
 import type { AuthUser, TurnoSchema, Turno, Turnista, TurnistaMese, Livello, MiaPostazione, Postazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -247,7 +248,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
             {/* Responsabile/i della postazione (allineati a destra) */}
             <div className="flex items-center gap-1.5 ml-auto">
-              <UserCog size={15} style={{ color: '#476540' }} />
+              <IconaLivello livello="responsabile" size={15} color="#476540" />
               <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Responsabile/i:</span>
               {responsabili.length > 0 ? (
                 <select className="input text-sm w-auto" defaultValue={responsabili[0].id} title="Responsabili della postazione">

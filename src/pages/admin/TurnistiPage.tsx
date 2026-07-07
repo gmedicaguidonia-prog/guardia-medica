@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Save, X, Users, User, UserCog, Crown, Eye, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, Save, X, Users, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy, RotateCcw, AlertTriangle } from 'lucide-react'
 import { store } from '../../lib/store'
 import { LIVELLI_PERSONALE, nomeCompleto, gruppiPerLivello } from '../../types'
 import { ATTIVAZIONE_DA } from '../../lib/constants'
@@ -14,16 +14,16 @@ import type { Turnista, Livello, Utente, TurnistaMese } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 
-const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType; fill?: string }> = {
-  admin:        { bg: '#fef9c3', fg: '#a16207', Icon: Crown,     fill: '#facc15' },   // corona dorata
-  responsabile: { bg: '#fef3c7', fg: '#92400e', Icon: UserCog },
-  turnista:     { bg: '#dbeafe', fg: '#1e40af', Icon: User },                         // persona (stile MSN)
-  esterno:      { bg: '#dcfce7', fg: '#166534', Icon: Eye },                          // osservatore: occhio
+const BADGE: Record<Livello, { bg: string; fg: string }> = {
+  admin:        { bg: '#fef9c3', fg: '#a16207' },
+  responsabile: { bg: '#fef3c7', fg: '#92400e' },
+  turnista:     { bg: '#dbeafe', fg: '#1e40af' },
+  esterno:      { bg: '#dcfce7', fg: '#166534' },
 }
 function LivelloBadge({ livello }: { livello: Livello }) {
-  const { bg, fg, Icon, fill } = BADGE[livello]
+  const { bg, fg } = BADGE[livello]
   const label = LIVELLI_PERSONALE.find(l => l.value === livello)?.label ?? livello
-  return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: bg, color: fg }}><Icon size={10} fill={fill ?? 'none'} /> {label}</span>
+  return <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: bg, color: fg }}><IconaLivello livello={livello} size={10} /> {label}</span>
 }
 
 export function TurnistiPage() {
