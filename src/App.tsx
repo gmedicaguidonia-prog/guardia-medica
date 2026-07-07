@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuth } from './hooks/useAuth'
 import { NavBar } from './components/NavBar'
@@ -14,6 +14,7 @@ import { ImpaginazionePage } from './pages/admin/ImpaginazionePage'
 import { DesiderataPage } from './pages/admin/DesiderataPage'
 import { FestivitaPage } from './pages/admin/FestivitaPage'
 import { FinalizzazionePage } from './pages/admin/FinalizzazionePage'
+import { StampaTurniPage } from './pages/StampaTurniPage'
 import { PostazioniPage } from './pages/admin/PostazioniPage'
 import { AdminHomePage } from './pages/admin/AdminHomePage'
 import { useVersionCheck } from './hooks/useVersionCheck'
@@ -58,12 +59,14 @@ function AppShell({ loading, signInWithGoogle, signOut, devLogin, isDev }: {
 }) {
   const { effectiveUser: user } = useDebug()
   const { updateAvailable, applyUpdate } = useVersionCheck()
+  const location = useLocation()
   useEffect(() => { setAutoreCorrente(user ? nomeCompleto(user) : null) }, [user])
+  const paginaStampa = location.pathname.startsWith('/admin/stampa')   // pagina di stampa: niente navbar
 
   return (
     <PostazioneProvider user={user}>
     <div className="min-h-screen flex flex-col">
-      {user && <NavBar user={user} onSignOut={signOut} isDev={isDev} onDevSwitch={devLogin}
+      {user && !paginaStampa && <NavBar user={user} onSignOut={signOut} isDev={isDev} onDevSwitch={devLogin}
         updateAvailable={updateAvailable} onReload={applyUpdate} />}
 
       <Routes>
@@ -73,6 +76,10 @@ function AppShell({ loading, signInWithGoogle, signOut, devLogin, isDev }: {
         {/* Pagina pubblica — tutti i loggati autorizzati */}
         <Route path="/turni"
           element={<ProtectedRoute user={user} loading={loading}><PublicTurniPage user={user} /></ProtectedRoute>} />
+
+        {/* Stampa turni: scheda a parte, senza layout admin (aperta dalla Finalizzazione) */}
+        <Route path="/admin/stampa"
+          element={<ProtectedRoute user={user} loading={loading} requireAdmin><StampaTurniPage /></ProtectedRoute>} />
 
         {/* Sezione admin */}
         <Route path="/admin"

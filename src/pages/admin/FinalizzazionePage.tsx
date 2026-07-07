@@ -1,14 +1,11 @@
 import { useMemo, useState } from 'react'
-import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardCheck, ChevronLeft, ChevronRight, Lock, Unlock, Printer, Mail, BellRing, Table2, Check, Moon, Sun, Star } from 'lucide-react'
+import { ClipboardCheck, ChevronLeft, ChevronRight, Lock, Unlock, Printer, Mail, BellRing, Table2, Check } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
-import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
-import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../../lib/holidays'
+import { isFestivo, isPrefestivo, isSuperfestivo } from '../../lib/holidays'
 import { useFestivita } from '../../hooks/useFestivita'
 import { useFinalizzato } from '../../hooks/useFinalizzato'
-import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
@@ -19,7 +16,6 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import type { TurnoSchema, Turnista, TurnistaMese, ConfigVersione, Turno, Livello, AuthUser } from '../../types'
 
 const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
-const WD = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']
 
 function oreTurno(inizio: string, fine: string): number {
   const [h1, m1] = inizio.split(':').map(Number)
@@ -32,8 +28,6 @@ const fmtOre = (x: number) => (Number.isInteger(x) ? `${x}` : x.toFixed(1))
 const itDataOra = (iso: string) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
 
 const ROLE_DOT: Record<Livello, string> = { admin: '#b91c1c', responsabile: '#ca8a04', turnista: '#1e40af', esterno: '#166534' }
-const thS: CSSProperties = { background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '5px 8px', textAlign: 'left', border: '1px solid #1f2d18' }
-const tdS: CSSProperties = { padding: '4px 8px', border: '1px solid #d6d3cc', fontSize: 12.5 }
 
 export function FinalizzazionePage() {
   const { postazioneId, postazioneAttiva } = usePostazione()
@@ -58,24 +52,12 @@ export function FinalizzazionePage() {
   const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
-  const { fogliConTurni } = useImpaginazione(postazioneId, meseKey, schema)
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
   const ruoloMese = useMemo(() => new Map(personaleMese.map(p => [p.turnista_id, p.livello] as const)), [personaleMese])
   const livMese = (id: string): Livello => ruoloMese.get(id) ?? tById.get(id)?.livello ?? 'turnista'
   const turnoById = useMemo(() => new Map(schema.map(t => [t.id, t])), [schema])
   const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
-  const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
-
-  // turnisti assegnati per (data|turno), esclusi i reperibili (slot -1)
-  const perCella = useMemo(() => {
-    const m = new Map<string, string[]>()
-    turni.filter(t => t.slot >= 0 && t.turnista_id).forEach(t => {
-      const k = `${t.data}|${t.turno_schema_id}`
-      const a = m.get(k); if (a) a.push(t.turnista_id!); else m.set(k, [t.turnista_id!])
-    })
-    return m
-  }, [turni])
 
   // ── Conteggi di fine mese (estesi): T, Ore, N, F, PF, SF per persona ──
   const conteggi = useMemo(() => {
@@ -95,17 +77,6 @@ export function FinalizzazionePage() {
     return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
   }, [turni, turnoById, turnisti, ruoloMese, festivoSet, superSet, superTurniByData])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Griglia stampabile: per foglio, righe (giorno, turno) con i turnisti assegnati ──
-  const grigliaStampa = useMemo(() => fogliConTurni.map(fc => {
-    const righe: { ds: string; d: Date; turno: TurnoSchema; nomi: string[] }[] = []
-    giorni.forEach(d => fc.turni.forEach(c => {
-      if (!turnoSiApplica(c, d, festivoSet)) return
-      const ids = perCella.get(`${isoDate(d)}|${c.id}`) ?? []
-      righe.push({ ds: isoDate(d), d, turno: c, nomi: ids.map(id => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }) })
-    }))
-    return { foglio: fc.foglio, righe }
-  }), [fogliConTurni, giorni, perCella, tById, festivoSet])
-
   // ── Email (predisposizione: invio Gmail guidato in una fase futura) ──
   const [destinatari, setDestinatari] = useState<string>(() => { try { return localStorage.getItem(`gm_finalizza_email_${postazioneId ?? ''}`) ?? '' } catch { return '' } })
   function salvaDestinatari(v: string) { setDestinatari(v); try { localStorage.setItem(`gm_finalizza_email_${postazioneId ?? ''}`, v) } catch { /* ignore */ } }
@@ -117,7 +88,13 @@ export function FinalizzazionePage() {
 
   async function finalizza() {
     if (!postazioneId) return
-    if (!(await confirm({ title: 'Finalizzare il mese?', message: `${MESI[mese - 1]} ${anno} verrà bloccato: turni, desiderata e personale diventeranno di sola lettura finché non lo sblocchi da questa pagina.`, confirmLabel: 'Finalizza e blocca' }))) return
+    // Il blocco "di norma" si fa dal 1° giorno del mese successivo: prima è una forzatura da confermare.
+    const primoDelMeseDopo = new Date(anno, mese, 1)
+    const anticipato = new Date() < primoDelMeseDopo
+    const ok = anticipato
+      ? await confirm({ title: 'Finalizzare in anticipo?', message: `${MESI[mese - 1]} ${anno} non è ancora terminato: di norma il mese si blocca dal 1° ${MESI[mese % 12]} in poi. Bloccarlo adesso è una forzatura. Vuoi procedere comunque? Turni, desiderata e personale diventeranno di sola lettura.`, confirmLabel: 'Sì, forza il blocco', danger: true })
+      : await confirm({ title: 'Finalizzare il mese?', message: `${MESI[mese - 1]} ${anno} verrà bloccato: turni, desiderata e personale diventeranno di sola lettura finché non lo sblocchi da questa pagina.`, confirmLabel: 'Finalizza e blocca' })
+    if (!ok) return
     await store.finalizzaMese(postazioneId, meseKey, nomeAutore)
     store.addNotifica({ postazioneId, mese: meseKey, tipo: 'finalizzazione', messaggio: `${MESI[mese - 1]} ${anno} finalizzato e bloccato.`, target: '/admin/finalizza', perAdmin: true }).catch(() => {})
     invalida()
@@ -198,8 +175,8 @@ export function FinalizzazionePage() {
           <h2 className="text-base font-bold" style={{ color: '#2b3c24' }}>Stampa / PDF ufficiale ed email</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap mb-3">
-          <p className="text-sm text-stone-600 flex-1 min-w-[220px]">Genera il tabellone del mese ({grigliaStampa.reduce((n, g) => n + g.righe.length, 0)} righe in {grigliaStampa.length} {grigliaStampa.length === 1 ? 'foglio' : 'fogli'}): dalla finestra di stampa puoi salvarlo come <strong>PDF</strong>.</p>
-          <button onClick={() => window.print()} className="btn-primary text-sm inline-flex items-center gap-1.5"><Printer size={14} /> Stampa / salva PDF</button>
+          <p className="text-sm text-stone-600 flex-1 min-w-[220px]">Apre in una <strong>nuova scheda</strong> il tabellone del mese impaginato per fogli (secondo il passo ④ Impaginazione): da lì lo stampi o lo salvi come <strong>PDF</strong>.</p>
+          <button onClick={() => window.open(`${import.meta.env.BASE_URL}admin/stampa?p=${postazioneId}&m=${meseKey}`, '_blank')} className="btn-primary text-sm inline-flex items-center gap-1.5"><Printer size={14} /> Stampa / salva PDF</button>
         </div>
         <div className="pt-3" style={{ borderTop: '1px solid #eef0ea' }}>
           <div className="flex items-center gap-2 mb-1.5"><Mail size={14} style={{ color: '#476540' }} /><p className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Invio per email</p></div>
@@ -270,48 +247,6 @@ export function FinalizzazionePage() {
         </div>
       </div>
 
-      {/* ── Area SOLO STAMPA: tabellone del mese per foglio ── */}
-      <style>{`
-        .print-area { display: none; }
-        @media print {
-          body * { visibility: hidden; }
-          .print-area, .print-area * { visibility: visible; }
-          .print-area { display: block; position: absolute; left: 0; top: 0; width: 100%; padding: 8mm; background: #fff; }
-          .print-area table { page-break-inside: auto; }
-          .print-area tr { page-break-inside: avoid; }
-        }
-      `}</style>
-      <div className="print-area">
-        {grigliaStampa.map(({ foglio, righe }) => (
-          <div key={foglio.id} style={{ marginBottom: 18 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 800, color: '#111', margin: '0 0 2px' }}>{postazioneAttiva.nome} — Turni di {MESI[mese - 1]} {anno}</h2>
-            <p style={{ fontSize: 11, color: '#444', margin: '0 0 6px' }}>{foglio.nome}{finalizzato ? ' · CALENDARIO DEFINITIVO' : ' · bozza'} · stampato il {itDataOra(new Date().toISOString())}</p>
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <thead><tr><th style={thS}>Giorno</th><th style={thS}>Turno</th><th style={thS}>Turnisti</th></tr></thead>
-              <tbody>
-                {righe.map(({ ds, d, turno, nomi }) => {
-                  const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
-                  const superF = isSuperfestivo(d, superSet)
-                  const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
-                  const overnight = turno.ora_fine <= turno.ora_inizio
-                  return (
-                    <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
-                      <td style={{ ...tdS, whiteSpace: 'nowrap', fontWeight: 700, color: fest ? '#b91c1c' : pref ? '#b45309' : '#111' }}>
-                        {d.getDate()} {WD[d.getDay()]}{superF ? <Star size={10} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} /> : null}
-                      </td>
-                      <td style={{ ...tdS, whiteSpace: 'nowrap' }}>
-                        {overnight ? <Moon size={10} style={{ display: 'inline', color: '#64748b', marginRight: 3, verticalAlign: '-1px' }} /> : <Sun size={10} style={{ display: 'inline', color: '#f59e0b', marginRight: 3, verticalAlign: '-1px' }} />}
-                        {turno.nome || 'Turno'} <span style={{ color: '#666', fontSize: 11 }}>{turno.ora_inizio}–{turno.ora_fine}</span>
-                      </td>
-                      <td style={tdS}>{nomi.length ? nomi.join(', ') : '—'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
