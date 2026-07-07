@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, ArrowRightLeft, Bell, ChevronLeft, ChevronRight } from 'lucide-react'
 import { store } from '../../lib/store'
+import { ATTIVAZIONE_DA } from '../../lib/constants'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
@@ -41,8 +42,11 @@ export function AdminHomePage() {
   const { postazioneId, postazioneAttiva } = usePostazione()
   const { meseKey, setMeseAnno } = useMeseSelezionato()
   const meseProssimo = meseKeyOffset(1)
+  const mesePrecedente = meseKeyOffset(-1)
   const { data: versioni = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all', postazioneId], queryFn: () => store.getVersioni(postazioneId!), enabled: !!postazioneId })
   const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseProssimo], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseProssimo), enabled: !!postazioneId })
+  // dal 1° del mese: il mese precedente va FINALIZZATO (solo per i mesi con la nuova procedura)
+  const { data: finPrecedente } = useQuery<{ autore: string | null; createdAt: string } | null>({ queryKey: ['finalizzazione', postazioneId, mesePrecedente], queryFn: () => store.getFinalizzazione(postazioneId!, mesePrecedente), enabled: !!postazioneId && mesePrecedente >= ATTIVAZIONE_DA })
 
   // ── Centro Notifiche ──
   const qc = useQueryClient()
@@ -74,6 +78,14 @@ export function AdminHomePage() {
     const out: Avviso[] = []
     const mesi = [0, 1, 2].map(meseKeyOffset)   // corrente + 2
 
+    // Il mese precedente è terminato ma non è ancora stato finalizzato (avviso dal 1° del mese)
+    if (mesePrecedente >= ATTIVAZIONE_DA && finPrecedente === null) {
+      out.push({
+        testo: `${meseLabel(mesePrecedente)} è terminato ma non è ancora stato finalizzato: bloccalo, genera il PDF ufficiale e chiudi i conteggi.`,
+        cta: 'Finalizza',
+        azione: () => { const [a, m] = mesePrecedente.split('-').map(Number); setMeseAnno(a, m); navigate('/admin/finalizza') },
+      })
+    }
     // Mesi imminenti senza configurazione
     mesi.forEach(mk => {
       if (!versioni.some(v => copre(v, mk))) {
@@ -95,7 +107,7 @@ export function AdminHomePage() {
       }
     }
     return out
-  }, [versioni, finestraProssimo, meseProssimo, navigate])
+  }, [versioni, finestraProssimo, meseProssimo, mesePrecedente, finPrecedente, navigate, setMeseAnno])
 
   return (
     <div className="relative min-h-full">

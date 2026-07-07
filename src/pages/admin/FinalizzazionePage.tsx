@@ -97,6 +97,7 @@ export function FinalizzazionePage() {
     if (!ok) return
     await store.finalizzaMese(postazioneId, meseKey, nomeAutore)
     store.addNotifica({ postazioneId, mese: meseKey, tipo: 'finalizzazione', messaggio: `${MESI[mese - 1]} ${anno} finalizzato e bloccato.`, target: '/admin/finalizza', perAdmin: true }).catch(() => {})
+    store.addLogPostazione(`«${postazioneAttiva?.nome ?? ''}»: ${MESI[mese - 1]} ${anno} FINALIZZATO (mese bloccato).`, nomeAutore).catch(() => {})
     invalida()
   }
   async function sblocca() {
@@ -104,6 +105,7 @@ export function FinalizzazionePage() {
     if (!(await confirm({ title: 'Sbloccare il mese?', message: `${MESI[mese - 1]} ${anno} tornerà modificabile (turni, desiderata, personale).`, confirmLabel: 'Sblocca', danger: true }))) return
     await store.sbloccaMese(postazioneId, meseKey)
     store.addNotifica({ postazioneId, mese: meseKey, tipo: 'finalizzazione', messaggio: `${MESI[mese - 1]} ${anno} sbloccato (di nuovo modificabile).`, target: '/admin/finalizza', perAdmin: true }).catch(() => {})
+    store.addLogPostazione(`«${postazioneAttiva?.nome ?? ''}»: ${MESI[mese - 1]} ${anno} SBLOCCATO (di nuovo modificabile).`, nomeAutore).catch(() => {})
     invalida()
   }
   async function notificaTurnisti() {

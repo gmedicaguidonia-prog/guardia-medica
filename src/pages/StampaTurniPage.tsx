@@ -5,14 +5,14 @@ import { useSearchParams } from 'react-router-dom'
 import { Printer, X } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
-import { isoDate } from '../lib/holidays'
+import { isoDate, isFestivo } from '../lib/holidays'
 import { useFestivita } from '../hooks/useFestivita'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useFinalizzato } from '../hooks/useFinalizzato'
 import type { TurnoSchema, Turnista, ConfigVersione, Turno, Postazione } from '../types'
 
 const MESI = ['GENNAIO', 'FEBBRAIO', 'MARZO', 'APRILE', 'MAGGIO', 'GIUGNO', 'LUGLIO', 'AGOSTO', 'SETTEMBRE', 'OTTOBRE', 'NOVEMBRE', 'DICEMBRE']
-const WD = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB']
+const WD = ['DOMENICA', 'LUNEDÌ', 'MARTEDÌ', 'MERCOLEDÌ', 'GIOVEDÌ', 'VENERDÌ', 'SABATO']
 
 /** "COGNOME N." tutto maiuscolo (es. "MARABELLI S."). */
 function nomeStampa(t: Turnista | undefined): string {
@@ -123,7 +123,7 @@ export function StampaTurniPage() {
                 </tr>
                 <tr>
                   <th style={{ ...td, fontWeight: 800, width: 44, textAlign: 'center' }}>N°</th>
-                  <th style={{ ...td, fontWeight: 800, width: 64, textAlign: 'center' }}>Giorno</th>
+                  <th style={{ ...td, fontWeight: 800, width: 110, textAlign: 'center' }}>Giorno</th>
                   <th style={{ ...td, fontWeight: 800, width: 130, textAlign: 'left' }}>Turno</th>
                   <th style={{ ...td, fontWeight: 800, textAlign: 'left' }}>Turnisti</th>
                   {conRep && <th style={{ ...td, fontWeight: 800, width: 150, textAlign: 'left' }}>Reperibile</th>}
@@ -133,7 +133,7 @@ export function StampaTurniPage() {
                 {righe.map(({ ds, d, turno, nomi, rep }) => (
                   <tr key={`${ds}|${turno.id}`}>
                     <td style={{ ...td, textAlign: 'center', fontWeight: 700 }}>{d.getDate()}</td>
-                    <td style={{ ...td, textAlign: 'center' }}>{WD[d.getDay()]}</td>
+                    <td style={{ ...td, textAlign: 'center', ...(isFestivo(d, festivoSet) ? { color: '#c00000', fontWeight: 700 } : null) }}>{WD[d.getDay()]}</td>
                     <td style={td}>{turno.nome || 'Turno'}</td>
                     <td style={{ ...td, fontWeight: 600 }}>{nomi.length ? nomi.join(' - ') : ''}</td>
                     {conRep && <td style={td}>{rep ?? ''}</td>}
