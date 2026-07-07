@@ -35,7 +35,7 @@ const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
   turnista:     { bg: '#dbeafe', fg: '#1e40af' },
   esterno:      { bg: '#dcfce7', fg: '#166534' },
 }
-const thStyle: CSSProperties = { background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: 2 }
+const thStyle: CSSProperties = { background: 'var(--t-titolo)', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: 2 }
 const tdBase: CSSProperties = { padding: '6px 10px', border: '1px solid #e5e7eb', verticalAlign: 'top' }
 
 /** Durata in ore di un turno (gestisce l'attraversamento della mezzanotte). */
@@ -476,11 +476,11 @@ export function GestioneTurniPage() {
 
   const Header = (
     <div className="flex items-center gap-3 flex-wrap">
-      <CalendarDays size={22} style={{ color: '#476540' }} />
-      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Turni del Mese{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
+      <CalendarDays size={22} style={{ color: 'var(--t-accento)' }} />
+      <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Turni del Mese{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
-        <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
+        <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
         <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>      </div>
       {/* Stato del calendario turni — apre il modal di scelta */}
       <button onClick={apriStatoModal}
@@ -495,7 +495,7 @@ export function GestioneTurniPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setShowStatoModal(false)}>
           <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Stato calendario · {MESI[mese - 1]} {anno}</h3>
+              <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Stato calendario · {MESI[mese - 1]} {anno}</h3>
               <button onClick={() => setShowStatoModal(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
             </div>
             <p className="text-xs text-stone-500 mb-3">Decidi cosa vedono i turnisti nella pagina pubblica «I miei turni».</p>
@@ -531,7 +531,7 @@ export function GestioneTurniPage() {
           <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle size={20} style={{ color: '#b45309' }} />
-              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Raccolta desiderata ancora aperta</h3>
+              <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Raccolta desiderata ancora aperta</h3>
             </div>
             <p className="text-sm text-stone-600 mb-2">Stai per pubblicare il calendario di <strong>{MESI[mese - 1]} {anno}</strong>, ma la <strong>raccolta desiderata è ancora attiva</strong>{finestraDes?.aperta_a ? <> (fino al {itDate(finestraDes.aperta_a)})</> : null}. Non ha senso tenerla aperta mentre il calendario — anche parziale — è pubblicato: i turnisti potrebbero continuare a inserire desiderata su turni già assegnati.</p>
             <p className="text-xs text-stone-500 mb-4">Come vuoi procedere?</p>
@@ -632,7 +632,7 @@ export function GestioneTurniPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => !ripristinando && setShowRestore(false)}>
           <div className="card w-full max-w-lg p-5 max-h-[80vh] overflow-auto" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}><History size={18} style={{ color: '#1d4ed8' }} /> Ripristina calendario · {MESI[mese - 1]} {anno}</h3>
+              <h3 className="text-base font-bold flex items-center gap-2" style={{ color: 'var(--t-titolo)' }}><History size={18} style={{ color: '#1d4ed8' }} /> Ripristina calendario · {MESI[mese - 1]} {anno}</h3>
               <button onClick={() => setShowRestore(false)} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
             </div>
             <p className="text-xs text-stone-500 mb-3">Scegli una versione: verrà <strong>caricata nella griglia</strong> ma <strong>non salvata in automatico</strong>. Controllala e premi <strong>Salva</strong> per renderla definitiva — solo allora viene creata una nuova copia di backup. Finché non salvi, lo stato attuale resta intatto.</p>
@@ -656,7 +656,7 @@ export function GestioneTurniPage() {
                     return (
                     <div key={b.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: '#f4f6f1', border: '1px solid #e5e7eb' }}>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold truncate" style={{ color: '#2b3c24' }}>{i === 0 && <span title="Versione più recente" style={{ color: '#b45309' }}>★ </span>}{b.motivo ?? 'Versione'}</div>
+                        <div className="text-sm font-semibold truncate" style={{ color: 'var(--t-titolo)' }}>{i === 0 && <span title="Versione più recente" style={{ color: '#b45309' }}>★ </span>}{b.motivo ?? 'Versione'}</div>
                         <div className="text-[11px] text-stone-500">{b.autore ? `${b.autore} · ` : ''}{fmtDT(b.createdAt)} · {b.nTurni} turni</div>
                       </div>
                       {confermaId === b.id ? (
@@ -693,7 +693,7 @@ export function GestioneTurniPage() {
         {!showRep && <button onClick={aggiungiReperibile} className="btn-secondary text-sm py-1.5 px-3"><Phone size={14} /> Aggiungi Reperibile</button>}
         {showRep && <button onClick={eseguiReperibilita} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all hover:brightness-95" style={{ background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }} title="Riempi le reperibilità con le disponibilità libere (richiede turni coperti almeno all’80%)"><Phone size={14} /> Assegna Reperibilità</button>}
         <span className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" style={
-          copertura.totali === 0 ? { background: '#eef1ea', color: '#476540', border: '1px solid #c9d8bf' }
+          copertura.totali === 0 ? { background: 'var(--t-tenue)', color: 'var(--t-accento)', border: '1px solid #c9d8bf' }
           : copertura.coperti === 0 ? { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }
           : copertura.coperti >= copertura.totali ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }
           : { background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }
@@ -733,7 +733,7 @@ export function GestioneTurniPage() {
               const turno = schema.find(s => s.id === r.turno_schema_id)
               return (
                 <div key={r.id} className="flex items-center gap-2 flex-wrap rounded-lg px-3 py-2" style={{ background: '#fff', border: '1px solid #fee2e2' }}>
-                  <span className="text-sm flex-1" style={{ color: '#3a3d30', minWidth: 180 }}>
+                  <span className="text-sm flex-1" style={{ color: 'var(--t-testo)', minWidth: 180 }}>
                     <strong style={{ color: coloreTurnista(r.turnista_id).fg }}>{nomeTurnista(r.turnista_id)}</strong> si propone per <strong>{turno?.nome || 'turno'}</strong> del <strong>{itDate(r.data)}</strong>{turno && <span className="text-xs text-stone-500"> ({turno.ora_inizio}–{turno.ora_fine})</span>}
                   </span>
                   <button onClick={() => approvaRichiesta(r)} className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors hover:brightness-110" style={{ background: '#16a34a', color: '#fff' }}><Check size={13} /> Approva</button>
@@ -767,12 +767,12 @@ export function GestioneTurniPage() {
           {/* Riepilogo turni assegnati (auto-aggiornante in base alla tabella) */}
           {riepilogo.length > 0 && (
             <div className="card p-2">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: '#476540' }}>Riepilogo turni</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: 'var(--t-accento)' }}>Riepilogo turni</h3>
               <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 10.5 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #eef0ea' }}>
+                  <tr style={{ borderBottom: '1px solid var(--t-riga)' }}>
                     <th style={{ textAlign: 'left', padding: '1px 2px' }} />
-                    <th style={{ padding: '1px 2px', textAlign: 'center', color: '#2b3c24', fontWeight: 800 }} title="Turni">T</th>
+                    <th style={{ padding: '1px 2px', textAlign: 'center', color: 'var(--t-titolo)', fontWeight: 800 }} title="Turni">T</th>
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#64748b', fontWeight: 800 }} title="Notti">N</th>
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#b91c1c', fontWeight: 800 }} title="Festivi">F</th>
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#b45309', fontWeight: 800 }} title="Prefestivi">PF</th>
@@ -785,7 +785,7 @@ export function GestioneTurniPage() {
                       <td style={{ padding: '2px 2px', lineHeight: 1.15 }} title={nomeCompleto(t)}>
                         <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: ROLE_COLOR[t.livello].fg, marginRight: 3, verticalAlign: 'middle' }} />{nomeCompleto(t)}
                       </td>
-                      <td style={{ padding: '2px', textAlign: 'center', fontWeight: 800, color: '#2b3c24' }}>{T}</td>
+                      <td style={{ padding: '2px', textAlign: 'center', fontWeight: 800, color: 'var(--t-titolo)' }}>{T}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#475569' }}>{N || ''}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#b91c1c' }}>{F || ''}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#b45309' }}>{PF || ''}</td>
@@ -805,9 +805,9 @@ export function GestioneTurniPage() {
         <div className="flex-1 min-w-0 space-y-4">
           {righePerFoglio.map(({ foglio, righe: righeF }) => (
           <div key={foglio.id} className="card overflow-auto">
-            <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
-              <LayoutGrid size={14} style={{ color: '#476540' }} />
-              <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
+            <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
+              <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
+              <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
             </div>
           <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
@@ -821,7 +821,7 @@ export function GestioneTurniPage() {
               {righeF.map(({ ds, d, turno }) => {
                 const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
                 const superF = isSuperfestivo(d, superSet)
-                const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
+                const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                 const overnight = turno.ora_fine <= turno.ora_inizio
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                 const kT = `${ds}|${turno.id}|turnisti`, kR = `${ds}|${turno.id}|reperibile`
@@ -874,7 +874,7 @@ export function GestioneTurniPage() {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setPicker(null)} />
           <div className="fixed z-50 card p-1.5 shadow-2xl" style={{ left: Math.max(8, Math.min(picker.x, window.innerWidth - 210)), top: Math.max(8, Math.min(picker.y, window.innerHeight - 300)), width: 200, maxHeight: 290, overflow: 'auto', animation: 'fadeSlideIn 120ms ease-out' }} onClick={e => e.stopPropagation()}>
-            <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1" style={{ color: '#476540' }}>＋ {picker.turno.nome || 'Turno'} · {picker.tipo === 'reperibile' ? 'Reperibile' : 'Turnisti'}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1" style={{ color: 'var(--t-accento)' }}>＋ {picker.turno.nome || 'Turno'} · {picker.tipo === 'reperibile' ? 'Reperibile' : 'Turnisti'}</p>
             {paletteGruppi.length ? paletteGruppi.map(g => (
               <div key={g.liv}>
                 <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 pt-1.5 flex items-center gap-1" style={{ color: ROLE_COLOR[g.liv].fg }}><IconaLivello livello={g.liv} size={10} /> {g.label}</p>
@@ -897,7 +897,7 @@ export function GestioneTurniPage() {
       {showAuto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.5)' }} onClick={() => setShowAuto(false)}>
           <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-2"><Wand2 size={18} style={{ color: '#6d28d9' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Auto Assegnazione · {MESI[mese - 1]} {anno}</h3></div>
+            <div className="flex items-center gap-2 mb-2"><Wand2 size={18} style={{ color: '#6d28d9' }} /><h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Auto Assegnazione · {MESI[mese - 1]} {anno}</h3></div>
             <p className="text-sm text-stone-600 mb-3">Scegli come calcolare. <strong>Aggiungi</strong> = riempie i posti vuoti mantenendo i turnisti già inseriti a mano (quelli "vincono"). <strong>Sostituisci tutto</strong> = ricalcola da zero. In entrambi i casi potrai rivedere prima di salvare.</p>
             <div className="space-y-1.5 mb-4 text-sm rounded-lg p-3" style={{ background: '#f6f7f3' }}>
               <div className="flex items-center gap-2">
@@ -934,7 +934,7 @@ export function GestioneTurniPage() {
       {autoRes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.5)' }} onClick={() => setAutoRes(null)}>
           <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-2"><Wand2 size={18} style={{ color: '#6d28d9' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Assegnazione calcolata</h3></div>
+            <div className="flex items-center gap-2 mb-2"><Wand2 size={18} style={{ color: '#6d28d9' }} /><h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Assegnazione calcolata</h3></div>
             <p className="text-sm text-stone-600 mb-2">
               <strong>{autoRes.coperti}</strong> turni assegnati su {autoRes.totali}
               {autoRes.totali - autoRes.coperti > 0 && <> · <strong style={{ color: '#b45309' }}>{autoRes.totali - autoRes.coperti} ancora scoperti</strong></>}.
@@ -942,18 +942,18 @@ export function GestioneTurniPage() {
             <p className="text-xs text-stone-500 mb-2">di cui {autoRes.nEsistenti > 0 && <><strong>{autoRes.nEsistenti}</strong> già presenti · </>}<strong>{autoRes.nFissi}</strong> fissi · <strong>{autoRes.perDesiderata}</strong> per desiderata · <strong>{autoRes.perRiempimento}</strong> per riempimento.</p>
             {autoRes.perRiempimento > 0 && <p className="text-xs mb-2" style={{ color: '#b45309' }}>⚠ {autoRes.perRiempimento} post{autoRes.perRiempimento === 1 ? 'o' : 'i'} riempit{autoRes.perRiempimento === 1 ? 'o' : 'i'} con chi era libero: le disponibilità «vorrei» non bastavano a coprire tutto per preferenza.</p>}
             {autoRes.coperti === 0 && <p className="text-sm mb-2" style={{ color: '#b91c1c' }}>Non è stato possibile assegnare nessun turno: controlla disponibilità e indisponibilità.</p>}
-            <div className="max-h-64 overflow-auto rounded-lg" style={{ border: '1px solid #eef0ea' }}>
+            <div className="max-h-64 overflow-auto rounded-lg" style={{ border: '1px solid var(--t-riga)' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
                 <thead><tr>
-                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'left', fontSize: 11, color: '#476540', fontWeight: 700, position: 'sticky', top: 0 }}>Turnista</th>
-                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'right', fontSize: 11, color: '#476540', fontWeight: 700, position: 'sticky', top: 0 }}>Ore</th>
-                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'right', fontSize: 11, color: '#476540', fontWeight: 700, position: 'sticky', top: 0 }}>Weekend</th>
+                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'left', fontSize: 11, color: 'var(--t-accento)', fontWeight: 700, position: 'sticky', top: 0 }}>Turnista</th>
+                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'right', fontSize: 11, color: 'var(--t-accento)', fontWeight: 700, position: 'sticky', top: 0 }}>Ore</th>
+                  <th style={{ background: '#f4f6f1', padding: '5px 10px', textAlign: 'right', fontSize: 11, color: 'var(--t-accento)', fontWeight: 700, position: 'sticky', top: 0 }}>Weekend</th>
                 </tr></thead>
                 <tbody>
                   {autoRes.perTurnista.map(r => (
                     <tr key={r.id}>
                       <td style={{ padding: '4px 10px', borderTop: '1px solid #f0f1ec' }}>{nomeTurnista(r.id)}</td>
-                      <td style={{ padding: '4px 10px', borderTop: '1px solid #f0f1ec', textAlign: 'right', fontWeight: 700, color: '#2b3c24' }}>{r.ore}h</td>
+                      <td style={{ padding: '4px 10px', borderTop: '1px solid #f0f1ec', textAlign: 'right', fontWeight: 700, color: 'var(--t-titolo)' }}>{r.ore}h</td>
                       <td style={{ padding: '4px 10px', borderTop: '1px solid #f0f1ec', textAlign: 'right', color: '#475569' }}>{r.weekend}</td>
                     </tr>
                   ))}

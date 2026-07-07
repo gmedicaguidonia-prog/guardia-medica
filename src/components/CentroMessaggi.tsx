@@ -54,7 +54,7 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
   const iconaTipo = (tipo: string) =>
     tipo === 'candidatura_approvata' ? <Check size={13} style={{ color: '#16a34a' }} />
       : tipo === 'candidatura_rifiutata' ? <Ban size={13} style={{ color: '#dc2626' }} />
-      : <Bell size={13} style={{ color: '#476540' }} />
+      : <Bell size={13} style={{ color: 'var(--t-accento)' }} />
 
   return (
     <div className="relative shrink-0">
@@ -62,7 +62,7 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
       <button onClick={apri} title="Messaggi"
         className={`relative flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${nonLette > 0 ? 'animate-pulse' : ''}`}
         style={{ background: nonLette > 0 ? 'rgba(249,115,22,0.18)' : 'transparent' }}>
-        <Mail size={18} style={{ color: nonLette > 0 ? '#fb923c' : '#9ab488' }} />
+        <Mail size={18} style={{ color: nonLette > 0 ? '#fb923c' : 'var(--t-soft)' }} />
         {nonLette > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center shadow"
             style={{ background: '#f97316', color: '#fff' }}>{nonLette}</span>
@@ -73,7 +73,7 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 mt-2 z-50 card p-2 shadow-2xl text-stone-800" style={{ width: 320, maxHeight: '70vh', overflow: 'auto', animation: 'fadeSlideIn 140ms ease-out' }}>
-            <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 pb-1 flex items-center gap-1.5" style={{ color: '#476540' }}><Mail size={13} /> Messaggi</h3>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 pb-1 flex items-center gap-1.5" style={{ color: 'var(--t-accento)' }}><Mail size={13} /> Messaggi</h3>
 
             {candidature.length > 0 && (
               <div className="mb-1.5">
@@ -81,7 +81,7 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
                 {candidature.map(c => (
                   <div key={c.id} className="flex items-center gap-2 px-1.5 py-1.5 rounded-lg" style={{ background: '#fffbeb' }}>
                     <Clock size={13} style={{ color: '#92400e' }} className="shrink-0" />
-                    <span className="text-xs flex-1 leading-tight" style={{ color: '#3a3d30' }}>{c.turnoNome} del <strong>{itDate(c.data)}</strong>{c.postazioneNome ? ` · ${c.postazioneNome}` : ''}</span>
+                    <span className="text-xs flex-1 leading-tight" style={{ color: 'var(--t-testo)' }}>{c.turnoNome} del <strong>{itDate(c.data)}</strong>{c.postazioneNome ? ` · ${c.postazioneNome}` : ''}</span>
                     <button onClick={() => ritira(c)} className="text-[11px] font-semibold px-2 py-0.5 rounded shrink-0" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}>Ritira</button>
                   </div>
                 ))}
@@ -94,7 +94,7 @@ export function CentroMessaggi({ user }: { user: AuthUser }) {
                 {notifiche.map(n => (
                   <div key={n.id} className="flex items-start gap-2 px-1.5 py-1.5 rounded-lg" style={{ background: n.letta ? '#f7f8f4' : '#fff7ed' }}>
                     <span className="mt-0.5 shrink-0">{iconaTipo(n.tipo)}</span>
-                    <span className="text-xs flex-1 leading-tight" style={{ color: n.letta ? '#78716c' : '#3a3d30', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
+                    <span className="text-xs flex-1 leading-tight" style={{ color: n.letta ? '#78716c' : 'var(--t-testo)', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
                     <span className="text-[9px] text-stone-400 shrink-0">{fmtDT(n.created_at)}</span>
                   </div>
                 ))}

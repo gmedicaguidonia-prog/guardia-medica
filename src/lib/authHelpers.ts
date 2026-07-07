@@ -7,7 +7,7 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase'
 import type { AuthUser } from '../types'
 
-export const CACHE_KEY  = 'auth_user_profile_v4'
+export const CACHE_KEY  = 'auth_user_profile_v5'
 export const UNAUTH_KEY = 'auth_unauthorized_email'
 
 // ── Cache profilo (sessionStorage) ──────────────────────────────────
@@ -95,6 +95,7 @@ export async function fetchProfile(accessToken: string): Promise<FetchProfileRes
       postazioneId: (profile.postazione_id as string | null | undefined) ?? null,
       isSupervisore:   (profile.supervisore as boolean | undefined) ?? false,
       tuttePostazioni: (profile.tutte_postazioni as boolean | undefined) ?? false,
+      tema:            (profile.tema as string | null | undefined) ?? null,
     }
   } catch (e) {
     return { error: `eccezione: ${(e as Error).message ?? 'sconosciuta'}` }

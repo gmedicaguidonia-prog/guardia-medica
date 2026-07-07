@@ -289,11 +289,11 @@ export function ImpaginazionePage() {
   const Header = (
     <div className="flex items-center gap-3 flex-wrap">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
-      <LayoutGrid size={22} style={{ color: '#476540' }} />
-      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Impaginazione{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
+      <LayoutGrid size={22} style={{ color: 'var(--t-accento)' }} />
+      <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Impaginazione{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
-        <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+        <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
         <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>      </div>
     </div>
   )
@@ -309,9 +309,9 @@ export function ImpaginazionePage() {
     /* ── Gate di attivazione dell'impaginazione (passo 3) ── */
     return wrap(
       <div className="card p-8 text-center space-y-4">
-        <LayoutGrid size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+        <LayoutGrid size={32} className="mx-auto" style={{ color: 'var(--t-soft)' }} />
         <div>
-          <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva l'impaginazione di {MESI[mese - 1]} {anno}</h3>
+          <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Attiva l'impaginazione di {MESI[mese - 1]} {anno}</h3>
           {caso === 'vuoto' ? (
             <p className="text-sm text-stone-600 mt-1">Il mese precedente non ha un'impaginazione: creane una nuova (dividi i turni in fogli).</p>
           ) : caso === 'conferma' ? (
@@ -331,7 +331,7 @@ export function ImpaginazionePage() {
   if (!impagVer) {
     return wrap(
       <div className="card p-8 text-center">
-        <LayoutGrid size={32} className="mx-auto mb-2" style={{ color: '#9ab488' }} />
+        <LayoutGrid size={32} className="mx-auto mb-2" style={{ color: 'var(--t-soft)' }} />
         <p className="text-sm text-stone-600 mb-1">Nessuna impaginazione per <strong>{MESI[mese - 1]} {anno}</strong>.</p>
         <p className="text-xs text-stone-400 mb-4">Crea un'impaginazione valida da questo mese: poi potrai dividere i turni in fogli. È necessaria per fare Desiderata e Turni del Mese.</p>
         <button onClick={configura} className="btn-primary text-sm mx-auto"><Plus size={16} /> Imposta l'impaginazione per questo mese</button>
@@ -376,7 +376,7 @@ export function ImpaginazionePage() {
         {/* Fogli (dove c'era la palette) */}
         <aside className="w-full sm:w-56 shrink-0 space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold" style={{ color: '#2b3c24' }}>Fogli</h3>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>Fogli</h3>
             <button onClick={aggiungiFoglio} className="btn-secondary text-xs py-1 px-2"><Plus size={13} /> Aggiungi</button>
           </div>
           {draftFogli.length === 0 && <p className="text-xs text-stone-400">Nessun foglio. Aggiungine uno e poi assegna i turni.</p>}
@@ -388,7 +388,7 @@ export function ImpaginazionePage() {
                 <div className="flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ background: col.fg }} />
                   <input value={f.nome} onChange={e => rinomina(f.id, e.target.value)} onClick={e => e.stopPropagation()}
-                    placeholder="Nome foglio" className="flex-1 min-w-0 bg-transparent text-sm font-semibold outline-none" style={{ color: '#2b3c24' }} />
+                    placeholder="Nome foglio" className="flex-1 min-w-0 bg-transparent text-sm font-semibold outline-none" style={{ color: 'var(--t-titolo)' }} />
                   <button onClick={e => { e.stopPropagation(); elimina(f.id) }} title="Elimina foglio" className="text-stone-400 hover:text-red-600 shrink-0"><Trash2 size={13} /></button>
                 </div>
                 <p className="text-[11px] text-stone-500 mt-0.5" style={{ marginLeft: 18 }}>{meseLabel(meseKey)} · {contaTurni.get(f.id) ?? 0} turni</p>
@@ -399,7 +399,7 @@ export function ImpaginazionePage() {
 
         {/* Turni del mese: clic per assegnarli al foglio attivo */}
         <div className="flex-1 min-w-0 card p-3">
-          <p className="text-sm font-semibold mb-2" style={{ color: '#2b3c24' }}>Turni configurati di {MESI[mese - 1]} {anno}
+          <p className="text-sm font-semibold mb-2" style={{ color: 'var(--t-titolo)' }}>Turni configurati di {MESI[mese - 1]} {anno}
             {foglioAttivo ? <span className="text-xs font-normal text-stone-500"> — clicca per metterli/toglierli da «{foglioAttivo.nome || 'foglio'}»</span> : <span className="text-xs font-normal text-amber-700"> — seleziona prima un foglio</span>}</p>
           <div className="flex flex-wrap gap-2">
             {schema.map(s => {

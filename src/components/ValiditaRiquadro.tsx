@@ -14,13 +14,13 @@ export function ValiditaRiquadro({ etichetta, val, salvando, onSalva }: {
   const anni = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() + i)
   return (
     <div className="card p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{etichetta}</span>
+      <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>{etichetta}</span>
       <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-        <input type="radio" checked={!val.fino} onChange={val.perSempre} style={{ accentColor: '#476540' }} />
+        <input type="radio" checked={!val.fino} onChange={val.perSempre} style={{ accentColor: 'var(--t-accento)' }} />
         <InfinityIcon size={14} /> Per sempre
       </label>
       <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-        <input type="radio" checked={val.fino} onChange={val.scegliFino} style={{ accentColor: '#476540' }} /> Fino a
+        <input type="radio" checked={val.fino} onChange={val.scegliFino} style={{ accentColor: 'var(--t-accento)' }} /> Fino a
       </label>
       {val.fino && (
         <div className="flex items-center gap-1.5">

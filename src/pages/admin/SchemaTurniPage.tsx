@@ -70,7 +70,7 @@ function TurnoCard({ turno, onDelete, onDirty, prima }: {
   return (
     <div className="card p-4" style={dirty ? { boxShadow: 'inset 0 0 0 2px #f59e0b' } : undefined}>
       <div className="flex items-center gap-2 mb-3">
-        {overnight ? <Moon size={18} style={{ color: '#476540' }} /> : <Sun size={18} style={{ color: '#476540' }} />}
+        {overnight ? <Moon size={18} style={{ color: 'var(--t-accento)' }} /> : <Sun size={18} style={{ color: 'var(--t-accento)' }} />}
         <input value={form.nome} onChange={e => patch({ nome: e.target.value })}
           placeholder="Nome del turno (es. Notte)" className="input text-sm font-semibold flex-1" />
         <button onClick={salva} disabled={saving || !dirty}
@@ -108,7 +108,7 @@ function TurnoCard({ turno, onDelete, onDirty, prima }: {
               const on = form.giorni_custom.includes(g.num)
               return (
                 <button key={g.num} onClick={() => toggleGiorno(g.num)} className="px-2.5 py-1 rounded-md text-xs font-medium border transition-colors"
-                  style={on ? { background: '#476540', color: '#fff', borderColor: '#456b3a' } : { background: '#faf8f3', color: '#5a5a4a', borderColor: '#d6cdba' }}>
+                  style={on ? { background: 'var(--t-accento)', color: '#fff', borderColor: 'var(--t-primario)' } : { background: 'var(--t-card)', color: '#5a5a4a', borderColor: '#d6cdba' }}>
                   {g.abbr}
                 </button>
               )
@@ -328,14 +328,14 @@ export function SchemaTurniPage() {
 
       {/* Header + navigatore mese/anno */}
       <div className="flex items-start gap-3">
-        <CalendarClock size={22} style={{ color: '#476540' }} className="mt-1" />
+        <CalendarClock size={22} style={{ color: 'var(--t-accento)' }} className="mt-1" />
         <div className="flex-1">
-          <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Configurazione Turni{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Configurazione Turni{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
           <p className="text-sm text-stone-600">Definisci i turni validi per un periodo. Dopo ogni modifica premi <strong>Salva</strong>.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
-          <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+          <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1" title="Mese successivo"><ChevronRight size={16} /></button>        </div>
       </div>
 
@@ -350,17 +350,17 @@ export function SchemaTurniPage() {
       ) : !personaleOk ? (
         /* ── Gate passo ① Personale: prima di tutto va confermato il personale del mese ── */
         <div className="card p-8 text-center space-y-3">
-          <UsersIcon size={32} className="mx-auto" style={{ color: '#9ab488' }} />
-          <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Completa prima il Personale (passo ①)</h3>
+          <UsersIcon size={32} className="mx-auto" style={{ color: 'var(--t-soft)' }} />
+          <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Completa prima il Personale (passo ①)</h3>
           <p className="text-sm text-stone-600">Per <strong>{MESI[mese - 1]} {anno}</strong> conferma prima chi è in servizio nel mese e con quale ruolo, poi potrai configurare i turni.</p>
           <button onClick={() => navigate('/admin/turnisti')} className="btn-primary text-sm mx-auto"><UsersIcon size={15} /> Vai al Personale</button>
         </div>
       ) : mostraGate ? (
         /* ── Gate di attivazione del mese (nuova procedura sequenziale) ── */
         <div className="card p-8 text-center space-y-4">
-          <CalendarClock size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+          <CalendarClock size={32} className="mx-auto" style={{ color: 'var(--t-soft)' }} />
           <div>
-            <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva la configurazione di {MESI[mese - 1]} {anno}</h3>
+            <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Attiva la configurazione di {MESI[mese - 1]} {anno}</h3>
             {caso === 'vuoto' ? (
               <p className="text-sm text-stone-600 mt-1">Il mese precedente non ha una configurazione: creane una nuova per {MESI[mese - 1]} {anno}.</p>
             ) : caso === 'conferma' ? (
@@ -378,7 +378,7 @@ export function SchemaTurniPage() {
       ) : !versione ? (
         /* ── Nessuna configurazione per il mese (mesi pre-attivazione) ── */
         <div className="card p-8 text-center">
-          <CalendarClock size={32} className="mx-auto mb-2" style={{ color: '#9ab488' }} />
+          <CalendarClock size={32} className="mx-auto mb-2" style={{ color: 'var(--t-soft)' }} />
           <p className="text-sm text-stone-600 mb-1">Nessuna configurazione turni per <strong>{MESI[mese - 1]} {anno}</strong>.</p>
           <p className="text-xs text-stone-400 mb-4">Crea una configurazione valida da questo mese.</p>
           <button onClick={configuraMese} className="btn-primary text-sm mx-auto"><Plus size={16} /> Configura i turni per questo mese</button>

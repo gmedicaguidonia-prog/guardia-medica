@@ -79,9 +79,9 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
       <button
         onClick={() => vaiA(to)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-        style={active ? { background: 'rgba(255,255,255,0.15)', color: '#fff' } : { color: '#9ab488' }}
+        style={active ? { background: 'rgba(255,255,255,0.15)', color: '#fff' } : { color: 'var(--t-soft)' }}
         onMouseEnter={e => { if (!active) e.currentTarget.style.color = '#fff' }}
-        onMouseLeave={e => { if (!active) e.currentTarget.style.color = '#9ab488' }}
+        onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--t-soft)' }}
       >
         <Icon size={16} />
         <span className="hidden sm:inline">{label}</span>
@@ -91,11 +91,11 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
 
   return (
     <>
-    <nav className="text-white shadow-md" style={{ background: '#2b3c24' }}>
+    <nav className="text-white shadow-md" style={{ background: 'var(--t-titolo)' }}>
       <div className="max-w-screen-xl mx-auto px-4 flex items-center gap-3 h-12">
         {/* Brand */}
         <div className="flex items-center gap-2 shrink-0">
-          <Stethoscope size={18} style={{ color: '#9ab488' }} />
+          <Stethoscope size={18} style={{ color: 'var(--t-soft)' }} />
           <span className="font-bold text-sm tracking-tight" style={{ color: '#e0e8d8' }}>
             Guardia Medica
           </span>
@@ -104,7 +104,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         {/* Selettore postazione */}
         {mostraSelettore && (
           <div className="flex items-center gap-1 shrink-0 rounded-lg pl-2 pr-1 py-0.5" style={{ background: 'rgba(255,255,255,0.10)' }} title="Postazione attiva">
-            <MapPin size={14} style={{ color: '#9ab488' }} />
+            <MapPin size={14} style={{ color: 'var(--t-soft)' }} />
             <select
               value={postazioneId ?? ''}
               onChange={e => setPostazioneId(e.target.value)}
@@ -112,7 +112,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
               style={{ background: 'transparent', color: '#e0e8d8', maxWidth: 200 }}
             >
               {postazioni.map(p => (
-                <option key={p.id} value={p.id} style={{ color: '#1c2818' }}>{p.nome}</option>
+                <option key={p.id} value={p.id} style={{ color: 'var(--t-notte)' }}>{p.nome}</option>
               ))}
             </select>
           </div>
@@ -141,7 +141,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         {isDev && (
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded"
-              style={{ background: '#fbbf24', color: '#1c2818' }}>
+              style={{ background: '#fbbf24', color: 'var(--t-notte)' }}>
               <FlaskConical size={11} /> DEV
             </span>
             <select
@@ -149,7 +149,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
               onChange={e => onDevSwitch(e.target.value as Livello)}
               title="Modalità DEV: cambia ruolo per provare le viste"
               className="text-xs rounded px-1.5 py-1 border-0 outline-none cursor-pointer"
-              style={{ background: '#456b3a', color: '#fff' }}
+              style={{ background: 'var(--t-primario)', color: '#fff' }}
             >
               <option value="admin">admin</option>
               <option value="responsabile">responsabile</option>
@@ -161,7 +161,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
 
         {/* Utente + logout */}
         <div className="flex items-center gap-3 shrink-0">
-          <span className="hidden lg:flex items-center gap-1.5 text-xs" style={{ color: '#9ab488' }}>
+          <span className="hidden lg:flex items-center gap-1.5 text-xs" style={{ color: 'var(--t-soft)' }}>
             {nomeCompleto(user) || user.email}
             {!isRealAdmin && haAccessoAdmin(user) && (
               <span className="text-[10px] font-bold px-1 rounded" style={{ background: user.livello === 'admin' ? '#b91c1c' : '#a16207', color: '#fff' }}>
@@ -188,7 +188,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
                 className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded transition-all"
                 style={doppleganger
                   ? { background: '#3a2e0a', color: '#fde68a', border: '2px solid #facc15', boxShadow: '0 0 8px rgba(250,204,21,0.6)' }
-                  : { background: '#456b3a', color: '#e0e8d8', border: '2px solid transparent' }}>
+                  : { background: 'var(--t-primario)', color: '#e0e8d8', border: '2px solid transparent' }}>
                 {doppleganger ? <PackageOpen size={13} style={{ color: '#facc15' }} /> : <Package size={13} />}
                 <span className="hidden md:inline">{doppleganger ? nomeCompleto(doppleganger) : 'Doppleganger'}</span>
               </button>
@@ -197,9 +197,9 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
           <button
             onClick={onSignOut}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
-            style={{ color: '#9ab488' }}
+            style={{ color: 'var(--t-soft)' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#9ab488')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--t-soft)')}
             title="Esci"
           >
             <LogOut size={18} />
@@ -208,7 +208,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
 
           {/* Versione build (commit SHA + data) */}
           <span className="hidden lg:block text-[10px] font-mono shrink-0"
-            style={{ color: '#c0d0b0' }}
+            style={{ color: 'var(--t-side-testo)' }}
             title={`Commit ${__APP_VERSION__} — build del ${__BUILD_DATE__}`}>
             v{__APP_VERSION__} · {__BUILD_DATE__}
           </span>
@@ -220,7 +220,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
       {debugModal === 'admin' && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.55)' }} onClick={() => setDebugModal(null)}>
           <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-2"><Crown size={20} style={{ color: '#b8860b' }} fill="#facc15" /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Modalità Admin</h3></div>
+            <div className="flex items-center gap-2 mb-2"><Crown size={20} style={{ color: '#b8860b' }} fill="#facc15" /><h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Modalità Admin</h3></div>
             <p className="text-sm text-stone-600 mb-4">{adminMode ? 'Disattivare la god mode? Resti admin a pieni poteri, ma tornano i normali controlli di autorizzazione (vedi l’app come gli altri utenti).' : 'Attivare la god mode? Vedrai TUTTO bypassando i controlli di autorizzazione — es. le desiderata anche di una postazione dove sei esterno.'}</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setDebugModal(null)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
@@ -234,7 +234,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
       {debugModal === 'doppleganger' && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.55)' }} onClick={() => setDebugModal(null)}>
           <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-2">{doppleganger ? <PackageOpen size={20} style={{ color: '#b8860b' }} /> : <Package size={20} style={{ color: '#476540' }} />}<h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Doppleganger</h3></div>
+            <div className="flex items-center gap-2 mb-2">{doppleganger ? <PackageOpen size={20} style={{ color: '#b8860b' }} /> : <Package size={20} style={{ color: 'var(--t-accento)' }} />}<h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Doppleganger</h3></div>
             {doppleganger ? (
               <>
                 <p className="text-sm text-stone-600 mb-4">Stai impersonando <strong>{nomeCompleto(doppleganger)}</strong>. Disattivare e tornare ai tuoi permessi?</p>

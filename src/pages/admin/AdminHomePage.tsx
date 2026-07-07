@@ -117,7 +117,7 @@ export function AdminHomePage() {
         style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 'min(50%, 320px)', opacity: 0.06 }} />
 
       <div className="relative max-w-3xl mx-auto p-6 space-y-6">
-        <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Riepilogo{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Riepilogo{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
 
         {/* Promemoria e scadenze */}
         <section className="space-y-2">
@@ -129,7 +129,7 @@ export function AdminHomePage() {
           ) : avvisi.map((a, i) => (
             <div key={i} className="card p-4 flex items-center gap-3" style={{ borderLeft: '4px solid #f59e0b' }}>
               <AlertTriangle size={18} style={{ color: '#d97706' }} className="shrink-0" />
-              <span className="text-sm flex-1" style={{ color: '#3a3d30' }}>{a.testo}</span>
+              <span className="text-sm flex-1" style={{ color: 'var(--t-testo)' }}>{a.testo}</span>
               {a.cta && <button onClick={a.azione} className="btn-primary text-xs py-1 px-2.5 shrink-0">{a.cta}</button>}
             </div>
           ))}
@@ -167,7 +167,7 @@ export function AdminHomePage() {
 
             {/* corpo: notifiche del MESE SELEZIONATO, per categoria */}
             <div className="card p-3 space-y-2.5">
-              <h3 className="text-base font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>{meseLabel(meseKey)}{nonLetteMese > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>{nonLetteMese} non lett{nonLetteMese === 1 ? 'a' : 'e'}</span>}</h3>
+              <h3 className="text-base font-bold flex items-center gap-2" style={{ color: 'var(--t-titolo)' }}>{meseLabel(meseKey)}{nonLetteMese > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>{nonLetteMese} non lett{nonLetteMese === 1 ? 'a' : 'e'}</span>}</h3>
               {categorieMese.length === 0 ? (
                 <p className="text-xs text-stone-400 italic">Nessuna notifica per {meseLabel(meseKey)}.</p>
               ) : categorieMese.map(c => {
@@ -177,13 +177,13 @@ export function AdminHomePage() {
                 const vis = c.items.slice(pag * PER_PAGINA, pag * PER_PAGINA + PER_PAGINA)
                 return (
                   <div key={c.key}>
-                    <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: '#476540' }}>{c.label}{c.items.length > PER_PAGINA && <span className="text-stone-400 font-semibold normal-case"> · {c.items.length} messaggi</span>}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--t-accento)' }}>{c.label}{c.items.length > PER_PAGINA && <span className="text-stone-400 font-semibold normal-case"> · {c.items.length} messaggi</span>}</p>
                     <div className="space-y-1">
                       {vis.map(n => (
                         <div key={n.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: n.letta ? '#f7f8f4' : '#fff7ed' }}>
                           <span className="w-2 h-2 rounded-full shrink-0" style={{ background: n.letta ? 'transparent' : '#f59e0b' }} />
                           <div className="flex-1 min-w-0">
-                            <span className="text-sm block leading-tight" style={{ color: n.letta ? '#78716c' : '#3a3d30', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
+                            <span className="text-sm block leading-tight" style={{ color: n.letta ? '#78716c' : 'var(--t-testo)', fontWeight: n.letta ? 400 : 600 }}>{n.messaggio}</span>
                             <span className="text-[10px] text-stone-400">{n.autore ? `${n.autore} · ` : ''}{fmtDT(n.created_at)}</span>
                           </div>
                           {n.target

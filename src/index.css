@@ -7,6 +7,41 @@
   to   { opacity: 1; transform: translateY(0)    scale(1);    }
 }
 
+/* ── TEMI ─────────────────────────────────────────────────
+   Tutta l'app usa queste variabili (niente colori-tema fissi nel codice).
+   Il tema attivo si imposta con data-tema su <html> (vedi src/lib/temi.ts);
+   i colori SEMANTICI (rossi festivi, gialli avviso, badge ruoli) restano fissi. */
+:root {                       /* Verde bosco (classico) */
+  --t-notte: #1c2818;         /* sidebar / navbar scura */
+  --t-titolo: #2b3c24;        /* titoli */
+  --t-primario: #456b3a;      /* voce attiva, pulsanti primari hover */
+  --t-accento: #476540;       /* icone e accenti, pulsanti primari */
+  --t-etichetta: #577a45;     /* etichette maiuscole sidebar */
+  --t-soft: #9ab488;          /* icone chiare / focus ring */
+  --t-side-testo: #c0d0b0;    /* testo sidebar */
+  --t-side-forte: #e7efe0;    /* testo sidebar in evidenza */
+  --t-bg: #f4f1ea;            /* sfondo pagina */
+  --t-card: #faf8f3;          /* sfondo card */
+  --t-tenue: #eef3ea;         /* riquadri tenui */
+  --t-riga: #eef0ea;          /* bordi riga tabelle */
+  --t-testo: #3a3d30;         /* testo base */
+}
+[data-tema='azzurro'] {       /* Azzurro Windows */
+  --t-notte: #0e2a45; --t-titolo: #14385c; --t-primario: #1668b0; --t-accento: #155e97;
+  --t-etichetta: #3d85c6; --t-soft: #8ab8dd; --t-side-testo: #bcd4e8; --t-side-forte: #e3eef7;
+  --t-bg: #eff4f9; --t-card: #f8fbfd; --t-tenue: #e3edf6; --t-riga: #e6edf3; --t-testo: #2f3a44;
+}
+[data-tema='bordeaux'] {      /* Bordeaux */
+  --t-notte: #2b1015; --t-titolo: #4a1a24; --t-primario: #8e3040; --t-accento: #7d2a38;
+  --t-etichetta: #a85562; --t-soft: #cf9aa3; --t-side-testo: #e0c2c7; --t-side-forte: #f2e2e5;
+  --t-bg: #f7f1f0; --t-card: #fcf8f7; --t-tenue: #f2e6e6; --t-riga: #efe4e4; --t-testo: #40342f;
+}
+[data-tema='antracite'] {     /* Antracite */
+  --t-notte: #16191d; --t-titolo: #272d34; --t-primario: #46525e; --t-accento: #3f4a54;
+  --t-etichetta: #5d6b78; --t-soft: #9fadb9; --t-side-testo: #c6ced5; --t-side-forte: #e8ebee;
+  --t-bg: #f1f2f3; --t-card: #fafbfb; --t-tenue: #e9ebed; --t-riga: #e7e9eb; --t-testo: #33383d;
+}
+
 @layer base {
   html {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -15,8 +50,8 @@
   * { box-sizing: border-box; }
 
   body {
-    background-color: #f4f1ea;  /* crema calda */
-    color: #3a3d30;
+    background-color: var(--t-bg);
+    color: var(--t-testo);
   }
 }
 
@@ -28,11 +63,11 @@
            text-sm font-medium text-white shadow
            focus:outline-none focus:ring-2
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
-    background-color: #476540;
+    background-color: var(--t-accento);
     color: #fff;
   }
-  .btn-primary:hover:not(:disabled) { background-color: #456b3a; }
-  .btn-primary:focus { --tw-ring-color: #9ab488; }
+  .btn-primary:hover:not(:disabled) { background-color: var(--t-primario); }
+  .btn-primary:focus { --tw-ring-color: var(--t-soft); }
 
   .btn-secondary {
     @apply inline-flex items-center gap-2 rounded-lg bg-cream-100 px-4 py-2
@@ -62,6 +97,6 @@
   /* ── Card ────────────────────────────────────────────── */
   .card {
     @apply rounded-xl border border-stone-200 shadow-sm;
-    background: #faf8f3;
+    background: var(--t-card);
   }
 }

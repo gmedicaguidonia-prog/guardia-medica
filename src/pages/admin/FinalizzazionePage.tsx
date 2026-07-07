@@ -116,14 +116,14 @@ export function FinalizzazionePage() {
 
   const Header = (
     <div className="flex items-start gap-3">
-      <ClipboardCheck size={22} style={{ color: '#476540' }} className="mt-1 shrink-0" />
+      <ClipboardCheck size={22} style={{ color: 'var(--t-accento)' }} className="mt-1 shrink-0" />
       <div className="flex-1">
-        <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Finalizzazione - {postazioneAttiva.nome}</h1>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Finalizzazione - {postazioneAttiva.nome}</h1>
         <p className="text-sm text-stone-600">Chiusura di <strong>{MESI[mese - 1]} {anno}</strong>: blocco del mese, stampa/PDF ufficiale con invio email, conteggi di fine mese e notifica ai turnisti.</p>
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
-        <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+        <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
         <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1" title="Mese successivo"><ChevronRight size={16} /></button>
       </div>
     </div>
@@ -151,8 +151,8 @@ export function FinalizzazionePage() {
       {/* ── 🔒 Blocco del mese ── */}
       <div className="card p-4" style={finalizzato ? { border: '1px solid #86efac', background: '#f0fdf4' } : undefined}>
         <div className="flex items-center gap-2 mb-2">
-          {finalizzato ? <Lock size={16} style={{ color: '#166534' }} /> : <Unlock size={16} style={{ color: '#476540' }} />}
-          <h2 className="text-base font-bold" style={{ color: '#2b3c24' }}>Blocco del mese</h2>
+          {finalizzato ? <Lock size={16} style={{ color: '#166534' }} /> : <Unlock size={16} style={{ color: 'var(--t-accento)' }} />}
+          <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Blocco del mese</h2>
         </div>
         {finalizzato ? (
           <div className="flex items-center gap-3 flex-wrap">
@@ -173,15 +173,15 @@ export function FinalizzazionePage() {
       {/* ── 📄 Stampa PDF + Email ── */}
       <div className="card p-4">
         <div className="flex items-center gap-2 mb-2">
-          <Printer size={16} style={{ color: '#476540' }} />
-          <h2 className="text-base font-bold" style={{ color: '#2b3c24' }}>Stampa / PDF ufficiale ed email</h2>
+          <Printer size={16} style={{ color: 'var(--t-accento)' }} />
+          <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Stampa / PDF ufficiale ed email</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap mb-3">
           <p className="text-sm text-stone-600 flex-1 min-w-[220px]">Apre in una <strong>nuova scheda</strong> il tabellone del mese impaginato per fogli (secondo il passo ④ Impaginazione): da lì lo stampi o lo salvi come <strong>PDF</strong>.</p>
           <button onClick={() => window.open(`${import.meta.env.BASE_URL}admin/stampa?p=${postazioneId}&m=${meseKey}`, '_blank')} className="btn-primary text-sm inline-flex items-center gap-1.5"><Printer size={14} /> Stampa / salva PDF</button>
         </div>
-        <div className="pt-3" style={{ borderTop: '1px solid #eef0ea' }}>
-          <div className="flex items-center gap-2 mb-1.5"><Mail size={14} style={{ color: '#476540' }} /><p className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Invio per email</p></div>
+        <div className="pt-3" style={{ borderTop: '1px solid var(--t-riga)' }}>
+          <div className="flex items-center gap-2 mb-1.5"><Mail size={14} style={{ color: 'var(--t-accento)' }} /><p className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Invio per email</p></div>
           <p className="text-xs text-stone-500 mb-2">L'invio automatico dall'indirizzo Gmail della postazione (con procedura guidata di autorizzazione) arriverà in una prossima versione. Intanto puoi aprire una bozza nel tuo programma di posta e allegare il PDF generato.</p>
           <div className="flex items-end gap-2 flex-wrap">
             <label className="text-xs text-stone-600 flex-1 min-w-[220px]">Destinatari (separati da virgola)<br />
@@ -195,8 +195,8 @@ export function FinalizzazionePage() {
       {/* ── 📊 Conteggi di fine mese ── */}
       <div className="card p-4">
         <div className="flex items-center gap-2 mb-2">
-          <Table2 size={16} style={{ color: '#476540' }} />
-          <h2 className="text-base font-bold" style={{ color: '#2b3c24' }}>Conteggi di fine mese</h2>
+          <Table2 size={16} style={{ color: 'var(--t-accento)' }} />
+          <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Conteggi di fine mese</h2>
         </div>
         {conteggi.length === 0 ? (
           <p className="text-sm text-stone-500">Nessun turno assegnato in {MESI[mese - 1]} {anno}.</p>
@@ -207,7 +207,7 @@ export function FinalizzazionePage() {
                 <thead>
                   <tr style={{ borderBottom: '2px solid #d6d3cc' }}>
                     <th style={{ textAlign: 'left', padding: '3px 6px' }}>Turnista</th>
-                    <th style={{ padding: '3px 6px', textAlign: 'center', color: '#2b3c24', fontWeight: 800 }} title="Turni">T</th>
+                    <th style={{ padding: '3px 6px', textAlign: 'center', color: 'var(--t-titolo)', fontWeight: 800 }} title="Turni">T</th>
                     <th style={{ padding: '3px 6px', textAlign: 'center', color: '#0f766e', fontWeight: 800 }} title="Ore totali">Ore</th>
                     <th style={{ padding: '3px 6px', textAlign: 'center', color: '#64748b', fontWeight: 800 }} title="Notti">N</th>
                     <th style={{ padding: '3px 6px', textAlign: 'center', color: '#b91c1c', fontWeight: 800 }} title="Festivi">F</th>
@@ -217,11 +217,11 @@ export function FinalizzazionePage() {
                 </thead>
                 <tbody>
                   {conteggi.map(({ t, T, Ore, N, F, PF, SF }) => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid #eef0ea' }}>
+                    <tr key={t.id} style={{ borderBottom: '1px solid var(--t-riga)' }}>
                       <td style={{ padding: '3px 6px' }}>
                         <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: ROLE_DOT[t.livello], marginRight: 5, verticalAlign: 'middle' }} />{nomeCompleto(t)}
                       </td>
-                      <td style={{ padding: '3px', textAlign: 'center', fontWeight: 800, color: '#2b3c24' }}>{T}</td>
+                      <td style={{ padding: '3px', textAlign: 'center', fontWeight: 800, color: 'var(--t-titolo)' }}>{T}</td>
                       <td style={{ padding: '3px', textAlign: 'center', fontWeight: 700, color: '#0f766e' }}>{fmtOre(Ore)}</td>
                       <td style={{ padding: '3px', textAlign: 'center', color: '#475569' }}>{N || ''}</td>
                       <td style={{ padding: '3px', textAlign: 'center', color: '#b91c1c' }}>{F || ''}</td>
@@ -240,8 +240,8 @@ export function FinalizzazionePage() {
       {/* ── 🔔 Notifica ai turnisti ── */}
       <div className="card p-4">
         <div className="flex items-center gap-2 mb-2">
-          <BellRing size={16} style={{ color: '#476540' }} />
-          <h2 className="text-base font-bold" style={{ color: '#2b3c24' }}>Notifica calendario definitivo</h2>
+          <BellRing size={16} style={{ color: 'var(--t-accento)' }} />
+          <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Notifica calendario definitivo</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <p className="text-sm text-stone-600 flex-1 min-w-[220px]">Avvisa i turnisti che i turni di {MESI[mese - 1]} {anno} sono definitivi.</p>

@@ -18,14 +18,14 @@ import type { AuthUser, TurnoSchema, Turno, Turnista, TurnistaMese, Livello, Mia
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
 const REP = -1
-const thStyle: CSSProperties = { background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18' }
+const thStyle: CSSProperties = { background: 'var(--t-titolo)', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18' }
 const tdBase: CSSProperties = { padding: '6px 10px', border: '1px solid #e5e7eb', verticalAlign: 'top' }
 const itDate = (iso: string) => { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
 
 function Avviso({ children }: { children: React.ReactNode }) {
   return (
     <div className="card p-5 flex items-start gap-3" style={{ background: '#f0f4ee' }}>
-      <Info size={18} className="shrink-0 mt-0.5" style={{ color: '#476540' }} />
+      <Info size={18} className="shrink-0 mt-0.5" style={{ color: 'var(--t-accento)' }} />
       <p className="text-sm" style={{ color: '#3a4a30' }}>{children}</p>
     </div>
   )
@@ -225,7 +225,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const MeseNav = (
     <div className="flex items-center gap-2">
       <button onClick={() => cambiaMese(-1)} disabled={!canPrev} className="btn-secondary px-2 py-1" style={{ opacity: canPrev ? 1 : 0.35, cursor: canPrev ? 'pointer' : 'not-allowed' }} title={canPrev ? 'Mese precedente' : 'Niente da vedere prima'}><ChevronLeft size={16} /></button>
-      <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
+      <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
       <button onClick={() => cambiaMese(1)} disabled={!canNext} className="btn-secondary px-2 py-1" style={{ opacity: canNext ? 1 : 0.35, cursor: canNext ? 'pointer' : 'not-allowed' }} title={canNext ? 'Mese successivo' : 'Niente da vedere dopo'}><ChevronRight size={16} /></button>
     </div>
   )
@@ -233,8 +233,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   return (
     <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 space-y-4">
       <div className="flex items-center gap-2">
-        <CalendarDays size={22} style={{ color: '#476540' }} />
-        <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>I miei turni</h1>
+        <CalendarDays size={22} style={{ color: 'var(--t-accento)' }} />
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>I miei turni</h1>
       </div>
 
       {opzioni.length === 0 ? (
@@ -243,19 +243,19 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
         <>
           {/* Selettore postazione */}
           <div className="card p-3 flex items-center gap-2 flex-wrap">
-            <MapPin size={16} style={{ color: '#476540' }} />
-            <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Postazione:</span>
+            <MapPin size={16} style={{ color: 'var(--t-accento)' }} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Postazione:</span>
             {opzioni.length > 1 ? (
               <select value={postazioneId ?? ''} onChange={e => scegliPostazione(e.target.value)} className="input text-sm w-auto">
                 {opzioni.map(o => <option key={o.postazioneId} value={o.postazioneId}>{o.nome}</option>)}
               </select>
-            ) : <span className="text-sm" style={{ color: '#3a3d30' }}>{opzioni[0].nome}</span>}
-            {mia && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#eef3ea', color: '#476540' }}>sei {sonoImportato ? livMese(mia.membershipId) : mia.livello}</span>}
+            ) : <span className="text-sm" style={{ color: 'var(--t-testo)' }}>{opzioni[0].nome}</span>}
+            {mia && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--t-tenue)', color: 'var(--t-accento)' }}>sei {sonoImportato ? livMese(mia.membershipId) : mia.livello}</span>}
 
             {/* Responsabile/i della postazione (allineati a destra) */}
             <div className="flex items-center gap-1.5 ml-auto">
-              <IconaLivello livello="responsabile" size={15} color="#476540" />
-              <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Responsabile/i:</span>
+              <IconaLivello livello="responsabile" size={15} color="var(--t-accento)" />
+              <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Responsabile/i:</span>
               {responsabili.length > 0 ? (
                 <select className="input text-sm w-auto" defaultValue={responsabili[0].id} title="Responsabili della postazione">
                   {responsabili.map(r => <option key={r.id} value={r.id}>{nomeCompleto(r)}</option>)}
@@ -277,7 +277,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             {([['turni', 'Calendario Turni', CalendarDays], ['desiderata', 'Desiderata - Indisponibilità', CalendarHeart]] as const).map(([key, label, Icon]) => (
               <button key={key} onClick={() => setTab(key)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
-                style={tab === key ? { background: '#456b3a', color: '#fff' } : { background: '#eef1ea', color: '#476540' }}>
+                style={tab === key ? { background: 'var(--t-primario)', color: '#fff' } : { background: 'var(--t-tenue)', color: 'var(--t-accento)' }}>
                 <Icon size={15} /> {label}
               </button>
             ))}
@@ -302,9 +302,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 )}
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
                 <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
-                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
-                    <LayoutGrid size={14} style={{ color: '#476540' }} />
-                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
+                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
+                    <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
+                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', tableLayout: 'fixed' }}>
                     <colgroup>
@@ -318,7 +318,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
                         const superF = isSuperfestivo(d, superSet)
-                        const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
+                        const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
                         const k = `${ds}|${turno.id}`
@@ -338,7 +338,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                                 {ids.length === 0 && !(pianificazione && mancano > 0) && <span className="text-[11px] text-stone-300 italic">—</span>}
                                 {ids.map(id => {
                                   const io = id === mia?.membershipId
-                                  return <span key={id} className="rounded px-2 py-0.5 text-[11px] font-medium" style={io ? { background: '#2e7d32', color: '#fff' } : { background: '#eef1ea', color: '#3a3d30' }}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</span>
+                                  return <span key={id} className="rounded px-2 py-0.5 text-[11px] font-medium" style={io ? { background: '#2e7d32', color: '#fff' } : { background: 'var(--t-tenue)', color: 'var(--t-testo)' }}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</span>
                                 })}
                                 {pianificazione && mancano > 0 && (hoChiesto ? (
                                   <button onClick={() => setAnnulla({ ds, turno })} title="Proposta inviata — clicca per annullarla" className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold transition-transform hover:scale-105" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', cursor: 'pointer' }}><Clock size={10} /> Proposta inviata</button>
@@ -392,9 +392,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 </p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
                 <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
-                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
-                    <LayoutGrid size={14} style={{ color: '#476540' }} />
-                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
+                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
+                    <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
+                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
@@ -402,7 +402,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 3, whiteSpace: 'nowrap' }}>Giorno · Turno</th>
                         {colonne.map(t => {
                           const io = t.id === mia?.membershipId
-                          return <th key={t.id} style={{ ...thStyle, textAlign: 'center', minWidth: 92, background: io ? '#15803d' : '#2b3c24' }}>{nomeCompleto(t)}{io ? ' (tu)' : ''}</th>
+                          return <th key={t.id} style={{ ...thStyle, textAlign: 'center', minWidth: 92, background: io ? '#15803d' : 'var(--t-titolo)' }}>{nomeCompleto(t)}{io ? ' (tu)' : ''}</th>
                         })}
                       </tr>
                     </thead>
@@ -410,7 +410,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
                         const superF = isSuperfestivo(d, superSet)
-                        const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
+                        const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
                         return (
@@ -449,15 +449,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                       })}
                     </tbody>
                     <tfoot>
-                      <tr style={{ background: '#eef3ea', borderTop: '2px solid #cdd8c4' }}>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: '#eef3ea', zIndex: 1, fontWeight: 700, color: '#2b3c24' }}>
+                      <tr style={{ background: 'var(--t-tenue)', borderTop: '2px solid #cdd8c4' }}>
+                        <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--t-tenue)', zIndex: 1, fontWeight: 700, color: 'var(--t-titolo)' }}>
                           <span className="inline-flex items-center gap-1"><Check size={12} style={{ color: '#16a34a' }} /> Disponibilità</span>
                         </td>
                         {colonne.map(t => {
                           const tot = righeF.reduce((n, r) => n + (desByKey.get(`${r.ds}|${r.turno.id}|${t.id}`) === 'desiderata' ? 1 : 0), 0)
                           const io = t.id === mia?.membershipId
                           return (
-                            <td key={t.id} style={{ ...tdBase, textAlign: 'center', fontWeight: 800, fontSize: 14, background: io ? 'rgba(22,163,74,0.12)' : '#eef3ea', color: tot > 0 ? '#166534' : '#94a3b8' }} title={`${nomeCompleto(t)}: ${tot} disponibilità in questo foglio`}>{tot}</td>
+                            <td key={t.id} style={{ ...tdBase, textAlign: 'center', fontWeight: 800, fontSize: 14, background: io ? 'rgba(22,163,74,0.12)' : 'var(--t-tenue)', color: tot > 0 ? '#166534' : '#94a3b8' }} title={`${nomeCompleto(t)}: ${tot} disponibilità in questo foglio`}>{tot}</td>
                           )
                         })}
                       </tr>
@@ -474,9 +474,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 <p className="text-xs text-stone-500">Per ogni turno indica se lo <strong style={{ color: '#166534' }}>vorresti</strong> o se <strong style={{ color: '#b91c1c' }}>non puoi</strong>.</p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
                 <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
-                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
-                    <LayoutGrid size={14} style={{ color: '#476540' }} />
-                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
+                  <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
+                    <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
+                    <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
                   <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
                     <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={{ ...thStyle, textAlign: 'center' }}>La tua scelta</th></tr></thead>
@@ -484,7 +484,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
                         const superF = isSuperfestivo(d, superSet)
-                        const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
+                        const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
                         const cur = miaPref.get(`${ds}|${turno.id}`)
@@ -524,7 +524,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           {proposta && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setProposta(null)}>
               <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-                <div className="flex items-center gap-2 mb-2"><Hand size={18} style={{ color: '#b45309' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Candidati per questo turno</h3></div>
+                <div className="flex items-center gap-2 mb-2"><Hand size={18} style={{ color: '#b45309' }} /><h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Candidati per questo turno</h3></div>
                 <p className="text-sm text-stone-600">Vuoi proporti per:</p>
                 <p className="text-sm font-semibold my-1" style={{ color: '#1f2d18' }}>{itDate(proposta.ds)} · {proposta.turno.nome || 'Turno'} <span className="text-stone-500 font-normal">({proposta.turno.ora_inizio}–{proposta.turno.ora_fine})</span></p>
                 <p className="text-xs text-stone-500 mt-2 mb-4">La richiesta verrà inviata al responsabile, che la approverà o la rifiuterà.</p>
@@ -540,7 +540,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           {annulla && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => !annullando && setAnnulla(null)}>
               <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-                <div className="flex items-center gap-2 mb-2"><Clock size={18} style={{ color: '#92400e' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Annullare la proposta?</h3></div>
+                <div className="flex items-center gap-2 mb-2"><Clock size={18} style={{ color: '#92400e' }} /><h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Annullare la proposta?</h3></div>
                 <p className="text-sm font-semibold my-1" style={{ color: '#1f2d18' }}>{itDate(annulla.ds)} · {annulla.turno.nome || 'Turno'} <span className="text-stone-500 font-normal">({annulla.turno.ora_inizio}–{annulla.turno.ora_fine})</span></p>
                 <p className="text-xs text-stone-500 mt-2 mb-4">Se non è ancora stata approvata o rifiutata, la tua candidatura verrà ritirata e il responsabile non la vedrà.</p>
                 <div className="flex justify-end gap-2">
@@ -555,7 +555,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           {annullaMsg && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setAnnullaMsg(null)}>
               <div className="card w-full max-w-sm p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
-                <div className="flex items-center gap-2 mb-2"><Info size={18} style={{ color: '#476540' }} /><h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Proposta</h3></div>
+                <div className="flex items-center gap-2 mb-2"><Info size={18} style={{ color: 'var(--t-accento)' }} /><h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Proposta</h3></div>
                 <p className="text-sm text-stone-600 mb-4">{annullaMsg}</p>
                 <div className="flex justify-end"><button onClick={() => setAnnullaMsg(null)} className="btn-primary text-sm py-1.5 px-4">Ok</button></div>
               </div>

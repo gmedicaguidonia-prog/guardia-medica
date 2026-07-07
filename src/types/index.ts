@@ -389,4 +389,5 @@ export interface AuthUser {
   postazioneId: string | null   // postazione di appartenenza (per turnisti/esterni)
   isSupervisore: boolean        // ha accesso all'amministrazione (lista Supervisori)
   tuttePostazioni: boolean      // supervisore di TUTTE le postazioni (presenti e future)
+  tema?: string | null          // tema interfaccia scelto dall'utente (vedi lib/temi.ts)
 }

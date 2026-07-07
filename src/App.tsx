@@ -24,8 +24,13 @@ import { PostazioneProvider } from './contexts/PostazioneContext'
 import { DebugProvider, useDebug } from './contexts/DebugContext'
 import { useEffect } from 'react'
 import { setAutoreCorrente } from './lib/store'
+import { applicaTema, temaSalvato } from './lib/temi'
 import { nomeCompleto } from './types'
 import type { Livello } from './types'
+
+// Tema: applicato SUBITO all'avvio dal ricordo locale (niente "lampo" di colori),
+// poi riallineato al profilo utente appena disponibile (vedi AppShell).
+applicaTema(temaSalvato())
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,10 +41,10 @@ const queryClient = new QueryClient({
 function Spinner() {
   return (
     <div className="min-h-screen flex items-center justify-center"
-      style={{ background: 'linear-gradient(135deg, #1c2818 0%, #456b3a 50%, #577a45 100%)' }}>
-      <div className="rounded-2xl shadow-2xl p-8 text-center" style={{ background: '#faf8f3' }}>
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 mx-auto mb-3" style={{ borderColor: '#476540' }} />
-        <p className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Verifica accesso…</p>
+      style={{ background: 'linear-gradient(135deg, var(--t-notte) 0%, var(--t-primario) 50%, var(--t-etichetta) 100%)' }}>
+      <div className="rounded-2xl shadow-2xl p-8 text-center" style={{ background: 'var(--t-card)' }}>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 mx-auto mb-3" style={{ borderColor: 'var(--t-accento)' }} />
+        <p className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Verifica accesso…</p>
       </div>
     </div>
   )
@@ -61,6 +66,7 @@ function AppShell({ loading, signInWithGoogle, signOut, devLogin, isDev }: {
   const { updateAvailable, applyUpdate } = useVersionCheck()
   const location = useLocation()
   useEffect(() => { setAutoreCorrente(user ? nomeCompleto(user) : null) }, [user])
+  useEffect(() => { if (user?.tema) applicaTema(user.tema) }, [user?.tema])   // tema salvato sul profilo → vince sul ricordo locale
   const paginaStampa = location.pathname.startsWith('/admin/stampa')   // pagina di stampa: niente navbar
 
   return (

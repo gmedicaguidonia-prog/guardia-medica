@@ -80,8 +80,8 @@ export function PostazioniPage() {
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
 
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: '#2b3c24' }}>
-          <SlidersHorizontal size={22} style={{ color: '#476540' }} /> Centro di Controllo
+        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--t-titolo)' }}>
+          <SlidersHorizontal size={22} style={{ color: 'var(--t-accento)' }} /> Centro di Controllo
         </h1>
         <p className="text-sm text-stone-600 mt-0.5">Le impostazioni generali del programma, divise per funzione.</p>
       </div>
@@ -89,7 +89,7 @@ export function PostazioniPage() {
       {/* Blocco: Postazioni */}
       <div className="card p-4 space-y-3">
         <div>
-          <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><MapPin size={15} style={{ color: '#476540' }} /> Postazioni</h2>
+          <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><MapPin size={15} style={{ color: 'var(--t-accento)' }} /> Postazioni</h2>
           <p className="text-xs text-stone-500 mt-0.5">Ogni postazione ha il suo personale, turni, regole e desiderata. Seleziona quella attiva dal menu in alto; i <strong>Responsabili</strong> si assegnano dalla pagina <strong>Personale</strong>.</p>
         </div>
 
@@ -106,8 +106,8 @@ export function PostazioniPage() {
         {isLoading ? <p className="text-sm text-stone-500">Caricamento…</p> : (
           <div className="space-y-1.5">
             {postazioni.map(p => (
-              <div key={p.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: '#f4f6f1', boxShadow: p.id === postazioneId ? 'inset 0 0 0 2px #476540' : undefined }}>
-                <MapPin size={15} style={{ color: '#476540' }} className="shrink-0" />
+              <div key={p.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: '#f4f6f1', boxShadow: p.id === postazioneId ? 'inset 0 0 0 2px var(--t-accento)' : undefined }}>
+                <MapPin size={15} style={{ color: 'var(--t-accento)' }} className="shrink-0" />
                 {editId === p.id ? (
                   <>
                     <input value={editNome} onChange={e => setEditNome(e.target.value)} className="input py-0.5 text-sm flex-1" autoFocus onKeyDown={e => e.key === 'Enter' && salvaNome(p.id)} />
@@ -116,10 +116,10 @@ export function PostazioniPage() {
                   </>
                 ) : (
                   <>
-                    <span className="font-semibold text-sm flex-1" style={{ color: '#2b3c24' }}>{p.nome}</span>
+                    <span className="font-semibold text-sm flex-1" style={{ color: 'var(--t-titolo)' }}>{p.nome}</span>
                     {p.id === postazioneId
                       ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#dcfce7', color: '#166534' }}>attiva</span>
-                      : <button onClick={() => setPostazioneId(p.id)} className="text-xs px-2 py-0.5 rounded border" style={{ borderColor: '#d6d3cc', color: '#476540' }}>Attiva</button>}
+                      : <button onClick={() => setPostazioneId(p.id)} className="text-xs px-2 py-0.5 rounded border" style={{ borderColor: '#d6d3cc', color: 'var(--t-accento)' }}>Attiva</button>}
                     <button onClick={() => { setEditId(p.id); setEditNome(p.nome) }} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Rinomina"><Pencil size={13} /></button>
                     <button onClick={() => elimina(p)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Elimina postazione"><Trash2 size={13} /></button>
                   </>
@@ -140,7 +140,7 @@ export function PostazioniPage() {
       {/* Blocco: Log Postazioni — storico eventi globali (non si cancella con la postazione) */}
       <div className="card p-4 space-y-3">
         <div>
-          <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><ScrollText size={15} style={{ color: '#476540' }} /> Log Postazioni</h2>
+          <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><ScrollText size={15} style={{ color: 'var(--t-accento)' }} /> Log Postazioni</h2>
           <p className="text-xs text-stone-500 mt-0.5">Storico di creazioni, rinomine ed eliminazioni delle postazioni, con autore e data.</p>
         </div>
         {logPost.length === 0 ? (
@@ -149,7 +149,7 @@ export function PostazioniPage() {
           <div className="space-y-1.5">
             {logPost.map(l => (
               <div key={l.id} className="px-2.5 py-1.5 rounded-lg" style={{ background: '#f4f6f1' }}>
-                <div className="text-sm" style={{ color: '#2b3c24' }}>{l.messaggio}</div>
+                <div className="text-sm" style={{ color: 'var(--t-titolo)' }}>{l.messaggio}</div>
                 <div className="text-[11px] text-stone-500 mt-0.5">{l.autore ? `${l.autore} · ` : ''}{fmtDT(l.createdAt)}</div>
               </div>
             ))}
@@ -205,7 +205,7 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
     <div className="card p-4 space-y-3">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <div>
-        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><ShieldCheck size={15} style={{ color: '#476540' }} /> Amministratori</h2>
+        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><ShieldCheck size={15} style={{ color: 'var(--t-accento)' }} /> Amministratori</h2>
         <p className="text-xs text-stone-500 mt-0.5">Un amministratore vede e gestisce <strong>tutto</strong>, in ogni postazione. Il tuo nominativo è permanente e non rimovibile.</p>
       </div>
 
@@ -214,7 +214,7 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
           {admins.map(u => (
             <div key={u.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: '#f4f6f1' }}>
               <Crown size={14} style={{ color: '#b8860b' }} fill="#facc15" />
-              <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{nomeCompleto(u)}</span>
+              <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>{nomeCompleto(u)}</span>
               <span className="text-xs text-stone-500 hidden sm:inline">{u.email}</span>
               <div className="flex-1" />
               {protetto(u)
@@ -240,7 +240,7 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
       {candidati.length === 0 && <p className="text-xs text-stone-400">Tutte le persone in elenco sono già amministratori.</p>}
 
       {/* Nuovo admin "puro" (persona non ancora nel sistema, senza appartenenze) */}
-      <div className="pt-2 mt-1" style={{ borderTop: '1px solid #eef0ea' }}>
+      <div className="pt-2 mt-1" style={{ borderTop: '1px solid var(--t-riga)' }}>
         <label className="label text-xs">Oppure aggiungi una persona non ancora nel sistema</label>
         <div className="flex flex-wrap items-end gap-2">
           <input value={nNome} onChange={e => setNNome(e.target.value)} placeholder="Nome" className="input text-sm" style={{ maxWidth: 120 }} />
@@ -345,7 +345,7 @@ function SupervisoriBox() {
               <div key={s.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
                 <div className="flex items-center gap-2 px-2.5 py-1.5">
                   <Shield size={14} style={{ color: '#0284c7' }} fill="#7dd3fc" className="shrink-0" />
-                  <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{nomeCompleto(s)}</span>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>{nomeCompleto(s)}</span>
                   <span className="text-xs text-stone-500 hidden sm:inline">{s.email}</span>
                   <div className="flex-1" />
                   <button onClick={() => { setEspanso(mod ? null : s.id); setSelMenu('') }} className={`p-1.5 rounded ${mod ? 'text-blue-600 bg-blue-50' : 'text-stone-500 hover:text-blue-600 hover:bg-blue-50'}`} title="Modifica postazioni"><Pencil size={13} /></button>
@@ -405,7 +405,7 @@ function SupervisoriBox() {
       {candidati.length === 0 && <p className="text-xs text-stone-400">Nessuna persona da aggiungere (gli altri sono già admin o supervisori).</p>}
 
       {/* Crea nuovo supervisore "puro" (persona non ancora nel sistema) */}
-      <div className="pt-2 mt-1" style={{ borderTop: '1px solid #eef0ea' }}>
+      <div className="pt-2 mt-1" style={{ borderTop: '1px solid var(--t-riga)' }}>
         <label className="label text-xs">Oppure aggiungi una persona non ancora nel sistema</label>
         <div className="flex flex-wrap items-end gap-2">
           <input value={nNome} onChange={e => setNNome(e.target.value)} placeholder="Nome" className="input text-sm" style={{ maxWidth: 120 }} />

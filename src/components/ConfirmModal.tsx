@@ -17,7 +17,7 @@ export function ConfirmModal({
       <div className="card w-full max-w-sm p-5"
         style={{ animation: 'fadeSlideIn 160ms ease-out' }}
         onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-bold mb-1.5" style={{ color: '#2b3c24' }}>{title}</h3>
+        <h3 className="text-base font-bold mb-1.5" style={{ color: 'var(--t-titolo)' }}>{title}</h3>
         <p className="text-sm mb-5" style={{ color: '#5a5a4a' }}>{message}</p>
         <div className="flex justify-end gap-2">
           {!hideCancel && <button onClick={onCancel} className="btn-secondary py-1.5 px-3 text-sm">{cancelLabel}</button>}

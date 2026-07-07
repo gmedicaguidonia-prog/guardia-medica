@@ -29,7 +29,7 @@ const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
   esterno:      { bg: '#dcfce7', fg: '#166534' },
 }
 const thStyle = (corner: boolean): CSSProperties => ({
-  background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 8px', textAlign: 'center',
+  background: 'var(--t-titolo)', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 8px', textAlign: 'center',
   border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: corner ? 3 : 2, left: corner ? 0 : undefined,
 })
 
@@ -415,13 +415,13 @@ export function RegoleTurniPage() {
   const Header = (
     <div className="flex items-start gap-3">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
-      <ListChecks size={22} style={{ color: '#476540' }} className="mt-1" />
+      <ListChecks size={22} style={{ color: 'var(--t-accento)' }} className="mt-1" />
       <div className="flex-1">
         <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Regole Turni{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Regole Turni{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
-            <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+            <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
             <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>          </div>
         </div>
         <p className="text-sm text-stone-600">Trascina i turnisti dalla colonna sinistra nelle celle. Ricordati di premere <strong>Salva</strong>.</p>
@@ -440,9 +440,9 @@ export function RegoleTurniPage() {
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-4">{Header}
         <div className="card p-8 text-center space-y-4">
-          <ListChecks size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+          <ListChecks size={32} className="mx-auto" style={{ color: 'var(--t-soft)' }} />
           <div>
-            <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva le regole di {MESI[mese - 1]} {anno}</h3>
+            <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Attiva le regole di {MESI[mese - 1]} {anno}</h3>
             {caso === 'vuoto' ? (
               <p className="text-sm text-stone-600 mt-1">Il mese precedente non ha regole: attivane di nuove (anche vuote: i turni fissi non sono obbligatori).</p>
             ) : caso === 'conferma' ? (
@@ -464,7 +464,7 @@ export function RegoleTurniPage() {
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-4">{Header}
         <div className="card p-8 text-center">
-          <ListChecks size={32} className="mx-auto mb-2" style={{ color: '#9ab488' }} />
+          <ListChecks size={32} className="mx-auto mb-2" style={{ color: 'var(--t-soft)' }} />
           <p className="text-sm text-stone-600 mb-1">Nessuna regola fissa per <strong>{MESI[mese - 1]} {anno}</strong>.</p>
           <p className="text-xs text-stone-400 mb-4">Crea un periodo di regole valido da questo mese.</p>
           <button onClick={configuraRegole} className="btn-primary text-sm mx-auto"><Plus size={16} /> Imposta le regole per questo mese</button>
@@ -545,7 +545,7 @@ export function RegoleTurniPage() {
             <tbody>
               {GIORNI_SETTIMANA.map(g => (
                 <tr key={g.num}>
-                  <td style={{ padding: '3px 8px', border: '1px solid #e5e7eb', fontWeight: 600, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: '#f4f1ea', zIndex: 1, color: '#374151' }}>{g.nome}</td>
+                  <td style={{ padding: '3px 8px', border: '1px solid #e5e7eb', fontWeight: 600, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--t-bg)', zIndex: 1, color: '#374151' }}>{g.nome}</td>
                   {schema.map(c => {
                     if (!turnoApplicabileGiorno(c, g.num)) return <td key={c.id} style={{ border: '1px solid #e5e7eb', background: '#f3f4f6' }} />
                     const key = `${g.num}|${c.id}`
@@ -596,7 +596,7 @@ export function RegoleTurniPage() {
         className="card p-3 space-y-2 transition-colors"
         style={overSpe ? { boxShadow: 'inset 0 0 0 2px #2e7d32', background: '#f0fdf4' } : undefined}>
         <div className="flex items-baseline gap-2 flex-wrap">
-          <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#476540' }}>Regole speciali per turnista</h3>
+          <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--t-accento)' }}>Regole speciali per turnista</h3>
           <span className="text-[11px] text-stone-400">— trascina qui un turnista per aggiungere un limite personale (si somma alle altre regole)</span>
         </div>
 
@@ -609,7 +609,7 @@ export function RegoleTurniPage() {
           return (
             <div key={`${r.turnista_id}|${r.tipo}`} className="flex items-center gap-2 flex-wrap rounded-lg px-2 py-1.5" style={{ background: '#f7f8f4' }}>
               <span className="rounded px-2 py-0.5 text-xs font-semibold shadow-sm" style={{ background: col.bg, color: col.fg }}>{nomeTurnista(r.turnista_id)}</span>
-              <span className="text-sm" style={{ color: '#3a3d30' }}>{labelTipo(r.tipo)}: <strong>{r.valore}</strong></span>
+              <span className="text-sm" style={{ color: 'var(--t-testo)' }}>{labelTipo(r.tipo)}: <strong>{r.valore}</strong></span>
               <button onClick={() => eliminaRegolaTurnista(r.turnista_id, r.tipo)} title="Elimina questa regola" className="ml-auto p-1.5 rounded text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={15} /></button>
             </div>
           )
@@ -642,24 +642,24 @@ export function RegoleTurniPage() {
 
       {/* Impostazioni sull'orario */}
       <div className="card p-3 space-y-2.5">
-        <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#476540' }}>Impostazioni sull'orario</h3>
+        <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--t-accento)' }}>Impostazioni sull'orario</h3>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-min">Ore minime a settimana per un turnista:</label>
+          <label className="text-sm font-medium flex-1" style={{ color: 'var(--t-testo)', minWidth: 250 }} htmlFor="ore-min">Ore minime a settimana per un turnista:</label>
           <input id="ore-min" type="number" min={0} value={oreMin} onChange={e => setOreMin(e.target.value)} className="input text-sm w-24" placeholder="es. 36" />
           <span className="text-sm text-stone-500">ore</span>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: 'var(--t-accento)' }} title="Tolleranza fissa">± 2 ore</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-max-sett">Ore massime a settimana (da non superare):</label>
+          <label className="text-sm font-medium flex-1" style={{ color: 'var(--t-testo)', minWidth: 250 }} htmlFor="ore-max-sett">Ore massime a settimana (da non superare):</label>
           <input id="ore-max-sett" type="number" min={0} value={oreMaxSett} onChange={e => setOreMaxSett(e.target.value)} className="input text-sm w-24" placeholder="nessuno" />
           <span className="text-sm text-stone-500">ore</span>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: 'var(--t-accento)' }} title="Tolleranza fissa">± 2 ore</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-sm font-medium flex-1" style={{ color: '#3a3d30', minWidth: 250 }} htmlFor="ore-max-cons">Ore massime consecutive (turni attaccati):</label>
+          <label className="text-sm font-medium flex-1" style={{ color: 'var(--t-testo)', minWidth: 250 }} htmlFor="ore-max-cons">Ore massime consecutive (turni attaccati):</label>
           <input id="ore-max-cons" type="number" min={0} value={oreMaxCons} onChange={e => setOreMaxCons(e.target.value)} className="input text-sm w-24" placeholder="nessuno" />
           <span className="text-sm text-stone-500">ore</span>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: '#476540' }} title="Tolleranza fissa">± 2 ore</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e7efe1', color: 'var(--t-accento)' }} title="Tolleranza fissa">± 2 ore</span>
         </div>
         <p className="text-[11px] text-stone-400">Usate dall'<strong>Auto Assegnazione</strong> e segnalate (ma forzabili) quando assegni a mano. Vuoto = nessun limite.</p>
       </div>
@@ -673,7 +673,7 @@ export function RegoleTurniPage() {
               className="relative shrink-0 rounded-full transition-colors mt-0.5" style={{ width: 44, height: 24, background: auto ? '#2e7d32' : '#cbd5e1' }}>
               <span className="absolute top-0.5 rounded-full bg-white shadow transition-all" style={{ width: 20, height: 20, left: auto ? 22 : 2 }} />
             </button>
-            <p className="text-sm font-medium leading-snug flex-1" style={{ color: '#3a3d30' }}>
+            <p className="text-sm font-medium leading-snug flex-1" style={{ color: 'var(--t-testo)' }}>
               Cambio Turno: <strong style={{ color: auto ? '#166534' : '#b45309' }}>{auto ? 'automaticamente approvato' : 'soggetto ad approvazione'}</strong>{' '}
               <span className="text-stone-500 font-normal">({auto ? 'i turnisti fanno il cambio ed il sistema lo aggiorna in automatico' : 'è necessario che un Responsabile autorizzi o neghi il cambio che non sarà visibile fino all’approvazione'})</span>
             </p>
@@ -686,7 +686,7 @@ export function RegoleTurniPage() {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setPicker(null)} />
           <div className="fixed z-50 card p-1.5 shadow-2xl" style={{ left: Math.max(8, Math.min(picker.x, window.innerWidth - 210)), top: Math.max(8, Math.min(picker.y, window.innerHeight - 300)), width: 200, maxHeight: 290, overflow: 'auto', animation: 'fadeSlideIn 120ms ease-out' }} onClick={e => e.stopPropagation()}>
-            <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1" style={{ color: '#476540' }}>＋ {picker.turno.nome || 'Turno'} · {GIORNI_SETTIMANA[picker.giorno - 1].nome}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1" style={{ color: 'var(--t-accento)' }}>＋ {picker.turno.nome || 'Turno'} · {GIORNI_SETTIMANA[picker.giorno - 1].nome}</p>
             {paletteGruppi.length ? paletteGruppi.map(g => (
               <div key={g.liv}>
                 <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 pt-1.5 flex items-center gap-1" style={{ color: ROLE_COLOR[g.liv].fg }}><IconaLivello livello={g.liv} size={10} /> {g.label}</p>

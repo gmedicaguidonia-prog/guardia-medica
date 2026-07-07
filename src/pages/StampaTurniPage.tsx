@@ -99,12 +99,12 @@ export function StampaTurniPage() {
       `}</style>
 
       {/* Barra comandi (solo a schermo) */}
-      <div className="no-print" style={{ position: 'sticky', top: 0, background: '#1c2818', color: '#fff', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 10 }}>
+      <div className="no-print" style={{ position: 'sticky', top: 0, background: 'var(--t-notte)', color: '#fff', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 10 }}>
         <span style={{ fontSize: 14, fontWeight: 700, flex: 1 }}>Stampa turni — {postazione?.nome ?? '…'} · {MESI[mese - 1]} {anno}{finalizzato ? ' · definitivo' : ' · bozza'}</span>
-        <button onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#456b3a', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        <button onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--t-primario)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
           <Printer size={15} /> Stampa / salva PDF
         </button>
-        <button onClick={() => window.close()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', color: '#c0d0b0', border: '1px solid #456b3a', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={() => window.close()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', color: 'var(--t-side-testo)', border: '1px solid var(--t-primario)', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
           <X size={15} /> Chiudi
         </button>
       </div>

@@ -34,7 +34,7 @@ const COL: Record<TipoDesiderata, { th: string; badge: string }> = {
   desiderata:      { th: '#15803d', badge: '#16a34a' },
   indisponibilita: { th: '#b91c1c', badge: '#dc2626' },
 }
-const thStyle: CSSProperties = { background: '#2b3c24', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: 2 }
+const thStyle: CSSProperties = { background: 'var(--t-titolo)', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18', position: 'sticky', top: 0, zIndex: 2 }
 const tdBase: CSSProperties = { padding: '6px 10px', border: '1px solid #e5e7eb', verticalAlign: 'top' }
 function itDate(iso: string): string { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
 
@@ -248,11 +248,11 @@ export function DesiderataPage() {
   const Header = (
     <div className="flex items-center gap-3">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
-      <CalendarHeart size={22} style={{ color: '#476540' }} />
-      <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Desiderata / Indisponibilità{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
+      <CalendarHeart size={22} style={{ color: 'var(--t-accento)' }} />
+      <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Desiderata / Indisponibilità{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1"><ChevronLeft size={16} /></button>
-        <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
+        <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
         <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1"><ChevronRight size={16} /></button>      </div>
     </div>
   )
@@ -306,14 +306,14 @@ export function DesiderataPage() {
           <div className="card p-6 flex items-start gap-3 mt-2" style={{ maxWidth: 560, margin: '0 auto' }}>
             <Lock className="shrink-0 mt-0.5" size={20} style={{ color: '#b45309' }} />
             <div>
-              <h2 className="text-base font-bold mb-1" style={{ color: '#2b3c24' }}>Mese chiuso</h2>
+              <h2 className="text-base font-bold mb-1" style={{ color: 'var(--t-titolo)' }}>Mese chiuso</h2>
               <p className="text-sm text-stone-600">La raccolta per <strong>{MESI[mese - 1]} {anno}</strong> non è stata attivata e il mese è concluso: non è più possibile attivarla.</p>
             </div>
           </div>
         ) : (
           <div className="card p-8 flex flex-col items-center text-center gap-3 mt-2" style={{ maxWidth: 560, margin: '0 auto' }}>
-            <CalendarHeart size={40} style={{ color: '#9ab488' }} />
-            <h2 className="text-lg font-bold" style={{ color: '#2b3c24' }}>Raccolta non attiva per {MESI[mese - 1]} {anno}</h2>
+            <CalendarHeart size={40} style={{ color: 'var(--t-soft)' }} />
+            <h2 className="text-lg font-bold" style={{ color: 'var(--t-titolo)' }}>Raccolta non attiva per {MESI[mese - 1]} {anno}</h2>
             <p className="text-sm text-stone-500">Attiva la raccolta per generare la griglia dei turni e impostare il periodo in cui i turnisti potranno indicare desiderata e indisponibilità.</p>
             <button onClick={attivaRaccolta} className="btn-primary text-sm py-2 px-4 mt-1 inline-flex items-center gap-2"><Power size={16} /> Attiva Desiderata - Indisponibilità</button>
           </div>
@@ -376,8 +376,8 @@ export function DesiderataPage() {
       {/* Pubblicazione raccolta */}
       <div className="card p-3 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <CalendarRange size={18} style={{ color: '#476540' }} />
-          <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Pubblica calendario desiderata - Indisponibilità</span>
+          <CalendarRange size={18} style={{ color: 'var(--t-accento)' }} />
+          <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Pubblica calendario desiderata - Indisponibilità</span>
           {chiusa ? (
             <button onClick={riapriRaccolta} title="Clicca per riaprire la raccolta (chiusura a domani)" className="text-[11px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition-transform hover:scale-105" style={{ background: stato.bg, color: stato.fg, border: `1px solid ${stato.br}`, cursor: 'pointer' }}>{stato.label} <RotateCcw size={11} /> riapri</button>
           ) : (
@@ -407,7 +407,7 @@ export function DesiderataPage() {
             style={{ background: pubbliche ? '#16a34a' : '#cbd5e1' }} title="Desiderata pubbliche">
             <span className="inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform" style={{ transform: pubbliche ? 'translateX(18px)' : 'translateX(2px)' }} />
           </button>
-          <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Desiderata pubbliche</span>
+          <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Desiderata pubbliche</span>
           <span className="text-xs text-stone-500 flex-1" style={{ minWidth: 200 }}>{pubbliche ? 'I turnisti vedono le scelte di tutti (vista a colonne) e modificano la propria. Adatta a postazioni con pochi turnisti.' : 'Ogni turnista vede e modifica solo le proprie scelte (default).'}</span>
         </div>
         )}
@@ -456,9 +456,9 @@ export function DesiderataPage() {
         <div className="flex-1 min-w-0 space-y-4">
           {righePerFoglio.map(({ foglio, righe: righeF }) => (
           <div key={foglio.id} className="card overflow-auto">
-            <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid #eef0ea' }}>
-              <LayoutGrid size={14} style={{ color: '#476540' }} />
-              <h3 className="text-sm font-bold uppercase text-center" style={{ color: '#2b3c24' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
+            <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
+              <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
+              <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
             </div>
           <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
             <thead>
@@ -472,7 +472,7 @@ export function DesiderataPage() {
               {righeF.map(({ ds, d, turno }) => {
                 const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
                 const superF = isSuperfestivo(d, superSet)
-                const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
+                const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                 const overnight = turno.ora_fine <= turno.ora_inizio
                 return (

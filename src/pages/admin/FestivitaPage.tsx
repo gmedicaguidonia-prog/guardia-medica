@@ -131,14 +131,14 @@ export function FestivitaPage() {
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
 
       <div className="flex items-start gap-3">
-        <PartyPopper size={22} style={{ color: '#476540' }} className="mt-1 shrink-0" />
+        <PartyPopper size={22} style={{ color: 'var(--t-accento)' }} className="mt-1 shrink-0" />
         <div className="flex-1">
-          <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Festività - {postazioneAttiva.nome}</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Festività - {postazioneAttiva.nome}</h1>
           <p className="text-sm text-stone-600">Gestisci le festività di <strong>{MESI[mese - 1]} {anno}</strong>. Un <strong>superfestivo</strong> è un giorno festivo con retribuzione superiore: va marcato a mano e, ogni mese, abbinato ai turni che ne usufruiscono (es. Ferragosto solo il turno Giorno).</p>
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
-          <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+          <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
           <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1" title="Mese successivo"><ChevronRight size={16} /></button>
         </div>
       </div>
@@ -155,8 +155,8 @@ export function FestivitaPage() {
           {/* Nazione */}
           <div className="card p-4">
             <div className="flex items-center gap-2 flex-wrap">
-              <Globe size={16} style={{ color: '#476540' }} />
-              <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>Nazione (festività nazionali):</span>
+              <Globe size={16} style={{ color: 'var(--t-accento)' }} />
+              <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Nazione (festività nazionali):</span>
               <select value={nazione} onChange={e => cambiaNazione(e.target.value)} className="input text-sm w-auto">
                 {NAZIONI.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
               </select>
@@ -166,8 +166,8 @@ export function FestivitaPage() {
           {/* Festività locali */}
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-3">
-              <MapPin size={16} style={{ color: '#476540' }} />
-              <h2 className="text-base font-bold" style={{ color: '#2b3c24' }}>Festività locali</h2>
+              <MapPin size={16} style={{ color: 'var(--t-accento)' }} />
+              <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Festività locali</h2>
               <span className="text-xs text-stone-500">— aggiunte a mano (es. Santo Patrono), valide per questa postazione</span>
             </div>
             <div className="flex items-end gap-2 flex-wrap mb-3">
@@ -195,7 +195,7 @@ export function FestivitaPage() {
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-3">
               <Star size={16} style={{ color: '#ca8a04' }} fill="#fde68a" />
-              <h2 className="text-base font-bold" style={{ color: '#2b3c24' }}>Festività di {MESI[mese - 1]} {anno}</h2>
+              <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Festività di {MESI[mese - 1]} {anno}</h2>
             </div>
             {festivitaMese.length === 0 ? (
               <p className="text-sm text-stone-500">Nessuna festività in questo mese.</p>

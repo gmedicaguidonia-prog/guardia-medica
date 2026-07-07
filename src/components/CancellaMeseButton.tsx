@@ -70,7 +70,7 @@ export function CancellaMeseButton({ postazioneId, meseKey, anno, mese }: { post
           <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle size={20} style={{ color: '#b91c1c' }} />
-              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Cancellare le impostazioni di {MESI[mese - 1]} {anno}?</h3>
+              <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Cancellare le impostazioni di {MESI[mese - 1]} {anno}?</h3>
             </div>
             <p className="text-sm text-stone-600 mb-2">Procedendo verranno <strong>eliminate TUTTE</strong> le impostazioni, configurazioni e dati di <strong>{MESI[mese - 1]} {anno}</strong>:</p>
             <ul className="text-sm text-stone-600 list-disc ml-5 mb-2">
@@ -94,7 +94,7 @@ export function CancellaMeseButton({ postazioneId, meseKey, anno, mese }: { post
           <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
               <History size={20} style={{ color: '#1d4ed8' }} />
-              <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Ripristinare {MESI[mese - 1]} {anno}?</h3>
+              <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Ripristinare {MESI[mese - 1]} {anno}?</h3>
             </div>
             <p className="text-sm text-stone-600 mb-2">Il mese verrà riportato alla <strong>versione precedente</strong> (la copia salvata il <strong>{fmtDT(snap.createdAt)}</strong>{snap.autore ? `, da ${snap.autore}` : ''}): tornano configurazione, regole, impaginazione, desiderata e turni com'erano prima della cancellazione.</p>
             <p className="text-xs text-stone-500 mb-4">Lo stato attuale del mese verrà sovrascritto. Dopo il ripristino la copia di backup viene consumata.</p>

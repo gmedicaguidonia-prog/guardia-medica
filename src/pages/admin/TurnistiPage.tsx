@@ -145,15 +145,15 @@ export function TurnistiPage() {
 
   const Header = (
     <div className="flex items-start gap-3">
-      <Users size={22} style={{ color: '#476540' }} className="mt-1 shrink-0" />
+      <Users size={22} style={{ color: 'var(--t-accento)' }} className="mt-1 shrink-0" />
       <div className="flex-1">
-        <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Personale del mese{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Personale del mese{postazioneAttiva ? ` - ${postazioneAttiva.nome}` : ''}</h1>
         <p className="text-sm text-stone-600">Conferma chi è in servizio in <strong>{MESI[mese - 1]} {anno}</strong> e con quale ruolo. Ogni mese è indipendente: cambiare ruolo o togliere qualcuno non tocca i mesi passati. Ricordati di premere <strong>Conferma</strong>.</p>
         <p className="text-[11px] text-stone-500 mt-1">Il <strong>ruolo</strong> (responsabile / turnista / esterno) è solo un'etichetta di questo mese e <strong>non</strong> dà accesso all'amministrazione: chi può entrare e gestire i turni si decide in <strong>Centro di Controllo → Supervisori</strong>.</p>
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
-        <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+        <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
         <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1" title="Mese successivo"><ChevronRight size={16} /></button>
       </div>
     </div>
@@ -171,9 +171,9 @@ export function TurnistiPage() {
       {mostraGate ? (
         /* ── Gate iniziale: copia dal mese precedente o parti da zero ── */
         <div className="card p-8 text-center space-y-4">
-          <Users size={32} className="mx-auto" style={{ color: '#9ab488' }} />
+          <Users size={32} className="mx-auto" style={{ color: 'var(--t-soft)' }} />
           <div>
-            <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Personale di {MESI[mese - 1]} {anno}</h3>
+            <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Personale di {MESI[mese - 1]} {anno}</h3>
             {meseSorgente
               ? <p className="text-sm text-stone-600 mt-1">Puoi copiarlo dall'ultimo mese configurato (<strong>{meseLabel(meseSorgente)}</strong>) e poi modificarlo, oppure partire da zero. Dopo, premi <strong>Conferma</strong>.</p>
               : <p className="text-sm text-stone-600 mt-1">Non c'è un mese precedente da cui copiare: aggiungi le persone in servizio questo mese.</p>}
@@ -187,7 +187,7 @@ export function TurnistiPage() {
       {/* ── Personale di QUESTO mese (staged) ── */}
       <div className="card p-4 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-sm font-bold" style={{ color: '#2b3c24' }}>In servizio a {MESI[mese - 1]} {anno}</h2>
+          <h2 className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>In servizio a {MESI[mese - 1]} {anno}</h2>
           <span className="text-xs text-stone-500">· {staged.size} person{staged.size === 1 ? 'a' : 'e'}</span>
           {dirty
             ? <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' }}><AlertTriangle size={12} /> Modifiche non salvate</span>
@@ -204,7 +204,7 @@ export function TurnistiPage() {
             <div className="space-y-1">
               {g.items.map(t => (
                 <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: '#f7f8f4' }}>
-                  <span className="text-sm font-medium flex-1 truncate" style={{ color: '#2b3c24' }}>{nomeCompleto(t)}</span>
+                  <span className="text-sm font-medium flex-1 truncate" style={{ color: 'var(--t-titolo)' }}>{nomeCompleto(t)}</span>
                   <select value={staged.get(t.id) ?? 'turnista'} onChange={e => cambiaRuoloMese(t.id, e.target.value as Livello)} className="input text-xs py-1" style={{ width: 'auto' }} title="Ruolo per questo mese">
                     {LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
@@ -230,7 +230,7 @@ export function TurnistiPage() {
 
       {/* ── Aggiungi al mese dall'anagrafica ── */}
       <div className="card p-4 space-y-2">
-        <h2 className="text-sm font-bold" style={{ color: '#2b3c24' }}>Aggiungi al mese</h2>
+        <h2 className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>Aggiungi al mese</h2>
         {isLoading ? <p className="text-xs text-stone-400">Caricamento…</p>
           : nonNelMese.length === 0 ? <p className="text-xs text-stone-400 italic">Tutti gli inseriti in anagrafica sono già nel personale di questo mese.</p>
           : nonNelMese.map(g => (
@@ -253,8 +253,8 @@ export function TurnistiPage() {
       {/* ── Gestione anagrafica (collassabile) ── */}
       <div className="card overflow-hidden">
         <button onClick={() => setApriAnagrafica(o => !o)} className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-stone-50 transition-colors">
-          <UserPlus size={16} style={{ color: '#476540' }} />
-          <span className="text-sm font-bold" style={{ color: '#2b3c24' }}>Gestione anagrafica</span>
+          <UserPlus size={16} style={{ color: 'var(--t-accento)' }} />
+          <span className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>Gestione anagrafica</span>
           <span className="text-xs text-stone-400">— aggiungi nuove persone al sistema o modificale</span>
           <span className="ml-auto text-stone-400 text-xs">{apriAnagrafica ? '▲' : '▼'}</span>
         </button>
@@ -275,7 +275,7 @@ export function TurnistiPage() {
                   <p className="text-[10px] uppercase tracking-wider font-bold text-stone-400 px-2 py-1">Già in anagrafica — clicca per usare</p>
                   {sugg.map(u => (
                     <button key={u.id} onClick={() => scegli(u)} className="flex items-center justify-between gap-2 w-full text-left px-2 py-1.5 rounded hover:bg-stone-100 text-sm">
-                      <span className="font-medium" style={{ color: '#2b3c24' }}>{nomeCompleto(u)}</span><span className="text-xs text-stone-400 font-mono">{u.email}</span>
+                      <span className="font-medium" style={{ color: 'var(--t-titolo)' }}>{nomeCompleto(u)}</span><span className="text-xs text-stone-400 font-mono">{u.email}</span>
                     </button>
                   ))}
                 </div>

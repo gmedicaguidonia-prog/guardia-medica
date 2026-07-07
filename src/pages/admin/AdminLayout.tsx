@@ -9,6 +9,8 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useFinalizzato } from '../../hooks/useFinalizzato'
+import { TEMI, applicaTema, temaSalvato } from '../../lib/temi'
+import { store } from '../../lib/store'
 
 // Pagine numerate (1-6): in fondo mostrano "Cancella/Ripristina impostazioni mese"
 const ROTTE_NUMERATE = new Set(['/admin/turnisti', '/admin/schema', '/admin/regole', '/admin/impaginazione', '/admin/festivita', '/admin/desiderata', '/admin/turni'])
@@ -47,6 +49,14 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const { meseKey, mese, anno, setMeseAnno } = useMeseSelezionato()
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_COLLAPSED) === '1')
   const { finalizzato, info: infoFin } = useFinalizzato(postazioneAttiva?.id, meseKey)
+  // Tema interfaccia: applicato subito, salvato per l'utente (DB) e sul dispositivo
+  const [temaAttivo, setTemaAttivo] = useState<string>(() => temaSalvato())
+  function cambiaTema(id: string) {
+    applicaTema(id); setTemaAttivo(id)
+    store.setMioTema(id).catch(() => {})   // best-effort: il localStorage copre comunque questo dispositivo
+  }
+  // Mese finalizzato: VELO sopra i passi ①–⑦ (click bloccati); ⑧ Finalizzazione resta libera
+  const layerBlocco = finalizzato && ROTTE_NUMERATE.has(location.pathname)
   const visibleLinks = links.filter(l => !l.adminOnly || user?.livello === 'admin')
   const postNome = postazioneAttiva?.nome ?? null
 
@@ -68,13 +78,13 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       {/* Sidebar */}
       <aside className="shrink-0 flex flex-col py-4 overflow-y-auto overflow-x-hidden"
-        style={{ width: collapsed ? 56 : 208, background: '#1c2818', color: '#c0d0b0', transition: 'width 160ms ease' }}>
+        style={{ width: collapsed ? 56 : 208, background: 'var(--t-notte)', color: 'var(--t-side-testo)', transition: 'width 160ms ease' }}>
 
         {/* Intestazione + tasto collassa/espandi */}
         <div className={`flex items-center mb-3 ${collapsed ? 'justify-center' : 'justify-between px-4'}`}>
-          {!collapsed && <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: '#577a45' }}>Pannello Admin</p>}
+          {!collapsed && <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: 'var(--t-etichetta)' }}>Pannello Admin</p>}
           <button onClick={toggle} title={collapsed ? 'Mostra menu' : 'Nascondi menu'}
-            className="p-1 rounded transition-colors hover:bg-white/10" style={{ color: '#9ab488' }}>
+            className="p-1 rounded transition-colors hover:bg-white/10" style={{ color: 'var(--t-soft)' }}>
             {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </button>
         </div>
@@ -87,9 +97,9 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
               onClick={() => handleNav(to)}
               title={label}
               className={`flex items-center gap-2 py-2.5 text-sm transition-colors text-left w-full ${collapsed ? 'justify-center px-0' : 'px-4'}`}
-              style={isActive ? { background: '#456b3a', color: '#fff' } : { color: '#9ab488' }}
+              style={isActive ? { background: 'var(--t-primario)', color: '#fff' } : { color: 'var(--t-soft)' }}
               onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#fff' }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#9ab488' }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = 'var(--t-soft)' }}
             >
               {collapsed ? (
                 num != null ? <NumCircle num={num} size={20} /> : <Icon size={18} />
@@ -108,33 +118,33 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
         <div className="mt-2 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.10)' }}>
           {collapsed ? (
             <div className="flex flex-col items-center gap-1" title={`${postNome ?? 'Nessuna postazione'} · ${meseLabel(meseKey)}`}>
-              <MapPin size={15} style={{ color: '#9ab488' }} />
-              <CalendarDays size={15} style={{ color: '#9ab488' }} />
+              <MapPin size={15} style={{ color: 'var(--t-soft)' }} />
+              <CalendarDays size={15} style={{ color: 'var(--t-soft)' }} />
               <span className="text-[11px] font-bold leading-none" style={{ color: '#fff' }}>{String(mese).padStart(2, '0')}/{String(anno).slice(2)}</span>
               <div className="flex items-center gap-1 mt-0.5">
-                <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: '#9ab488' }}>
+                <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
                   <ChevronLeft size={16} />
                 </button>
-                <button onClick={() => cambiaMeseSidebar(1)} title="Mese successivo" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: '#9ab488' }}>
+                <button onClick={() => cambiaMeseSidebar(1)} title="Mese successivo" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
                   <ChevronRight size={16} />
                 </button>
               </div>
             </div>
           ) : (
             <div className="px-4">
-              <p className="text-[10px] uppercase tracking-widest font-semibold mb-1.5" style={{ color: '#577a45' }}>Stai gestendo</p>
+              <p className="text-[10px] uppercase tracking-widest font-semibold mb-1.5" style={{ color: 'var(--t-etichetta)' }}>Stai gestendo</p>
               <div className="flex items-center gap-1.5 mb-1" title={postNome ?? undefined}>
-                <MapPin size={16} className="shrink-0" style={{ color: '#9ab488' }} />
-                <span className="text-sm font-semibold truncate" style={{ color: '#e7efe0' }}>{postNome ?? '—'}</span>
+                <MapPin size={16} className="shrink-0" style={{ color: 'var(--t-soft)' }} />
+                <span className="text-sm font-semibold truncate" style={{ color: 'var(--t-side-forte)' }}>{postNome ?? '—'}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <CalendarDays size={16} className="shrink-0" style={{ color: '#9ab488' }} />
+                <CalendarDays size={16} className="shrink-0" style={{ color: 'var(--t-soft)' }} />
                 <span className="text-base font-bold whitespace-nowrap" style={{ color: '#fff' }}>{meseLabel(meseKey)}</span>
                 <div className="flex items-center gap-0.5 ml-auto">
-                  <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: '#9ab488' }}>
+                  <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
                     <ChevronLeft size={18} />
                   </button>
-                  <button onClick={() => cambiaMeseSidebar(1)} title="Mese successivo" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: '#9ab488' }}>
+                  <button onClick={() => cambiaMeseSidebar(1)} title="Mese successivo" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
                     <ChevronRight size={18} />
                   </button>
                 </div>
@@ -142,14 +152,31 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
             </div>
           )}
         </div>
+
+        {/* Tema interfaccia: 4 quadratini (i 2 colori principali di ogni tema) */}
+        <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+          {!collapsed && <p className="px-4 text-[10px] uppercase tracking-widest font-semibold mb-1.5" style={{ color: 'var(--t-etichetta)' }}>Tema</p>}
+          <div className={collapsed ? 'flex flex-col items-center gap-1.5' : 'px-4 flex items-center gap-2'}>
+            {TEMI.map(t => (
+              <button key={t.id} onClick={() => cambiaTema(t.id)} title={t.nome} aria-label={`Tema ${t.nome}`}
+                className="shrink-0 transition-transform hover:scale-110"
+                style={{
+                  width: 20, height: 20, borderRadius: 5,
+                  background: `linear-gradient(135deg, ${t.c1} 50%, ${t.c2} 50%)`,
+                  border: temaAttivo === t.id ? '2px solid #fff' : '1px solid rgba(255,255,255,0.35)',
+                  boxShadow: temaAttivo === t.id ? '0 0 0 1px rgba(0,0,0,0.25)' : 'none',
+                }} />
+            ))}
+          </div>
+        </div>
       </aside>
 
       {/* Contenuto: wrapper a colonna alto almeno quanto l'area → i pulsanti mese
           restano SEMPRE in fondo (spinti giù se la pagina è corta, scorrono se è lunga) */}
-      <main className="flex-1 min-w-0 overflow-auto" style={{ background: '#f4f1ea' }}>
-        <div className="min-h-full flex flex-col">
+      <main className="flex-1 min-w-0 overflow-auto" style={{ background: 'var(--t-bg)' }}>
+        <div className="min-h-full flex flex-col" style={{ position: 'relative' }}>
           {finalizzato && location.pathname !== '/admin/finalizza' && (
-            <div className="px-4 sm:px-6 pt-3">
+            <div className="px-4 sm:px-6 pt-3" style={{ position: 'relative', zIndex: 50 }}>
               <div className="max-w-4xl flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: '#fef9c3', border: '1px solid #fde047' }}>
                 <Lock size={15} className="shrink-0" style={{ color: '#a16207' }} />
                 <p className="text-xs" style={{ color: '#713f12' }}>
@@ -167,6 +194,12 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
                 <CancellaMeseButton postazioneId={postazioneAttiva.id} meseKey={meseKey} anno={anno} mese={mese} />
               </div>
             </div>
+          )}
+          {/* VELO di sola-lettura sui passi ①–⑦ quando il mese è finalizzato:
+              blocca ogni click sul contenuto (il banner giallo sopra resta cliccabile). */}
+          {layerBlocco && (
+            <div aria-hidden style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(255,255,255,0.5)', cursor: 'not-allowed' }}
+              title={`${meseLabel(meseKey)} è finalizzato: sola lettura`} />
           )}
         </div>
       </main>

@@ -329,6 +329,12 @@ const supaStore = {
     const { error } = await supabase.from('finalizzazioni').delete().eq('postazione_id', postazioneId).eq('mese', mese)
     if (error) throw error
   },
+
+  // ── Tema interfaccia (salvato per utente) ──
+  async setMioTema(tema: string): Promise<void> {
+    const { error } = await supabase.rpc('set_mio_tema', { p_tema: tema })
+    if (error) throw error
+  },
   async setSuperfestivoTurni(postazioneId: string, mese: string, data: string, turnoSchemaIds: string[]): Promise<void> {
     const del = await supabase.from('superfestivo_turni').delete().eq('postazione_id', postazioneId).eq('mese', mese).eq('data', data)
     if (del.error) throw del.error
@@ -1119,6 +1125,7 @@ const localStore = {
   async sbloccaMese(postazioneId: string, mese: string): Promise<void> {
     writeLs(LS_FINALIZZAZIONI, read<{ postazioneId: string; mese: string }[]>(LS_FINALIZZAZIONI, []).filter(x => !(x.postazioneId === postazioneId && x.mese === mese)))
   },
+  async setMioTema(_tema: string): Promise<void> { /* DEV: basta il localStorage di applicaTema */ },
   async addTurnoSchema(versioneId: string, input: NuovoTurnoInput): Promise<TurnoSchema> {
     const list = read<TurnoSchema[]>(LS_SCHEMA, [])
     const ordine = list.filter(s => s.versione_id === versioneId).reduce((m, s) => Math.max(m, s.ordine), 0) + 10

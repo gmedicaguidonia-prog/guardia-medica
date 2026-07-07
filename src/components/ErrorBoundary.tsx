@@ -29,10 +29,10 @@ export class ErrorBoundary extends Component<Props, State> {
     const { error } = this.state
     if (!error) return this.props.children
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f1ea', padding: 24, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--t-bg)', padding: 24, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
         <div style={{ maxWidth: 480, width: '100%', background: '#fff', borderRadius: 16, boxShadow: '0 10px 40px rgba(0,0,0,0.12)', padding: 28, textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 6 }}>⚠️</div>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: '#2b3c24', margin: '0 0 8px' }}>Qualcosa è andato storto</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--t-titolo)', margin: '0 0 8px' }}>Qualcosa è andato storto</h1>
           <p style={{ fontSize: 14, color: '#57534e', margin: '0 0 16px' }}>
             Si è verificato un errore imprevisto. Ricarica l'app; se il problema continua, segnala il testo qui sotto.
           </p>
