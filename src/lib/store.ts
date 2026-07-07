@@ -335,6 +335,17 @@ const supaStore = {
     const { error } = await supabase.rpc('set_mio_tema', { p_tema: tema })
     if (error) throw error
   },
+
+  // ── Impostazioni di postazione: email mittente (per l'invio del calendario) ──
+  async getEmailMittente(postazioneId: string): Promise<string> {
+    const { data, error } = await supabase.from('postazione_impostazioni').select('email_mittente').eq('postazione_id', postazioneId).maybeSingle()
+    if (error) throw error
+    return ((data?.email_mittente as string | null) ?? '')
+  },
+  async setEmailMittente(postazioneId: string, email: string): Promise<void> {
+    const { error } = await supabase.from('postazione_impostazioni').upsert({ postazione_id: postazioneId, email_mittente: email || null, updated_at: new Date().toISOString() }, { onConflict: 'postazione_id' })
+    if (error) throw error
+  },
   async setSuperfestivoTurni(postazioneId: string, mese: string, data: string, turnoSchemaIds: string[]): Promise<void> {
     const del = await supabase.from('superfestivo_turni').delete().eq('postazione_id', postazioneId).eq('mese', mese).eq('data', data)
     if (del.error) throw del.error
@@ -1126,6 +1137,12 @@ const localStore = {
     writeLs(LS_FINALIZZAZIONI, read<{ postazioneId: string; mese: string }[]>(LS_FINALIZZAZIONI, []).filter(x => !(x.postazioneId === postazioneId && x.mese === mese)))
   },
   async setMioTema(_tema: string): Promise<void> { /* DEV: basta il localStorage di applicaTema */ },
+  async getEmailMittente(postazioneId: string): Promise<string> {
+    return read<Record<string, string>>('gm_email_mittente', {})[postazioneId] ?? ''
+  },
+  async setEmailMittente(postazioneId: string, email: string): Promise<void> {
+    const m = read<Record<string, string>>('gm_email_mittente', {}); m[postazioneId] = email; writeLs('gm_email_mittente', m)
+  },
   async addTurnoSchema(versioneId: string, input: NuovoTurnoInput): Promise<TurnoSchema> {
     const list = read<TurnoSchema[]>(LS_SCHEMA, [])
     const ordine = list.filter(s => s.versione_id === versioneId).reduce((m, s) => Math.max(m, s.ordine), 0) + 10

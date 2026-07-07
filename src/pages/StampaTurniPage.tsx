@@ -94,6 +94,10 @@ export function StampaTurniPage() {
           .no-print { display: none !important; }
           .foglio-stampa { page-break-after: always; }
           .foglio-stampa:last-child { page-break-after: auto; }
+          /* MAI spezzare una riga a cavallo di due pagine */
+          .foglio-stampa tr, .foglio-stampa td, .foglio-stampa th { page-break-inside: avoid; break-inside: avoid; }
+          /* l'intestazione (dicitura rossa + colonne) si ripete su ogni pagina */
+          .foglio-stampa thead { display: table-header-group; }
           @page { margin: 10mm; }
         }
       `}</style>
