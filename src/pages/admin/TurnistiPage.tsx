@@ -16,7 +16,7 @@ const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','
 
 const BADGE: Record<Livello, { bg: string; fg: string }> = {
   admin:        { bg: '#fef9c3', fg: '#a16207' },
-  responsabile: { bg: '#fef3c7', fg: '#92400e' },
+  responsabile: { bg: '#fef3c7', fg: '#ca8a04' },
   turnista:     { bg: '#dbeafe', fg: '#1e40af' },
   esterno:      { bg: '#dcfce7', fg: '#166534' },
 }
