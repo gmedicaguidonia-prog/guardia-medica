@@ -227,6 +227,23 @@ export interface DesiderataFinestra {
   pubbliche: boolean        // true = desiderata visibili a tutti i turnisti (vista a colonne)
 }
 
+// ─── Festività / Superfestivi ───────────────────────────────────────
+/** Festività LOCALE (custom) di una postazione, aggiunta a mano. */
+export interface Festivita {
+  id: string
+  data: string          // 'YYYY-MM-DD'
+  descrizione: string
+}
+/** Una festività nel mese (nazionale calcolata o locale), con stato superfestivo e,
+ *  se super, i turni del mese che ne usufruiscono. Usata dalla pagina Festività. */
+export interface FestivitaMese {
+  data: string          // 'YYYY-MM-DD'
+  nome: string          // "Ferragosto" (nazionale) o la descrizione (locale)
+  locale: boolean       // true = locale (custom), false = nazionale
+  superfestivo: boolean // marcata come superfestivo per questa postazione
+  turni: string[]       // turno_schema_id abbinati (rilevante solo se super)
+}
+
 // ─── Stato del calendario turni (per postazione × mese) ─────────────
 //  Controlla cosa vede il turnista nella pagina pubblica "I miei turni":
 //   - 'non_pubblicato' → niente, solo un avviso "non ancora pubblicato"
@@ -359,6 +376,7 @@ export interface Postazione {
   nome: string
   attiva: boolean
   created_at: string
+  nazione?: string    // codice nazione per i festivi (default 'IT')
 }
 
 // ─── Auth ───────────────────────────────────────────────────────────

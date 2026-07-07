@@ -271,6 +271,7 @@ export function DesiderataPage() {
         { n: '②', label: 'Configurazione Turni', ok: passi.passo1, to: '/admin/schema' },
         { n: '③', label: 'Regole Turni', ok: passi.passo2, to: '/admin/regole' },
         { n: '④', label: 'Impaginazione', ok: passi.passo3, to: '/admin/impaginazione' },
+        { n: '⑤', label: 'Festività', ok: passi.passoFestivita, to: '/admin/festivita' },
       ]} />
     </div>
   )

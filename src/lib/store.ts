@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno } from '../types'
+import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno, Festivita } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -263,6 +263,52 @@ const supaStore = {
   async deleteTurnoSchema(id: string): Promise<void> {
     const { error } = await supabase.from('schema_turni').delete().eq('id', id)
     if (error) throw error
+  },
+
+  // ── Festività / Superfestivi ──
+  async getNazione(postazioneId: string): Promise<string> {
+    const { data, error } = await supabase.from('postazioni').select('nazione').eq('id', postazioneId).maybeSingle()
+    if (error) throw error
+    return ((data?.nazione as string | null) ?? 'IT')
+  },
+  async setNazione(postazioneId: string, nazione: string): Promise<void> {
+    const { error } = await supabase.from('postazioni').update({ nazione }).eq('id', postazioneId)
+    if (error) throw error
+  },
+  async getFestivitaCustom(postazioneId: string): Promise<Festivita[]> {
+    const { data, error } = await supabase.from('festivita_custom').select('id, data, descrizione').eq('postazione_id', postazioneId).order('data')
+    if (error) throw error
+    return (data ?? []).map(r => ({ id: r.id as string, data: r.data as string, descrizione: r.descrizione as string }))
+  },
+  async addFestivitaCustom(postazioneId: string, data: string, descrizione: string): Promise<void> {
+    const { error } = await supabase.from('festivita_custom').insert({ postazione_id: postazioneId, data, descrizione })
+    if (error) throw error
+  },
+  async removeFestivitaCustom(id: string): Promise<void> {
+    const { error } = await supabase.from('festivita_custom').delete().eq('id', id)
+    if (error) throw error
+  },
+  async getFestivitaSuper(postazioneId: string): Promise<{ data: string; superfestivo: boolean }[]> {
+    const { data, error } = await supabase.from('festivita_super').select('data, super').eq('postazione_id', postazioneId)
+    if (error) throw error
+    return (data ?? []).map(r => ({ data: r.data as string, superfestivo: !!r.super }))
+  },
+  async setFestivitaSuper(postazioneId: string, data: string, superfestivo: boolean): Promise<void> {
+    const { error } = await supabase.from('festivita_super').upsert({ postazione_id: postazioneId, data, super: superfestivo }, { onConflict: 'postazione_id,data' })
+    if (error) throw error
+  },
+  async getSuperfestivoTurni(postazioneId: string, mese: string): Promise<{ data: string; turnoSchemaId: string }[]> {
+    const { data, error } = await supabase.from('superfestivo_turni').select('data, turno_schema_id').eq('postazione_id', postazioneId).eq('mese', mese)
+    if (error) throw error
+    return (data ?? []).map(r => ({ data: r.data as string, turnoSchemaId: r.turno_schema_id as string }))
+  },
+  async setSuperfestivoTurni(postazioneId: string, mese: string, data: string, turnoSchemaIds: string[]): Promise<void> {
+    const del = await supabase.from('superfestivo_turni').delete().eq('postazione_id', postazioneId).eq('mese', mese).eq('data', data)
+    if (del.error) throw del.error
+    if (turnoSchemaIds.length) {
+      const { error } = await supabase.from('superfestivo_turni').insert(turnoSchemaIds.map(tid => ({ postazione_id: postazioneId, mese, data, turno_schema_id: tid })))
+      if (error) throw error
+    }
   },
 
   // ── Turni assegnati ──
@@ -778,6 +824,9 @@ const LS_IMPAG_VERSIONI   = 'gm_impag_versioni'
 const LS_FOGLI            = 'gm_fogli'
 const LS_FOGLIO_TURNI     = 'gm_foglio_turni'
 const LS_POSTAZIONI       = 'gm_postazioni'
+const LS_FEST_CUSTOM      = 'gm_festivita_custom'
+const LS_FEST_SUPER       = 'gm_festivita_super'
+const LS_SUPERF_TURNI     = 'gm_superfestivo_turni'
 const LS_SEEDED           = 'gm_seeded_v5'
 const DEV_POSTAZIONE      = 'dev-postazione-1'
 
@@ -941,6 +990,8 @@ const localStore = {
     writeLs(LS_FOGLIO_TURNI, read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => !ivId.includes(ft.versione_id)))
     // attivazioni
     writeLs('gm_attivazioni', read<{ postazioneId: string; mese: string }[]>('gm_attivazioni', []).filter(a => !(a.postazioneId === postazioneId && a.mese === mese)))
+    // abbinamenti superfestivo del mese (le festività custom/super restano: sono config di postazione)
+    writeLs(LS_SUPERF_TURNI, read<{ postazione_id?: string; mese: string }[]>(LS_SUPERF_TURNI, []).filter(x => !((x.postazione_id ?? DEV_POSTAZIONE) === postazioneId && x.mese === mese)))
   },
   async getSetupBackup(postazioneId: string, mese: string): Promise<{ id: string; createdAt: string; autore: string | null } | null> {
     const b = read<Record<string, unknown>[]>('gm_setup_backup', []).filter(x => x.postazioneId === postazioneId && x.mese === mese).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]
@@ -968,6 +1019,52 @@ const localStore = {
   async getSchemaVersione(versioneId: string): Promise<TurnoSchema[]> {
     ensureSeed()
     return read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => s.versione_id === versioneId).slice().sort((a, b) => a.ordine - b.ordine)
+  },
+
+  // ── Festività / Superfestivi (DEV) ──
+  async getNazione(postazioneId: string): Promise<string> {
+    return read<WithPost<Postazione>[]>(LS_POSTAZIONI, []).find(p => p.id === postazioneId)?.nazione ?? 'IT'
+  },
+  async setNazione(postazioneId: string, nazione: string): Promise<void> {
+    writeLs(LS_POSTAZIONI, read<Postazione[]>(LS_POSTAZIONI, []).map(p => p.id === postazioneId ? { ...p, nazione } : p))
+  },
+  async getFestivitaCustom(postazioneId: string): Promise<Festivita[]> {
+    return read<WithPost<Festivita>[]>(LS_FEST_CUSTOM, [])
+      .filter(f => (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
+      .map(f => ({ id: f.id, data: f.data, descrizione: f.descrizione }))
+      .sort((a, b) => a.data.localeCompare(b.data))
+  },
+  async addFestivitaCustom(postazioneId: string, data: string, descrizione: string): Promise<void> {
+    const list = read<WithPost<Festivita>[]>(LS_FEST_CUSTOM, [])
+    if (list.some(f => (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId && f.data === data)) return
+    list.push({ id: uid(), postazione_id: postazioneId, data, descrizione })
+    writeLs(LS_FEST_CUSTOM, list)
+  },
+  async removeFestivitaCustom(id: string): Promise<void> {
+    writeLs(LS_FEST_CUSTOM, read<WithPost<Festivita>[]>(LS_FEST_CUSTOM, []).filter(f => f.id !== id))
+  },
+  async getFestivitaSuper(postazioneId: string): Promise<{ data: string; superfestivo: boolean }[]> {
+    return read<{ postazione_id?: string; data: string; super: boolean }[]>(LS_FEST_SUPER, [])
+      .filter(x => (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
+      .map(x => ({ data: x.data, superfestivo: !!x.super }))
+  },
+  async setFestivitaSuper(postazioneId: string, data: string, superfestivo: boolean): Promise<void> {
+    const list = read<{ postazione_id?: string; data: string; super: boolean }[]>(LS_FEST_SUPER, [])
+    const i = list.findIndex(x => (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId && x.data === data)
+    if (i >= 0) list[i] = { ...list[i], super: superfestivo }
+    else list.push({ postazione_id: postazioneId, data, super: superfestivo })
+    writeLs(LS_FEST_SUPER, list)
+  },
+  async getSuperfestivoTurni(postazioneId: string, mese: string): Promise<{ data: string; turnoSchemaId: string }[]> {
+    return read<{ postazione_id?: string; mese: string; data: string; turno_schema_id: string }[]>(LS_SUPERF_TURNI, [])
+      .filter(x => (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId && x.mese === mese)
+      .map(x => ({ data: x.data, turnoSchemaId: x.turno_schema_id }))
+  },
+  async setSuperfestivoTurni(postazioneId: string, mese: string, data: string, turnoSchemaIds: string[]): Promise<void> {
+    const list = read<{ postazione_id?: string; mese: string; data: string; turno_schema_id: string }[]>(LS_SUPERF_TURNI, [])
+      .filter(x => !((x.postazione_id ?? DEV_POSTAZIONE) === postazioneId && x.mese === mese && x.data === data))
+    for (const tid of turnoSchemaIds) list.push({ postazione_id: postazioneId, mese, data, turno_schema_id: tid })
+    writeLs(LS_SUPERF_TURNI, list)
   },
   async addTurnoSchema(versioneId: string, input: NuovoTurnoInput): Promise<TurnoSchema> {
     const list = read<TurnoSchema[]>(LS_SCHEMA, [])

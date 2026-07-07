@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
@@ -10,7 +10,7 @@ import { ConfirmModal } from '../../components/ConfirmModal'
 import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 
 // Pagine numerate (1-6): in fondo mostrano "Cancella/Ripristina impostazioni mese"
-const ROTTE_NUMERATE = new Set(['/admin/turnisti', '/admin/schema', '/admin/regole', '/admin/impaginazione', '/admin/desiderata', '/admin/turni'])
+const ROTTE_NUMERATE = new Set(['/admin/turnisti', '/admin/schema', '/admin/regole', '/admin/impaginazione', '/admin/festivita', '/admin/desiderata', '/admin/turni'])
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
@@ -22,8 +22,9 @@ const links: { to: string; label: string; Icon: typeof Home; num: number | null;
   { to: '/admin/schema',        label: 'Configurazione Turni',         Icon: CalendarClock, num: 2 },
   { to: '/admin/regole',        label: 'Regole Turni',                 Icon: ListChecks,    num: 3 },
   { to: '/admin/impaginazione', label: 'Impaginazione',                Icon: LayoutGrid,    num: 4 },
-  { to: '/admin/desiderata',    label: 'Desiderata - Indisponibilità', Icon: CalendarHeart, num: 5 },
-  { to: '/admin/turni',         label: 'Turni del Mese',               Icon: CalendarDays,  num: 6 },
+  { to: '/admin/festivita',     label: 'Festività',                    Icon: PartyPopper,   num: 5 },
+  { to: '/admin/desiderata',    label: 'Desiderata - Indisponibilità', Icon: CalendarHeart, num: 6 },
+  { to: '/admin/turni',         label: 'Turni del Mese',               Icon: CalendarDays,  num: 7 },
 ]
 
 const LS_COLLAPSED = 'gm_admin_collapsed'

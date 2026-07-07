@@ -3,13 +3,13 @@ import { isFestivo, isPrefestivo, isFeriale, giornoSettimana } from './holidays'
 
 /** Decide se un tipo di turno si applica in una certa data, in base alla
  *  sua ricorrenza (tutti / feriali / weekend / prefestivi / festivi / custom). */
-export function turnoSiApplica(t: TurnoSchema, d: Date): boolean {
+export function turnoSiApplica(t: TurnoSchema, d: Date, festivoSet?: Set<string>): boolean {
   switch (t.ricorrenza) {
     case 'tutti':      return true
-    case 'feriali':    return isFeriale(d)
+    case 'feriali':    return isFeriale(d, festivoSet)
     case 'weekend':    return d.getDay() === 0 || d.getDay() === 6
-    case 'prefestivi': return isPrefestivo(d)
-    case 'festivi':    return isFestivo(d)
+    case 'prefestivi': return isPrefestivo(d, festivoSet)
+    case 'festivi':    return isFestivo(d, festivoSet)
     case 'custom':     return t.giorni_custom.includes(giornoSettimana(d))
     default:           return false
   }

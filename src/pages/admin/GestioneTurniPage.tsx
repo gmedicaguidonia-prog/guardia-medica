@@ -2,16 +2,17 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser, History } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser, History, Star } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { autoAssegna, autoReperibilita, oreSettimana, oreConsecutive, vietatiDaRegole, type AutoAssegnaResult } from '../../lib/autoAssegna'
-import { isFestivo, isPrefestivo, isoDate, giornoSettimana } from '../../lib/holidays'
+import { isFestivo, isPrefestivo, isSuperfestivo, isoDate, giornoSettimana } from '../../lib/holidays'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
+import { useFestivita } from '../../hooks/useFestivita'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { IconaLivello } from '../../components/IconaLivello'
 import { useUnsaved } from '../../contexts/UnsavedContext'
@@ -70,6 +71,9 @@ export function GestioneTurniPage() {
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
   const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3 (4 facoltativo)
+  const { festivoSet, superSet } = useFestivita(postazioneId)   // festivi locali + superfestivi (calendario e conteggi)
+  const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
+  const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
   // Tempo reale: candidature in arrivo, turni, stato calendario, desiderata.
   // Le modifiche NON salvate restano (useStagedAssignments riallinea solo se non si sta editando).
   useRealtimePostazione(postazioneId, [
@@ -124,20 +128,22 @@ export function GestioneTurniPage() {
   const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   // riepilogo auto-aggiornante (in base a ciò che è in tabella): T turni, N notti, F festivi, PF prefestivi
   const riepilogo = useMemo(() => {
-    const stat = new Map<string, { T: number; N: number; F: number; PF: number }>()
+    const stat = new Map<string, { T: number; N: number; F: number; PF: number; SF: number }>()
     for (const [key, tid] of local) {
       const [ds, turnoId, slotStr] = key.split('|')
       if (+slotStr < 0) continue   // esclude il reperibile
       const turno = schema.find(s => s.id === turnoId); if (!turno) continue
-      const s = stat.get(tid) ?? { T: 0, N: 0, F: 0, PF: 0 }
+      const s = stat.get(tid) ?? { T: 0, N: 0, F: 0, PF: 0, SF: 0 }
       s.T++
       if (turno.ora_fine <= turno.ora_inizio) s.N++   // notte = attraversa la mezzanotte
       const [y, m, d] = ds.split('-').map(Number); const date = new Date(y, m - 1, d)
-      if (isFestivo(date)) s.F++; else if (isPrefestivo(date)) s.PF++
+      if (isFestivo(date, festivoSet)) s.F++; else if (isPrefestivo(date, festivoSet)) s.PF++
+      // superfestivo: solo se il giorno è super E questo turno vi è abbinato
+      if (isSuperfestivo(date, superSet) && superTurniByData.get(ds)?.includes(turnoId)) s.SF++
       stat.set(tid, s)
     }
     return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
-  }, [local, schema, turnisti, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [local, schema, turnisti, ruoloMese, festivoSet, superSet, superTurniByData])   // eslint-disable-line react-hooks/exhaustive-deps
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
   const coloreTurnista = (id: string) => ROLE_COLOR[livMese(id)]
   // Ore assegnate per turnista nel mese (esclude il reperibile = slot -1)
@@ -156,9 +162,9 @@ export function GestioneTurniPage() {
   // Una griglia per foglio: righe = ogni (giorno, turno applicabile) DI QUEL foglio
   const righePerFoglio = useMemo(() => fogliConTurni.map(fc => {
     const out: { ds: string; d: Date; turno: TurnoSchema }[] = []
-    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
+    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d, festivoSet)) out.push({ ds: isoDate(d), d, turno: c }) }))
     return { foglio: fc.foglio, righe: out }
-  }), [fogliConTurni, giorni])
+  }), [fogliConTurni, giorni, festivoSet])
   const righe = useMemo(() => righePerFoglio.flatMap(x => x.righe), [righePerFoglio])
 
   const hasRep = useMemo(() => [...local.keys()].some(k => k.endsWith(`|${REP_SLOT}`)), [local])
@@ -547,6 +553,7 @@ export function GestioneTurniPage() {
           { n: '②', label: 'Configurazione Turni', ok: passi.passo1, to: '/admin/schema' },
           { n: '③', label: 'Regole Turni', ok: passi.passo2, to: '/admin/regole' },
           { n: '④', label: 'Impaginazione', ok: passi.passo3, to: '/admin/impaginazione' },
+          { n: '⑤', label: 'Festività', ok: passi.passoFestivita, to: '/admin/festivita' },
         ]} />
       </div>
     </div>
@@ -766,10 +773,11 @@ export function GestioneTurniPage() {
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#64748b', fontWeight: 800 }} title="Notti">N</th>
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#b91c1c', fontWeight: 800 }} title="Festivi">F</th>
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#b45309', fontWeight: 800 }} title="Prefestivi">PF</th>
+                    <th style={{ padding: '1px 2px', textAlign: 'center', color: '#a16207', fontWeight: 800 }} title="Superfestivi">SF</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {riepilogo.map(({ t, T, N, F, PF }) => (
+                  {riepilogo.map(({ t, T, N, F, PF, SF }) => (
                     <tr key={t.id} style={{ borderBottom: '1px solid #f4f5f1' }}>
                       <td style={{ padding: '2px 2px', lineHeight: 1.15 }} title={nomeCompleto(t)}>
                         <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: ROLE_COLOR[t.livello].fg, marginRight: 3, verticalAlign: 'middle' }} />{nomeCompleto(t)}
@@ -778,12 +786,13 @@ export function GestioneTurniPage() {
                       <td style={{ padding: '2px', textAlign: 'center', color: '#475569' }}>{N || ''}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#b91c1c' }}>{F || ''}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#b45309' }}>{PF || ''}</td>
+                      <td style={{ padding: '2px', textAlign: 'center', color: '#a16207', fontWeight: 700 }}>{SF || ''}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <p className="text-[9px] leading-snug text-stone-400 mt-1.5 px-1">
-                <strong>T</strong>=turni · <strong>N</strong>=notti · <strong>F</strong>=festivi · <strong>PF</strong>=prefestivi
+                <strong>T</strong>=turni · <strong>N</strong>=notti · <strong>F</strong>=festivi · <strong>PF</strong>=prefestivi · <strong>SF</strong>=superfestivi
               </p>
             </div>
           )}
@@ -807,7 +816,8 @@ export function GestioneTurniPage() {
             </thead>
             <tbody>
               {righeF.map(({ ds, d, turno }) => {
-                const fest = isFestivo(d), pref = isPrefestivo(d)
+                const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
+                const superF = isSuperfestivo(d, superSet)
                 const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                 const overnight = turno.ora_fine <= turno.ora_inizio
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
@@ -820,7 +830,7 @@ export function GestioneTurniPage() {
                   <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
                     <td style={{ ...tdBase, whiteSpace: 'nowrap', width: 1, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
                       <div className="flex items-center gap-1.5">
-                        <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
+                        <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04' }} />}
                         <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                         <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={pieno ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{assegnati}/{turno.n_turnisti}</span>
                       </div>
