@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper, ClipboardCheck, Lock } from 'lucide-react'
 import type { AuthUser } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
@@ -8,6 +8,7 @@ import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { CancellaMeseButton } from '../../components/CancellaMeseButton'
+import { useFinalizzato } from '../../hooks/useFinalizzato'
 
 // Pagine numerate (1-6): in fondo mostrano "Cancella/Ripristina impostazioni mese"
 const ROTTE_NUMERATE = new Set(['/admin/turnisti', '/admin/schema', '/admin/regole', '/admin/impaginazione', '/admin/festivita', '/admin/desiderata', '/admin/turni'])
@@ -25,6 +26,7 @@ const links: { to: string; label: string; Icon: typeof Home; num: number | null;
   { to: '/admin/festivita',     label: 'Festività',                    Icon: PartyPopper,   num: 5 },
   { to: '/admin/desiderata',    label: 'Desiderata - Indisponibilità', Icon: CalendarHeart, num: 6 },
   { to: '/admin/turni',         label: 'Turni del Mese',               Icon: CalendarDays,  num: 7 },
+  { to: '/admin/finalizza',     label: 'Finalizzazione',               Icon: ClipboardCheck, num: 8 },
 ]
 
 const LS_COLLAPSED = 'gm_admin_collapsed'
@@ -44,6 +46,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const { postazioneAttiva } = usePostazione()
   const { meseKey, mese, anno, setMeseAnno } = useMeseSelezionato()
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_COLLAPSED) === '1')
+  const { finalizzato, info: infoFin } = useFinalizzato(postazioneAttiva?.id, meseKey)
   const visibleLinks = links.filter(l => !l.adminOnly || user?.livello === 'admin')
   const postNome = postazioneAttiva?.nome ?? null
 
@@ -145,6 +148,17 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
           restano SEMPRE in fondo (spinti giù se la pagina è corta, scorrono se è lunga) */}
       <main className="flex-1 min-w-0 overflow-auto" style={{ background: '#f4f1ea' }}>
         <div className="min-h-full flex flex-col">
+          {finalizzato && location.pathname !== '/admin/finalizza' && (
+            <div className="px-4 sm:px-6 pt-3">
+              <div className="max-w-4xl flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: '#fef9c3', border: '1px solid #fde047' }}>
+                <Lock size={15} className="shrink-0" style={{ color: '#a16207' }} />
+                <p className="text-xs" style={{ color: '#713f12' }}>
+                  <strong>{meseLabel(meseKey)} è finalizzato</strong>{infoFin?.autore ? <> da {infoFin.autore}</> : null}: turni, desiderata e personale sono in <strong>sola lettura</strong>.{' '}
+                  <button onClick={() => handleNav('/admin/finalizza')} className="underline font-semibold" style={{ color: '#a16207' }}>Sblocca dalla Finalizzazione</button>
+                </p>
+              </div>
+            </div>
+          )}
           <div className="flex-1 min-w-0"><Outlet context={{ user }} /></div>
           {ROTTE_NUMERATE.has(location.pathname) && postazioneAttiva && (
             <div className="px-4 sm:px-6 pt-4 pb-6 mt-4">

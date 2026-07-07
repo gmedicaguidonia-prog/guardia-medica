@@ -302,6 +302,33 @@ const supaStore = {
     if (error) throw error
     return (data ?? []).map(r => ({ data: r.data as string, turnoSchemaId: r.turno_schema_id as string }))
   },
+  // NOMI dei turni abbinati l'ultima volta allo stesso giorno-mese (es. '08-15') in un mese
+  // precedente: per PRECOMPILARE l'abbinamento del superfestivo (mappatura per nome).
+  async getSuperfestivoTurniPrecedente(postazioneId: string, meseGiorno: string, primaDelMese: string): Promise<string[]> {
+    const { data, error } = await supabase.from('superfestivo_turni').select('mese, data, turno_schema_id').eq('postazione_id', postazioneId).lt('mese', primaDelMese).order('mese', { ascending: false })
+    if (error) throw error
+    const match = (data ?? []).filter(r => (r.data as string).slice(5) === meseGiorno)
+    if (!match.length) return []
+    const best = match.filter(r => r.mese === match[0].mese)
+    const { data: turni, error: e2 } = await supabase.from('schema_turni').select('nome').in('id', best.map(r => r.turno_schema_id))
+    if (e2) throw e2
+    return (turni ?? []).map(t => t.nome as string)
+  },
+
+  // ── Finalizzazione (blocco del mese) ──
+  async getFinalizzazione(postazioneId: string, mese: string): Promise<{ autore: string | null; createdAt: string } | null> {
+    const { data, error } = await supabase.from('finalizzazioni').select('autore, created_at').eq('postazione_id', postazioneId).eq('mese', mese).maybeSingle()
+    if (error) throw error
+    return data ? { autore: (data.autore as string | null) ?? null, createdAt: data.created_at as string } : null
+  },
+  async finalizzaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
+    const { error } = await supabase.from('finalizzazioni').upsert({ postazione_id: postazioneId, mese, autore: autore ?? _autoreCorrente }, { onConflict: 'postazione_id,mese' })
+    if (error) throw error
+  },
+  async sbloccaMese(postazioneId: string, mese: string): Promise<void> {
+    const { error } = await supabase.from('finalizzazioni').delete().eq('postazione_id', postazioneId).eq('mese', mese)
+    if (error) throw error
+  },
   async setSuperfestivoTurni(postazioneId: string, mese: string, data: string, turnoSchemaIds: string[]): Promise<void> {
     const del = await supabase.from('superfestivo_turni').delete().eq('postazione_id', postazioneId).eq('mese', mese).eq('data', data)
     if (del.error) throw del.error
@@ -827,6 +854,7 @@ const LS_POSTAZIONI       = 'gm_postazioni'
 const LS_FEST_CUSTOM      = 'gm_festivita_custom'
 const LS_FEST_SUPER       = 'gm_festivita_super'
 const LS_SUPERF_TURNI     = 'gm_superfestivo_turni'
+const LS_FINALIZZAZIONI   = 'gm_finalizzazioni'
 const LS_SEEDED           = 'gm_seeded_v5'
 const DEV_POSTAZIONE      = 'dev-postazione-1'
 
@@ -1065,6 +1093,31 @@ const localStore = {
       .filter(x => !((x.postazione_id ?? DEV_POSTAZIONE) === postazioneId && x.mese === mese && x.data === data))
     for (const tid of turnoSchemaIds) list.push({ postazione_id: postazioneId, mese, data, turno_schema_id: tid })
     writeLs(LS_SUPERF_TURNI, list)
+  },
+  async getSuperfestivoTurniPrecedente(postazioneId: string, meseGiorno: string, primaDelMese: string): Promise<string[]> {
+    const rows = read<{ postazione_id?: string; mese: string; data: string; turno_schema_id: string }[]>(LS_SUPERF_TURNI, [])
+      .filter(x => (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId && x.mese < primaDelMese && x.data.slice(5) === meseGiorno)
+      .sort((a, b) => b.mese.localeCompare(a.mese))
+    if (!rows.length) return []
+    const best = rows.filter(r => r.mese === rows[0].mese)
+    const schema = read<TurnoSchema[]>(LS_SCHEMA, [])
+    return best.map(r => schema.find(s => s.id === r.turno_schema_id)?.nome).filter((n): n is string => !!n)
+  },
+
+  // ── Finalizzazione (DEV) ──
+  async getFinalizzazione(postazioneId: string, mese: string): Promise<{ autore: string | null; createdAt: string } | null> {
+    const f = read<{ postazioneId: string; mese: string; autore: string | null; createdAt: string }[]>(LS_FINALIZZAZIONI, [])
+      .find(x => x.postazioneId === postazioneId && x.mese === mese)
+    return f ? { autore: f.autore, createdAt: f.createdAt } : null
+  },
+  async finalizzaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
+    const list = read<{ postazioneId: string; mese: string; autore: string | null; createdAt: string }[]>(LS_FINALIZZAZIONI, [])
+      .filter(x => !(x.postazioneId === postazioneId && x.mese === mese))
+    list.push({ postazioneId, mese, autore: autore ?? _autoreCorrente, createdAt: new Date().toISOString() })
+    writeLs(LS_FINALIZZAZIONI, list)
+  },
+  async sbloccaMese(postazioneId: string, mese: string): Promise<void> {
+    writeLs(LS_FINALIZZAZIONI, read<{ postazioneId: string; mese: string }[]>(LS_FINALIZZAZIONI, []).filter(x => !(x.postazioneId === postazioneId && x.mese === mese)))
   },
   async addTurnoSchema(versioneId: string, input: NuovoTurnoInput): Promise<TurnoSchema> {
     const list = read<TurnoSchema[]>(LS_SCHEMA, [])

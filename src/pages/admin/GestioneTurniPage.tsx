@@ -13,6 +13,7 @@ import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { useFestivita } from '../../hooks/useFestivita'
+import { useFinalizzato } from '../../hooks/useFinalizzato'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { IconaLivello } from '../../components/IconaLivello'
 import { useUnsaved } from '../../contexts/UnsavedContext'
@@ -72,6 +73,7 @@ export function GestioneTurniPage() {
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
   const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3 (4 facoltativo)
   const { festivoSet, superSet } = useFestivita(postazioneId)   // festivi locali + superfestivi (calendario e conteggi)
+  const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente salvataggi
   const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
   const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
   // Tempo reale: candidature in arrivo, turni, stato calendario, desiderata.
@@ -307,6 +309,7 @@ export function GestioneTurniPage() {
     if (ok) setMostraRepMesi(prev => { const n = new Set(prev); n.add(meseKey); return n })
   }
   async function salva() {
+    if (finalizzato) { await notify({ title: 'Mese finalizzato', message: `${MESI[mese - 1]} ${anno} è bloccato: per modificare i turni sbloccalo dalla pagina ⑧ Finalizzazione.` }); return }
     setSaving(true)
     try {
       const mod = diff()

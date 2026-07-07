@@ -1,10 +1,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid } from 'lucide-react'
+import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
-import { isFestivo, isPrefestivo, isoDate } from '../lib/holidays'
+import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
+import { useFestivita } from '../hooks/useFestivita'
+import { useFinalizzato } from '../hooks/useFinalizzato'
 import { nomeCompleto, cmpTurnisti } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
@@ -76,14 +78,16 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   ])
 
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
+  const { festivoSet, superSet } = useFestivita(postazioneId)   // festivi locali + superfestivi
+  const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente desiderata/candidature
   const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
   // Una griglia per foglio (passo ③ Impaginazione): righe = (giorno, turno) di quel foglio
   const righePerFoglio = useMemo(() => fogliConTurni.map(fc => {
     const out: { ds: string; d: Date; turno: TurnoSchema }[] = []
-    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
+    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d, festivoSet)) out.push({ ds: isoDate(d), d, turno: c }) }))
     return { foglio: fc.foglio, righe: out }
-  }), [fogliConTurni, giorni])
+  }), [fogliConTurni, giorni, festivoSet])
 
   // calendario: assegnazioni
   const assegn = useMemo(() => {
@@ -133,6 +137,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
+    if (finalizzato) return   // mese finalizzato: desiderata in sola lettura
     if (!sonoImportato && !godMode) return   // non importato per il mese: non può esprimere desiderata
     await store.setDesiderata(postazioneId!, ds, turnoId, mia.membershipId, tipo)
     await qc.invalidateQueries({ queryKey: ['desiderata', postazioneId, anno, mese] })
@@ -143,6 +148,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const [inviando, setInviando] = useState(false)
   async function confermaProposta() {
     if (!proposta || !mia) return
+    if (finalizzato) { setProposta(null); return }   // mese finalizzato: niente candidature
     setInviando(true)
     try {
       await store.addRichiesta(postazioneId!, proposta.ds, proposta.turno.id, mia.membershipId)
@@ -258,6 +264,14 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             </div>
           </div>
 
+          {/* Mese finalizzato: calendario definitivo, niente modifiche */}
+          {finalizzato && (
+            <div className="card p-3 flex items-center gap-2" style={{ background: '#f0fdf4', border: '1px solid #86efac' }}>
+              <Check size={15} className="shrink-0" style={{ color: '#166534' }} />
+              <p className="text-sm" style={{ color: '#166534' }}><strong>Calendario definitivo:</strong> il mese è stato finalizzato. Desiderata e candidature non sono più modificabili.</p>
+            </div>
+          )}
+
           {/* Schede */}
           <div className="flex gap-2">
             {([['turni', 'Calendario Turni', CalendarDays], ['desiderata', 'Desiderata - Indisponibilità', CalendarHeart]] as const).map(([key, label, Icon]) => (
@@ -302,7 +316,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={thStyle}>Turnisti</th>{hasRep && <th style={thStyle}>Reperibile</th>}</tr></thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
-                        const fest = isFestivo(d), pref = isPrefestivo(d)
+                        const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
+                        const superF = isSuperfestivo(d, superSet)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
@@ -313,7 +328,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         const hoChiesto = mieRichieste.has(k)
                         return (
                           <tr key={k} style={{ background: rowBg }}>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span></td>
+                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
                             <td style={tdBase}>
                               <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
@@ -393,7 +408,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     </thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
-                        const fest = isFestivo(d), pref = isPrefestivo(d)
+                        const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
+                        const superF = isSuperfestivo(d, superSet)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
@@ -401,7 +417,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                           <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
                             <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
                               <div className="flex items-center gap-1.5">
-                                <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
+                                <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04' }} />}
                                 <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               </div>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
@@ -466,14 +482,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={{ ...thStyle, textAlign: 'center' }}>La tua scelta</th></tr></thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
-                        const fest = isFestivo(d), pref = isPrefestivo(d)
+                        const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
+                        const superF = isSuperfestivo(d, superSet)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
                         const cur = miaPref.get(`${ds}|${turno.id}`)
                         return (
                           <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span></td>
+                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
                             <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                               <span className="inline-flex items-center gap-1">{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>

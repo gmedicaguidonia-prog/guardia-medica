@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { PartyPopper, Plus, Trash2, Check, AlertTriangle, Star, Globe, MapPin } from 'lucide-react'
+import { PartyPopper, Plus, Trash2, Check, AlertTriangle, Star, Globe, MapPin, ChevronLeft, ChevronRight } from 'lucide-react'
 import { store } from '../../lib/store'
 import { festiviNazionali, NAZIONI } from '../../lib/holidays'
 import { nomeCompleto } from '../../types'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { usePassiCompleti, PASSO_FESTIVITA } from '../../hooks/usePassiCompleti'
+import { useFinalizzato } from '../../hooks/useFinalizzato'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
@@ -23,12 +24,18 @@ interface FestMese { data: string; nome: string; locale: boolean }
 export function FestivitaPage() {
   const qc = useQueryClient()
   const { postazioneId, postazioneAttiva } = usePostazione()
-  const { anno, mese, meseKey } = useMeseSelezionato()
+  const { anno, mese, meseKey, setMeseAnno } = useMeseSelezionato()
+  function cambiaMese(delta: number) {
+    let m = mese + delta, a = anno
+    if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
+    setMeseAnno(a, m)
+  }
   const { user: actore } = useOutletContext<{ user: AuthUser | null }>()
   const nomeAutore = actore ? nomeCompleto(actore) : null
   const navigate = useNavigate()
   const { confirm, notify, confirmState } = useConfirm()
   const passi = usePassiCompleti(postazioneId, meseKey)
+  const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente modifiche del mese
 
   const { data: nazione = 'IT' } = useQuery<string>({ queryKey: ['fest-nazione', postazioneId], queryFn: () => store.getNazione(postazioneId!), enabled: !!postazioneId })
   const { data: locali = [] } = useQuery<Festivita[]>({ queryKey: ['fest-custom', postazioneId], queryFn: () => store.getFestivitaCustom(postazioneId!), enabled: !!postazioneId })
@@ -77,13 +84,28 @@ export function FestivitaPage() {
   }
   async function toggleSuper(data: string, val: boolean) {
     if (!postazioneId) return
+    if (finalizzato) { await notify({ title: 'Mese finalizzato', message: 'Il mese è bloccato: sbloccalo dalla pagina ⑧ Finalizzazione per modificare i superfestivi.' }); return }
     await store.setFestivitaSuper(postazioneId, data, val)
     if (!val) await store.setSuperfestivoTurni(postazioneId, meseKey, data, [])   // smarcato → azzera gli abbinamenti
+    else if (!(turniByData.get(data)?.length)) {
+      // PRECOMPILAZIONE: propone l'abbinamento usato l'ultima volta per lo stesso giorno-mese
+      // (es. 15/08 dell'anno scorso), mappando i turni per NOME sulla configurazione attuale.
+      try {
+        const nomi = await store.getSuperfestivoTurniPrecedente(postazioneId, data.slice(5), meseKey)
+        if (nomi.length) {
+          const norm = (s: string) => s.trim().toLowerCase()
+          const nomiSet = new Set(nomi.map(norm))
+          const ids = schema.filter(t => nomiSet.has(norm(t.nome))).map(t => t.id)
+          if (ids.length) await store.setSuperfestivoTurni(postazioneId, meseKey, data, ids)
+        }
+      } catch { /* precompilazione best-effort: in caso di errore si abbina a mano */ }
+    }
     qc.invalidateQueries({ queryKey: ['fest-super', postazioneId] })
     qc.invalidateQueries({ queryKey: ['superfestivo-turni', postazioneId, meseKey] })
   }
   async function toggleTurno(data: string, turnoId: string) {
     if (!postazioneId) return
+    if (finalizzato) { await notify({ title: 'Mese finalizzato', message: 'Il mese è bloccato: sbloccalo dalla pagina ⑧ Finalizzazione per modificare gli abbinamenti.' }); return }
     const cur = turniByData.get(data) ?? []
     const next = cur.includes(turnoId) ? cur.filter(x => x !== turnoId) : [...cur, turnoId]
     await store.setSuperfestivoTurni(postazioneId, meseKey, data, next)
@@ -113,6 +135,11 @@ export function FestivitaPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold" style={{ color: '#2b3c24' }}>Festività - {postazioneAttiva.nome}</h1>
           <p className="text-sm text-stone-600">Gestisci le festività di <strong>{MESI[mese - 1]} {anno}</strong>. Un <strong>superfestivo</strong> è un giorno festivo con retribuzione superiore: va marcato a mano e, ogni mese, abbinato ai turni che ne usufruiscono (es. Ferragosto solo il turno Giorno).</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
+          <span className="font-bold text-lg text-center" style={{ color: '#3a3d30', minWidth: 130 }}>{MESI[mese - 1]} {anno}</span>
+          <button onClick={() => cambiaMese(1)} className="btn-secondary px-2 py-1" title="Mese successivo"><ChevronRight size={16} /></button>
         </div>
       </div>
 

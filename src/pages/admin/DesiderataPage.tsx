@@ -1,12 +1,13 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock, Moon, Sun, UserPlus, LayoutGrid } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock, Moon, Sun, UserPlus, LayoutGrid, Star } from 'lucide-react'
 import { store } from '../../lib/store'
 import { IconaLivello } from '../../components/IconaLivello'
 import { nomeCompleto, cmpTurnisti, gruppiPerLivello } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
-import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
+import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../../lib/holidays'
+import { useFestivita } from '../../hooks/useFestivita'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
@@ -14,6 +15,7 @@ import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
+import { useFinalizzato } from '../../hooks/useFinalizzato'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
@@ -60,6 +62,8 @@ export function DesiderataPage() {
   const navigate = useNavigate()
   const { impaginazioneOk, fogliConTurni, loadingImpag } = useImpaginazione(postazioneId, meseKey, schema)
   const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3
+  const { festivoSet, superSet } = useFestivita(postazioneId)   // festivi locali + superfestivi
+  const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente salvataggi
   // Tempo reale: desiderata dei turnisti (pagina pubblica), periodo, personale del mese
   useRealtimePostazione(postazioneId, [
     { tabella: 'desiderata',          invalida: [['desiderata', postazioneId]] },
@@ -107,9 +111,9 @@ export function DesiderataPage() {
   // Una griglia per foglio (passo ④ Impaginazione): righe = (giorno, turno) di quel foglio
   const righePerFoglio = useMemo(() => fogliConTurni.map(fc => {
     const out: { ds: string; d: Date; turno: TurnoSchema }[] = []
-    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d)) out.push({ ds: isoDate(d), d, turno: c }) }))
+    giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d, festivoSet)) out.push({ ds: isoDate(d), d, turno: c }) }))
     return { foglio: fc.foglio, righe: out }
-  }), [fogliConTurni, giorni])
+  }), [fogliConTurni, giorni, festivoSet])
 
   // ── drag&drop ──
   const dragSource = useRef<string | null>(null)
@@ -157,6 +161,7 @@ export function DesiderataPage() {
     setMeseAnno(a, m); setPicker(null)
   }
   async function salva() {
+    if (finalizzato) { showWarn(`${MESI[mese - 1]} ${anno} è finalizzato: sbloccalo dalla pagina ⑧ Finalizzazione per modificare le desiderata.`); return }
     setSaving(true)
     try {
       for (const c of diff()) { const [data, turnoId, tid] = c.key.split('|'); await store.setDesiderata(postazioneId!, data, turnoId, tid, c.value as TipoDesiderata | null) }
@@ -465,7 +470,8 @@ export function DesiderataPage() {
             </thead>
             <tbody>
               {righeF.map(({ ds, d, turno }) => {
-                const fest = isFestivo(d), pref = isPrefestivo(d)
+                const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
+                const superF = isSuperfestivo(d, superSet)
                 const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : '#2b3c24'
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                 const overnight = turno.ora_fine <= turno.ora_inizio
@@ -473,7 +479,7 @@ export function DesiderataPage() {
                   <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
                     <td style={{ ...tdBase, whiteSpace: 'nowrap', width: 1, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
                       <div className="flex items-center gap-1.5">
-                        <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>
+                        <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04' }} />}
                         <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                       </div>
                       <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>

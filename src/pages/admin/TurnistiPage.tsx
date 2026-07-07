@@ -10,6 +10,7 @@ import { useUnsaved } from '../../contexts/UnsavedContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { IconaLivello } from '../../components/IconaLivello'
+import { useFinalizzato } from '../../hooks/useFinalizzato'
 import type { Turnista, Livello, Utente, TurnistaMese } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -84,8 +85,10 @@ export function TurnistiPage() {
   function annulla() { setStaged(new Map(serverMap)) }
 
   const [salvando, setSalvando] = useState(false)
+  const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente salvataggi
   async function confermaPersonale() {
     if (staged.size === 0) return
+    if (finalizzato) { await notify({ title: 'Mese finalizzato', message: `${MESI[mese - 1]} ${anno} è bloccato: per modificare il personale sbloccalo dalla pagina ⑧ Finalizzazione.` }); return }
     setSalvando(true)
     try {
       for (const [id, liv] of staged) { const srv = serverMap.get(id); if (srv === undefined) await store.addTurnistaMese(postazioneId!, meseKey, id, liv); else if (srv !== liv) await store.setLivelloMese(postazioneId!, meseKey, id, liv) }

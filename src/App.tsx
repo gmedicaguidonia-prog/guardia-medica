@@ -13,6 +13,7 @@ import { RegoleTurniPage } from './pages/admin/RegoleTurniPage'
 import { ImpaginazionePage } from './pages/admin/ImpaginazionePage'
 import { DesiderataPage } from './pages/admin/DesiderataPage'
 import { FestivitaPage } from './pages/admin/FestivitaPage'
+import { FinalizzazionePage } from './pages/admin/FinalizzazionePage'
 import { PostazioniPage } from './pages/admin/PostazioniPage'
 import { AdminHomePage } from './pages/admin/AdminHomePage'
 import { useVersionCheck } from './hooks/useVersionCheck'
@@ -83,6 +84,7 @@ function AppShell({ loading, signInWithGoogle, signOut, devLogin, isDev }: {
           <Route path="festivita" element={<FestivitaPage />} />
           <Route path="desiderata" element={<DesiderataPage />} />
           <Route path="turni"      element={<GestioneTurniPage />} />
+          <Route path="finalizza"  element={<FinalizzazionePage />} />
           <Route path="turnisti" element={<TurnistiPage />} />
           <Route path="schema"   element={<SchemaTurniPage />} />
         </Route>
