@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, CalendarHeart, AlertCircle, AlertTriangle, Save, RotateCcw, X, CalendarRange, Check, Power, Lock, Moon, Sun, UserPlus, LayoutGrid } from 'lucide-react'
 import { store } from '../../lib/store'
+import { IconaLivello } from '../../components/IconaLivello'
 import { nomeCompleto, cmpTurnisti, gruppiPerLivello } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
 import { isFestivo, isPrefestivo, isoDate } from '../../lib/holidays'
@@ -438,7 +439,7 @@ export function DesiderataPage() {
         <aside className="w-40 sm:w-44 shrink-0 space-y-3" style={{ position: 'sticky', top: 8 }}>
           {paletteGruppi.length ? paletteGruppi.map(g => (
             <div key={g.liv} className="card p-2">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5 flex items-center gap-1" style={{ color: ROLE_COLOR[g.liv].fg }}><IconaLivello livello={g.liv} size={11} /> {g.label}</h3>
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
           )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessuno nel personale del mese: definiscilo nel passo ① Personale.</span></div>}

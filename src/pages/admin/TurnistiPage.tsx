@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Save, X, Users, UserRound, UserCog, Crown, Eye, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, Save, X, Users, User, UserCog, Crown, Eye, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy, RotateCcw, AlertTriangle } from 'lucide-react'
 import { store } from '../../lib/store'
 import { LIVELLI_PERSONALE, nomeCompleto, gruppiPerLivello } from '../../types'
 import { ATTIVAZIONE_DA } from '../../lib/constants'
@@ -9,6 +9,7 @@ import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
+import { IconaLivello } from '../../components/IconaLivello'
 import type { Turnista, Livello, Utente, TurnistaMese } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -16,7 +17,7 @@ const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','
 const BADGE: Record<Livello, { bg: string; fg: string; Icon: React.ElementType; fill?: string }> = {
   admin:        { bg: '#fef9c3', fg: '#a16207', Icon: Crown,     fill: '#facc15' },   // corona dorata
   responsabile: { bg: '#fef3c7', fg: '#92400e', Icon: UserCog },
-  turnista:     { bg: '#dbeafe', fg: '#1e40af', Icon: UserRound },                    // persona (stile MSN)
+  turnista:     { bg: '#dbeafe', fg: '#1e40af', Icon: User },                         // persona (stile MSN)
   esterno:      { bg: '#dcfce7', fg: '#166534', Icon: Eye },                          // osservatore: occhio
 }
 function LivelloBadge({ livello }: { livello: Livello }) {
@@ -196,7 +197,7 @@ export function TurnistiPage() {
           <p className="text-xs text-stone-400 italic">Nessuno in servizio questo mese. Aggiungi le persone dall’elenco qui sotto, poi premi Conferma.</p>
         ) : gruppiMese.map(g => (
           <div key={g.liv}>
-            <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: BADGE[g.liv].fg }}>{g.label} · {g.items.length}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1" style={{ color: BADGE[g.liv].fg }}><IconaLivello livello={g.liv} size={11} /> {g.label} · {g.items.length}</p>
             <div className="space-y-1">
               {g.items.map(t => (
                 <div key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg" style={{ background: '#f7f8f4' }}>
@@ -231,7 +232,7 @@ export function TurnistiPage() {
           : nonNelMese.length === 0 ? <p className="text-xs text-stone-400 italic">Tutti gli inseriti in anagrafica sono già nel personale di questo mese.</p>
           : nonNelMese.map(g => (
             <div key={g.liv}>
-              <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: BADGE[g.liv].fg }}>{g.label}</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1" style={{ color: BADGE[g.liv].fg }}><IconaLivello livello={g.liv} size={11} /> {g.label}</p>
               <div className="flex flex-wrap gap-2">
                 {g.items.map(t => (
                   <button key={t.id} onClick={() => aggiungiAlMese(t)} title={`Aggiungi ${nomeCompleto(t)} (${t.livello})`}
@@ -290,7 +291,7 @@ export function TurnistiPage() {
               <tbody className="divide-y divide-gray-100">
                 {gruppiPerLivello(turnisti).map(g => (
                   <Fragment key={g.liv}>
-                    <tr><td colSpan={4} className="px-1 py-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: BADGE[g.liv].fg }}>{g.label} · {g.items.length}</td></tr>
+                    <tr><td colSpan={4} className="px-1 py-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: BADGE[g.liv].fg }}><span className="inline-flex items-center gap-1"><IconaLivello livello={g.liv} size={11} /> {g.label} · {g.items.length}</span></td></tr>
                     {g.items.map(t => editId === t.id ? (
                       <tr key={t.id} className="bg-blue-50/40">
                         <td className="px-1 py-1.5"><div className="flex gap-1"><input value={eCognome} onChange={e => setECognome(e.target.value)} className="input py-0.5 text-xs w-full" placeholder="Cognome" autoFocus /><input value={eNome} onChange={e => setENome(e.target.value)} className="input py-0.5 text-xs w-full" placeholder="Nome" /></div></td>

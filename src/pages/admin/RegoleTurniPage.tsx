@@ -12,6 +12,7 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useValiditaStaged } from '../../hooks/useValiditaStaged'
 import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
+import { IconaLivello } from '../../components/IconaLivello'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
@@ -514,7 +515,7 @@ export function RegoleTurniPage() {
         <aside className="w-40 sm:w-44 shrink-0 space-y-3">
           {paletteGruppi.length ? paletteGruppi.map(g => (
             <div key={g.liv} className="card p-2">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5 flex items-center gap-1" style={{ color: ROLE_COLOR[g.liv].fg }}><IconaLivello livello={g.liv} size={11} /> {g.label}</h3>
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
           )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessun turnista.</span></div>}
@@ -676,7 +677,7 @@ export function RegoleTurniPage() {
             <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1" style={{ color: '#476540' }}>＋ {picker.turno.nome || 'Turno'} · {GIORNI_SETTIMANA[picker.giorno - 1].nome}</p>
             {paletteGruppi.length ? paletteGruppi.map(g => (
               <div key={g.liv}>
-                <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 pt-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 pt-1.5 flex items-center gap-1" style={{ color: ROLE_COLOR[g.liv].fg }}><IconaLivello livello={g.liv} size={10} /> {g.label}</p>
                 {g.items.map(t => (
                   <button key={t.id} onClick={() => { dragSource.current = t.id; handleDrop(picker.giorno, picker.turno); setPicker(null) }}
                     className="flex items-center gap-1.5 w-full text-left px-1.5 py-1 rounded hover:bg-stone-100 text-xs">

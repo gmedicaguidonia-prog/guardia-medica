@@ -13,6 +13,7 @@ import { useImpaginazione } from '../../hooks/useImpaginazione'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
+import { IconaLivello } from '../../components/IconaLivello'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
@@ -748,7 +749,7 @@ export function GestioneTurniPage() {
         <aside className="w-40 sm:w-44 shrink-0 space-y-3" style={{ position: 'sticky', top: 8 }}>
           {paletteGruppi.length ? paletteGruppi.map(g => (
             <div key={g.liv} className="card p-2">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5 flex items-center gap-1" style={{ color: ROLE_COLOR[g.liv].fg }}><IconaLivello livello={g.liv} size={11} /> {g.label}</h3>
               <div className="flex flex-col gap-1.5">{g.items.map(PaletteBadge)}</div>
             </div>
           )) : <div className="card p-2"><span className="text-xs text-stone-400 px-1">Nessuno nel personale del mese: definiscilo nel passo ① Personale.</span></div>}
@@ -863,7 +864,7 @@ export function GestioneTurniPage() {
             <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-1" style={{ color: '#476540' }}>＋ {picker.turno.nome || 'Turno'} · {picker.tipo === 'reperibile' ? 'Reperibile' : 'Turnisti'}</p>
             {paletteGruppi.length ? paletteGruppi.map(g => (
               <div key={g.liv}>
-                <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 pt-1.5" style={{ color: ROLE_COLOR[g.liv].fg }}>{g.label}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider px-1.5 pt-1.5 flex items-center gap-1" style={{ color: ROLE_COLOR[g.liv].fg }}><IconaLivello livello={g.liv} size={10} /> {g.label}</p>
                 {g.items.map(t => (
                   <button key={t.id} onClick={() => { dragSource.current = t.id; handleDrop(picker.ds, picker.turno, picker.tipo); setPicker(null) }}
                     className="flex items-center gap-1.5 w-full text-left px-1.5 py-1 rounded hover:bg-stone-100 text-xs">
