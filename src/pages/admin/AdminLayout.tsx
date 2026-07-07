@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper, ClipboardCheck, Lock } from 'lucide-react'
 import type { AuthUser } from '../../types'
@@ -51,6 +51,11 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const { finalizzato, info: infoFin } = useFinalizzato(postazioneAttiva?.id, meseKey)
   // Tema interfaccia: applicato subito, salvato per l'utente (DB) e sul dispositivo
   const [temaAttivo, setTemaAttivo] = useState<string>(() => temaSalvato())
+  useEffect(() => {   // il quadratino evidenziato segue il tema anche quando arriva dal profilo (nuovo dispositivo)
+    const h = (e: Event) => setTemaAttivo((e as CustomEvent<string>).detail)
+    window.addEventListener('gm-tema', h)
+    return () => window.removeEventListener('gm-tema', h)
+  }, [])
   function cambiaTema(id: string) {
     applicaTema(id); setTemaAttivo(id)
     store.setMioTema(id).catch(() => {})   // best-effort: il localStorage copre comunque questo dispositivo

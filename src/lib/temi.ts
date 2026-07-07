@@ -18,12 +18,15 @@ export function temaValido(id: string | null | undefined): string {
   return TEMI.some(t => t.id === id) ? (id as string) : 'verde'
 }
 
-/** Applica il tema al documento e lo ricorda in localStorage (cache locale). */
+/** Applica il tema al documento e lo ricorda in localStorage (cache locale).
+ *  Emette l'evento 'gm-tema' così la UI (quadratini in sidebar) resta allineata
+ *  anche quando il tema arriva dal profilo dopo il login su un nuovo dispositivo. */
 export function applicaTema(id: string): void {
   const t = temaValido(id)
   if (t === 'verde') delete document.documentElement.dataset.tema
   else document.documentElement.dataset.tema = t
   try { localStorage.setItem(LS_TEMA, t) } catch { /* ignore */ }
+  try { window.dispatchEvent(new CustomEvent('gm-tema', { detail: t })) } catch { /* ignore */ }
 }
 
 /** Tema ricordato su questo dispositivo (per l'avvio, prima del profilo). */

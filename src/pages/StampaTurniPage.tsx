@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
@@ -82,13 +82,20 @@ export function StampaTurniPage() {
     return { foglio: fc.foglio, righe, conRep: righe.some(r => r.rep) }
   }), [fogliConTurni, giorni, perCella, repCella, tById, festivoSet])
 
+  // Titolo del documento (= nome proposto per il PDF): "NOMEFOGLIO - Turni del mese di …"
+  const nomePrimoFoglio = (fogli[0]?.foglio.nome || postazione?.nome || '').toUpperCase()
+  useEffect(() => {
+    if (valido && nomePrimoFoglio) document.title = `${nomePrimoFoglio} - Turni del mese di ${MESI[mese - 1].toLowerCase()} ${anno}`
+  }, [valido, nomePrimoFoglio, mese, anno])
+
   if (!valido) return <div style={{ padding: 24, fontSize: 14 }}>Parametri mancanti: apri la stampa dalla pagina ⑧ Finalizzazione.</div>
 
-  const titolo = `TURNI DI ${(postazione?.nome ?? '').toUpperCase()} ${MESI[mese - 1]} ${anno}`
+  // Dicitura in testa a ogni tabella: "NOME FOGLIO - TURNI DEL MESE DI GIUGNO 2026"
+  // (il nome viene dal foglio definito nel passo ④ Impaginazione).
+  const titoloFoglio = (nomeFoglio: string) => `${(nomeFoglio || postazione?.nome || '').toUpperCase()} - TURNI DEL MESE DI ${MESI[mese - 1]} ${anno}`
 
   return (
     <div style={{ background: '#fff', minHeight: '100vh' }}>
-      <title>{`Turni ${postazione?.nome ?? ''} ${MESI[mese - 1].toLowerCase()} ${anno}`}</title>
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -122,7 +129,7 @@ export function StampaTurniPage() {
               <thead>
                 <tr>
                   <th colSpan={conRep ? 5 : 4} style={{ ...td, textAlign: 'center', color: '#c00000', fontSize: 16, fontWeight: 800, letterSpacing: 0.5, padding: '6px 8px' }}>
-                    {titolo}{fogli.length > 1 ? ` — ${foglio.nome.toUpperCase()}` : ''}
+                    {titoloFoglio(foglio.nome)}
                   </th>
                 </tr>
                 <tr>
