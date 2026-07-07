@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { MapPin, Plus, Trash2, Pencil, Save, X, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText, KeyRound } from 'lucide-react'
+import { MapPin, Plus, Trash2, Pencil, Save, X, Shield, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText } from 'lucide-react'
 import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
@@ -213,7 +213,7 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
         <div className="space-y-1.5">
           {admins.map(u => (
             <div key={u.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg" style={{ background: '#f4f6f1' }}>
-              {protetto(u) ? <Crown size={14} style={{ color: '#b8860b' }} fill="#facc15" /> : <ShieldCheck size={14} style={{ color: '#476540' }} />}
+              <Crown size={14} style={{ color: '#b8860b' }} fill="#facc15" />
               <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{nomeCompleto(u)}</span>
               <span className="text-xs text-stone-500 hidden sm:inline">{u.email}</span>
               <div className="flex-1" />
@@ -332,7 +332,7 @@ function SupervisoriBox() {
     <div className="card p-4 space-y-3">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <div>
-        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><KeyRound size={15} style={{ color: '#476540' }} /> Supervisori</h2>
+        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><Shield size={15} style={{ color: '#0284c7' }} fill="#7dd3fc" /> Supervisori</h2>
         <p className="text-xs text-stone-500 mt-0.5">Chi può <strong>entrare in amministrazione</strong> e gestire i turni delle postazioni indicate, a prescindere dal ruolo del mese. L'accesso è stabile e lo decidi solo tu. Gli <strong>admin</strong> hanno già accesso a tutto e non serve elencarli qui.</p>
       </div>
 
@@ -344,7 +344,7 @@ function SupervisoriBox() {
             return (
               <div key={s.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
                 <div className="flex items-center gap-2 px-2.5 py-1.5">
-                  <KeyRound size={14} style={{ color: '#476540' }} className="shrink-0" />
+                  <Shield size={14} style={{ color: '#0284c7' }} fill="#7dd3fc" className="shrink-0" />
                   <span className="text-sm font-semibold" style={{ color: '#2b3c24' }}>{nomeCompleto(s)}</span>
                   <span className="text-xs text-stone-500 hidden sm:inline">{s.email}</span>
                   <div className="flex-1" />
