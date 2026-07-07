@@ -52,3 +52,24 @@ export function giorniDelMese(anno: number, mese: number): Date[] {
   const n = new Date(anno, mese, 0).getDate()
   return Array.from({ length: n }, (_, i) => new Date(anno, mese - 1, i + 1))
 }
+
+/**
+ * Caso del "gate di attivazione" di un mese in una sezione versionata
+ * (Configurazione Turni / Regole / Impaginazione). Decide quali pulsanti mostrare
+ * in base alla versione che GOVERNA il mese precedente e al suo `valido_fino`:
+ *  - 'vuoto'    → il mese prima non ha una configurazione con contenuto (Caso 1): solo "crea ex-novo".
+ *  - 'copia'    → il mese prima ha una versione CHIUSA (valido_fino = mese prima) che NON copre
+ *                 questo mese (Caso 2): "Copia dal mese prima" = nuova versione da qui (per sempre) + copia.
+ *  - 'conferma' → il mese prima ha una versione che COPRE già questo mese, cioè valido_fino nullo
+ *                 (per sempre) o ≥ meseKey (Caso 3): "Conferma dal mese prima" = solo attiva, la
+ *                 versione continua senza crearne una nuova né chiuderla.
+ */
+export type CasoAttivazione = 'vuoto' | 'copia' | 'conferma'
+export function casoAttivazione(
+  versionePrec: { valido_fino: string | null } | null | undefined,
+  meseKey: string,
+): CasoAttivazione {
+  if (!versionePrec) return 'vuoto'                                                       // il mese prima non è configurato
+  if (versionePrec.valido_fino == null || versionePrec.valido_fino >= meseKey) return 'conferma'  // copre già questo mese
+  return 'copia'                                                                          // chiuso al mese prima
+}

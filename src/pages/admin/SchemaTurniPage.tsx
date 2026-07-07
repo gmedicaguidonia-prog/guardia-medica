@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, AlertTriangle, ChevronLeft, ChevronRight, Copy, Info } from 'lucide-react'
+import { Plus, Trash2, Clock, Moon, Sun, Users as UsersIcon, CalendarClock, Save, AlertTriangle, ChevronLeft, ChevronRight, Copy, Info, Check } from 'lucide-react'
 import { store } from '../../lib/store'
 import { RICORRENZE } from '../../types'
 import { GIORNI_SETTIMANA, ATTIVAZIONE_DA } from '../../lib/constants'
@@ -12,18 +12,13 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useValiditaStaged } from '../../hooks/useValiditaStaged'
 import { ValiditaRiquadro } from '../../components/ValiditaRiquadro'
-import { prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
+import { prossimoInizio, fineEffettiva, casoAttivazione } from '../../lib/turniLogic'
 import type { TurnoSchema, Ricorrenza, ConfigVersione } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
 const meseSucc = (k: string) => { let [a, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; a++ } return `${a}-${String(m).padStart(2, '0')}` }
-const meseSorgente = (sorgenteValidoDa: string, tutteValidoDa: string[], meseKey: string): string => {
-  const succ = tutteValidoDa.filter(d => d > sorgenteValidoDa && d < meseKey).sort()
-  const cap = succ.length ? mesePrec(succ[0]) : mesePrec(meseKey)
-  return cap < sorgenteValidoDa ? sorgenteValidoDa : cap
-}
 
 function eqDays(a: number[], b: number[]): boolean {
   if (a.length !== b.length) return false
@@ -148,7 +143,10 @@ export function SchemaTurniPage() {
   // Procedura sequenziale: dal mese cutoff ogni mese va "attivato"
   const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
   const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
-  const { data: sorgenteCopia } = useQuery<ConfigVersione | null>({ queryKey: ['ultima-config-con-turni', postazioneId, meseKey], queryFn: () => store.ultimaConfigConTurni(postazioneId!, meseKey), enabled: !!postazioneId && nuovaProcedura })
+  // Versione che governa il MESE PRECEDENTE: determina il caso del gate (vuoto/copia/conferma)
+  const mesePrecKey = mesePrec(meseKey)
+  const { data: versionePrec } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, mesePrecKey], queryFn: () => store.getVersioneMese(postazioneId!, mesePrecKey), enabled: !!postazioneId && nuovaProcedura })
+  const caso = casoAttivazione(versionePrec, meseKey)
   const attivo1 = attivazioni.includes(1)
   const mostraGate = nuovaProcedura && !attivo1
   // passo ① Personale: prerequisito obbligatorio (numero interno 0) dalla nuova procedura
@@ -240,7 +238,11 @@ export function SchemaTurniPage() {
       confirmLabel: 'Sì, procedi',
     })
     if (!ok) return false
-    for (const b of buchi) { await store.creaVersione(postazioneId!, b); await store.attivaPasso(postazioneId!, b, 1) }
+    for (const b of buchi) {
+      const cop = await store.getVersioneMese(postazioneId!, b)   // già coperto da una versione ereditata («per sempre»)?
+      if (!cop) await store.creaVersione(postazioneId!, b)         // crea "vuota" SOLO se il mese è scoperto
+      await store.attivaPasso(postazioneId!, b, 1)
+    }
     return true
   }
   function logAttiva(testo: string) {
@@ -248,17 +250,27 @@ export function SchemaTurniPage() {
   }
   async function copiaPrecedente() {
     if (!(await assicuraContinuita())) return
-    const sorgente = await store.ultimaConfigConTurni(postazioneId!, meseKey)
-    // riusa la versione già esistente per QUESTO mese (es. la coda creata dallo scorporo),
-    // altrimenti creane una — evita versioni duplicate sullo stesso mese
+    // Caso 2: il mese prima è CHIUSO → crea una NUOVA versione per questo mese (per sempre) e copia i turni.
     const tutteV = await store.getVersioni(postazioneId!)
     const nuova = tutteV.find(v => v.valido_da === meseKey) ?? await store.creaVersione(postazioneId!, meseKey)
-    if (sorgente) {
-      const turni = await store.getSchemaVersione(sorgente.id)
-      for (const t of turni) await store.addTurnoSchema(nuova.id, { nome: t.nome, ora_inizio: t.ora_inizio, ora_fine: t.ora_fine, n_turnisti: t.n_turnisti, ricorrenza: t.ricorrenza, giorni_custom: t.giorni_custom })
+    if (versionePrec) {
+      // idempotente: copia solo se la versione del mese è ancora vuota (evita turni doppi al re-click)
+      const giaPresenti = await store.getSchemaVersione(nuova.id)
+      if (giaPresenti.length === 0) {
+        const turni = await store.getSchemaVersione(versionePrec.id)
+        for (const t of turni) await store.addTurnoSchema(nuova.id, { nome: t.nome, ora_inizio: t.ora_inizio, ora_fine: t.ora_fine, n_turnisti: t.n_turnisti, ricorrenza: t.ricorrenza, giorni_custom: t.giorni_custom })
+      }
     }
     await store.attivaPasso(postazioneId!, meseKey, 1)
-    logAttiva(`attivata (copiata da ${sorgente ? meseLabel(sorgente.valido_da) : 'configurazione precedente'})`)
+    logAttiva(`attivata (copiata da ${versionePrec ? meseLabel(versionePrec.valido_da) : 'configurazione precedente'})`)
+    await ricaricaAttivazione()
+  }
+  async function confermaPrecedente() {
+    if (!(await assicuraContinuita())) return
+    // Caso 3: la configurazione del mese prima vale «per sempre» e copre già questo mese → NON
+    // creare né copiare nulla: la stessa versione continua a valere. Basta attivare il passo.
+    await store.attivaPasso(postazioneId!, meseKey, 1)
+    logAttiva(`confermata (continua da ${versionePrec ? meseLabel(versionePrec.valido_da) : 'mese precedente'})`)
     await ricaricaAttivazione()
   }
   async function attivaNuovaVuota() {
@@ -349,15 +361,18 @@ export function SchemaTurniPage() {
           <CalendarClock size={32} className="mx-auto" style={{ color: '#9ab488' }} />
           <div>
             <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva la configurazione di {MESI[mese - 1]} {anno}</h3>
-            {sorgenteCopia ? (
-              <p className="text-sm text-stone-600 mt-1">Puoi copiarla dall'ultimo mese configurato (<strong>{meseLabel(meseSorgente(sorgenteCopia.valido_da, tutteVer.map(v => v.valido_da), meseKey))}</strong>), oppure partire da una nuova.</p>
+            {caso === 'vuoto' ? (
+              <p className="text-sm text-stone-600 mt-1">Il mese precedente non ha una configurazione: creane una nuova per {MESI[mese - 1]} {anno}.</p>
+            ) : caso === 'conferma' ? (
+              <p className="text-sm text-stone-600 mt-1">La configurazione di <strong>{meseLabel(mesePrecKey)}</strong> vale «per sempre» e copre già questo mese: puoi <strong>confermarla</strong> e proseguire, oppure ripartire da una nuova.</p>
             ) : (
-              <p className="text-sm text-stone-600 mt-1">Non c'è ancora un mese configurato da cui copiare. Crea una nuova configurazione.</p>
+              <p className="text-sm text-stone-600 mt-1">Puoi <strong>copiarla da {meseLabel(mesePrecKey)}</strong> (crea una nuova configurazione valida da {MESI[mese - 1]} {anno} in poi), oppure partire da una nuova.</p>
             )}
           </div>
           <div className="flex gap-2 justify-center flex-wrap">
-            {sorgenteCopia && <button onClick={copiaPrecedente} className="btn-primary text-sm"><Copy size={16} /> Copia da {meseLabel(meseSorgente(sorgenteCopia.valido_da, tutteVer.map(v => v.valido_da), meseKey))}</button>}
-            <button onClick={attivaNuovaVuota} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva una nuova (vuota)</button>
+            {caso === 'copia' && <button onClick={copiaPrecedente} className="btn-primary text-sm"><Copy size={16} /> Copia da {meseLabel(mesePrecKey)}</button>}
+            {caso === 'conferma' && <button onClick={confermaPrecedente} className="btn-primary text-sm"><Check size={16} /> Conferma da {meseLabel(mesePrecKey)}</button>}
+            <button onClick={attivaNuovaVuota} className={`${caso !== 'vuoto' ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva una nuova (vuota)</button>
           </div>
         </div>
       ) : !versione ? (

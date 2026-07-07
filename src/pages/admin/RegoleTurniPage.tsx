@@ -1,10 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Copy } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Copy, Check } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, TIPI_REGOLA_TURNISTA } from '../../types'
-import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva } from '../../lib/turniLogic'
+import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva, casoAttivazione } from '../../lib/turniLogic'
 import { GIORNI_SETTIMANA, ATTIVAZIONE_DA } from '../../lib/constants'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
 import { useUnsaved } from '../../contexts/UnsavedContext'
@@ -21,13 +21,6 @@ import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, Re
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
 const meseSucc = (k: string) => { let [a, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; a++ } return `${a}-${String(m).padStart(2, '0')}` }
-// Mese sorgente da mostrare nei testi: l'ultimo mese con contenuto andando indietro
-// (può essere il mese prima o anche più indietro se i mesi intermedi erano vuoti).
-const meseSorgente = (sorgenteValidoDa: string, tutteValidoDa: string[], meseKey: string): string => {
-  const succ = tutteValidoDa.filter(d => d > sorgenteValidoDa && d < meseKey).sort()
-  const cap = succ.length ? mesePrec(succ[0]) : mesePrec(meseKey)
-  return cap < sorgenteValidoDa ? sorgenteValidoDa : cap
-}
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
   admin:        { bg: '#fee2e2', fg: '#b91c1c' },
@@ -57,7 +50,9 @@ export function RegoleTurniPage() {
   // Procedura sequenziale: passo 2 (regole). Richiede passo 1 (config attivato+valido).
   const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
   const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
-  const { data: sorgenteCopia } = useQuery<RegolaVersione | null>({ queryKey: ['ultima-regole-con-contenuto', postazioneId, meseKey], queryFn: () => store.ultimaRegoleConContenuto(postazioneId!, meseKey), enabled: !!postazioneId && nuovaProcedura })
+  const mesePrecKey = mesePrec(meseKey)
+  const { data: versionePrec } = useQuery<RegolaVersione | null>({ queryKey: ['regole-versione', postazioneId, mesePrecKey], queryFn: () => store.getRegoleVersioneMese(postazioneId!, mesePrecKey), enabled: !!postazioneId && nuovaProcedura })
+  const caso = casoAttivazione(versionePrec, meseKey)
   const config1Attivo = attivazioni.includes(1)
   const regole2Attivo = attivazioni.includes(2)
 
@@ -208,7 +203,7 @@ export function RegoleTurniPage() {
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
     setMeseAnno(a, m)
   }
-  async function configuraRegole() { await store.creaRegoleVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }) }
+  async function configuraRegole() { const tutteVregole = await store.getRegoleVersioni(postazioneId!); if (!tutteVregole.some(v => v.valido_da === meseKey)) await store.creaRegoleVersione(postazioneId!, meseKey); await qc.invalidateQueries({ queryKey: ['regole-versione'] }); await qc.invalidateQueries({ queryKey: ['regole-versioni-all'] }) }
 
   // ── Attivazione del mese — passo 2 (regole) ──
   async function ricaricaAttRegole() {
@@ -223,7 +218,11 @@ export function RegoleTurniPage() {
     for (let m = ATTIVAZIONE_DA; m < meseKey; m = meseSucc(m)) if (!attivati.has(m)) buchi.push(m)
     if (!buchi.length) return true
     if (!(await confirm({ title: 'Mesi non attivati', message: `${buchi.map(meseLabel).join(', ')}: regole non attivate. ${buchi.length === 1 ? 'Verrà attivato in bianco' : 'Verranno attivati in bianco'} per continuità, poi si procede. Procedere?`, confirmLabel: 'Sì, procedi' }))) return false
-    for (const b of buchi) { await store.creaRegoleVersione(postazioneId!, b); await store.attivaPasso(postazioneId!, b, 2) }
+    for (const b of buchi) {
+      const cop = await store.getRegoleVersioneMese(postazioneId!, b)   // già coperto da regole ereditate?
+      if (!cop) await store.creaRegoleVersione(postazioneId!, b)
+      await store.attivaPasso(postazioneId!, b, 2)
+    }
     return true
   }
   function logRegoleAtt(testo: string) {
@@ -233,13 +232,15 @@ export function RegoleTurniPage() {
   // indietro se i mesi intermedi erano vuoti). Crea una versione propria del mese.
   async function copiaRegolePrecedenti() {
     if (!(await assicuraContinuitaRegole())) return
-    const sorgente = await store.ultimaRegoleConContenuto(postazioneId!, meseKey)
-    const nuova = await store.creaRegoleVersione(postazioneId!, meseKey)
-    if (sorgente) {
-      const src = await store.getRegole(sorgente.id)
+    // Caso 2: crea una versione propria del mese (riusa se già esiste → no duplicati) e copia le regole dal mese prima.
+    const tutteVregole = await store.getRegoleVersioni(postazioneId!)
+    const nuova = tutteVregole.find(v => v.valido_da === meseKey) ?? await store.creaRegoleVersione(postazioneId!, meseKey)
+    const regoleGiaPresenti = await store.getRegole(nuova.id)
+    if (versionePrec && regoleGiaPresenti.length === 0) {   // idempotente: non duplicare regole al re-click
+      const src = await store.getRegole(versionePrec.id)
       // mappa i turni della sorgente → turni di QUESTO mese per NOME (gli id cambiano se la
       // config è stata ricreata); fallback all'id se è la stessa config (condivisa)
-      const srcConfig = await store.getVersioneMese(postazioneId!, sorgente.valido_da)
+      const srcConfig = await store.getVersioneMese(postazioneId!, versionePrec.valido_da)
       const srcTurni = srcConfig ? await store.getSchemaVersione(srcConfig.id) : []
       const norm = (n: string | null) => (n || '').trim().toLowerCase()
       const srcNome = new Map(srcTurni.map(t => [t.id, norm(t.nome)]))
@@ -252,22 +253,30 @@ export function RegoleTurniPage() {
         if (curTurnoId) await store.setRegola(nuova.id, r.giorno_settimana, curTurnoId, r.slot, r.turnista_id)
       }
       // copia anche le impostazioni orario / cambio turno
-      if (sorgente.ore_min_settimana != null) await store.setOreMinSettimana(nuova.id, sorgente.ore_min_settimana)
-      if (sorgente.ore_max_settimana != null) await store.setOreMaxSettimana(nuova.id, sorgente.ore_max_settimana)
-      if (sorgente.ore_max_consecutive != null) await store.setOreMaxConsecutive(nuova.id, sorgente.ore_max_consecutive)
-      await store.setCambioAuto(nuova.id, sorgente.cambio_auto ?? true)
+      if (versionePrec.ore_min_settimana != null) await store.setOreMinSettimana(nuova.id, versionePrec.ore_min_settimana)
+      if (versionePrec.ore_max_settimana != null) await store.setOreMaxSettimana(nuova.id, versionePrec.ore_max_settimana)
+      if (versionePrec.ore_max_consecutive != null) await store.setOreMaxConsecutive(nuova.id, versionePrec.ore_max_consecutive)
+      await store.setCambioAuto(nuova.id, versionePrec.cambio_auto ?? true)
       // regole speciali per turnista: si copiano per turnista_id (stabile tra i mesi), solo per chi è ancora nel personale
       const turnistiIds = new Set(turnisti.map(t => t.id))
-      const srcSpe = await store.getRegoleTurnista(sorgente.id)
+      const srcSpe = await store.getRegoleTurnista(versionePrec.id)
       for (const rs of srcSpe) if (turnistiIds.has(rs.turnista_id)) await store.setRegolaTurnista(nuova.id, rs.turnista_id, rs.tipo, rs.valore)
     }
     await store.attivaPasso(postazioneId!, meseKey, 2)
-    logRegoleAtt(`attivate (copiate da ${sorgente ? meseLabel(sorgente.valido_da) : 'periodo precedente'})`)
+    logRegoleAtt(`attivate (copiate da ${versionePrec ? meseLabel(versionePrec.valido_da) : 'periodo precedente'})`)
+    await ricaricaAttRegole()
+  }
+  async function confermaRegolePrecedenti() {
+    if (!(await assicuraContinuitaRegole())) return
+    // Caso 3: le regole del mese prima valgono «per sempre» e coprono già questo mese → solo attiva.
+    await store.attivaPasso(postazioneId!, meseKey, 2)
+    logRegoleAtt(`confermate (continuano da ${versionePrec ? meseLabel(versionePrec.valido_da) : 'mese precedente'})`)
     await ricaricaAttRegole()
   }
   async function attivaRegoleVuote() {
     if (!(await assicuraContinuitaRegole())) return
-    await store.creaRegoleVersione(postazioneId!, meseKey)
+    const tutteVregole = await store.getRegoleVersioni(postazioneId!)
+    if (!tutteVregole.some(v => v.valido_da === meseKey)) await store.creaRegoleVersione(postazioneId!, meseKey)
     await store.attivaPasso(postazioneId!, meseKey, 2)
     logRegoleAtt('attivate (nuove, vuote)')
     await ricaricaAttRegole()
@@ -434,15 +443,18 @@ export function RegoleTurniPage() {
           <ListChecks size={32} className="mx-auto" style={{ color: '#9ab488' }} />
           <div>
             <h3 className="text-base font-bold" style={{ color: '#2b3c24' }}>Attiva le regole di {MESI[mese - 1]} {anno}</h3>
-            {sorgenteCopia ? (
-              <p className="text-sm text-stone-600 mt-1">Puoi copiarle dall'ultimo mese con regole inserite (<strong>{meseLabel(meseSorgente(sorgenteCopia.valido_da, tutteVer.map(v => v.valido_da), meseKey))}</strong>), oppure attivarne di nuove. <span className="text-stone-400">(Le regole sono facoltative: i turni fissi non sono obbligatori.)</span></p>
+            {caso === 'vuoto' ? (
+              <p className="text-sm text-stone-600 mt-1">Il mese precedente non ha regole: attivane di nuove (anche vuote: i turni fissi non sono obbligatori).</p>
+            ) : caso === 'conferma' ? (
+              <p className="text-sm text-stone-600 mt-1">Le regole di <strong>{meseLabel(mesePrecKey)}</strong> valgono «per sempre» e coprono già questo mese: puoi <strong>confermarle</strong> e proseguire, oppure attivarne di nuove.</p>
             ) : (
-              <p className="text-sm text-stone-600 mt-1">Non c'è ancora un mese con regole da cui copiare. Attivane di nuove (anche vuote: i turni fissi non sono obbligatori).</p>
+              <p className="text-sm text-stone-600 mt-1">Puoi <strong>copiarle da {meseLabel(mesePrecKey)}</strong> (nuova versione da {MESI[mese - 1]} {anno} in poi), oppure attivarne di nuove. <span className="text-stone-400">(Le regole sono facoltative.)</span></p>
             )}
           </div>
           <div className="flex gap-2 justify-center flex-wrap">
-            {sorgenteCopia && <button onClick={copiaRegolePrecedenti} className="btn-primary text-sm"><Copy size={16} /> Copia da {meseLabel(meseSorgente(sorgenteCopia.valido_da, tutteVer.map(v => v.valido_da), meseKey))}</button>}
-            <button onClick={attivaRegoleVuote} className={`${sorgenteCopia ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva nuove (vuote)</button>
+            {caso === 'copia' && <button onClick={copiaRegolePrecedenti} className="btn-primary text-sm"><Copy size={16} /> Copia da {meseLabel(mesePrecKey)}</button>}
+            {caso === 'conferma' && <button onClick={confermaRegolePrecedenti} className="btn-primary text-sm"><Check size={16} /> Conferma da {meseLabel(mesePrecKey)}</button>}
+            <button onClick={attivaRegoleVuote} className={`${caso !== 'vuoto' ? 'btn-secondary' : 'btn-primary'} text-sm`}><Plus size={16} /> Attiva nuove (vuote)</button>
           </div>
         </div>
       </div>
