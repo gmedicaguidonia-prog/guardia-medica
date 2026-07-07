@@ -154,8 +154,8 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
         </div>
 
         {/* Tema interfaccia: 4 quadratini (i 2 colori principali di ogni tema),
-            ancorati in FONDO alla sidebar come footer (riga separatrice sopra) */}
-        <div className="pt-3" style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+            in coda al contenuto della sidebar, separati da una riga */}
+        <div className="mt-3 pt-3 pb-1" style={{ borderTop: '1px solid rgba(255,255,255,0.10)' }}>
           {!collapsed && <p className="px-4 text-[10px] uppercase tracking-widest font-semibold mb-1.5" style={{ color: 'var(--t-etichetta)' }}>Tema</p>}
           <div className={collapsed ? 'flex flex-col items-center gap-1.5' : 'px-4 flex items-center gap-2'}>
             {TEMI.map(t => (

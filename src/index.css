@@ -26,20 +26,20 @@
   --t-riga: #eef0ea;          /* bordi riga tabelle */
   --t-testo: #3a3d30;         /* testo base */
 }
-[data-tema='azzurro'] {       /* Azzurro Windows */
-  --t-notte: #0e2a45; --t-titolo: #14385c; --t-primario: #1668b0; --t-accento: #155e97;
-  --t-etichetta: #3d85c6; --t-soft: #8ab8dd; --t-side-testo: #bcd4e8; --t-side-forte: #e3eef7;
-  --t-bg: #eff4f9; --t-card: #f8fbfd; --t-tenue: #e3edf6; --t-riga: #e6edf3; --t-testo: #2f3a44;
+[data-tema='azzurro'] {       /* Celeste pastello */
+  --t-notte: #24455e; --t-titolo: #2e5878; --t-primario: #5aa7d6; --t-accento: #4a97c8;
+  --t-etichetta: #7db8dd; --t-soft: #a8cfe8; --t-side-testo: #d3e6f2; --t-side-forte: #eef6fb;
+  --t-bg: #f0f7fb; --t-card: #f9fcfe; --t-tenue: #e4f0f8; --t-riga: #e7f0f6; --t-testo: #33424d;
 }
-[data-tema='bordeaux'] {      /* Bordeaux */
-  --t-notte: #2b1015; --t-titolo: #4a1a24; --t-primario: #8e3040; --t-accento: #7d2a38;
-  --t-etichetta: #a85562; --t-soft: #cf9aa3; --t-side-testo: #e0c2c7; --t-side-forte: #f2e2e5;
-  --t-bg: #f7f1f0; --t-card: #fcf8f7; --t-tenue: #f2e6e6; --t-riga: #efe4e4; --t-testo: #40342f;
+[data-tema='bordeaux'] {      /* Bordeaux pastello (rosa antico) */
+  --t-notte: #4a2c33; --t-titolo: #5f3742; --t-primario: #b0687a; --t-accento: #a05b6c;
+  --t-etichetta: #c08a97; --t-soft: #d8aeb8; --t-side-testo: #ecd5da; --t-side-forte: #f8edef;
+  --t-bg: #f9f3f4; --t-card: #fdfafa; --t-tenue: #f4e9eb; --t-riga: #f1e7e9; --t-testo: #453a3c;
 }
-[data-tema='antracite'] {     /* Antracite */
-  --t-notte: #16191d; --t-titolo: #272d34; --t-primario: #46525e; --t-accento: #3f4a54;
-  --t-etichetta: #5d6b78; --t-soft: #9fadb9; --t-side-testo: #c6ced5; --t-side-forte: #e8ebee;
-  --t-bg: #f1f2f3; --t-card: #fafbfb; --t-tenue: #e9ebed; --t-riga: #e7e9eb; --t-testo: #33383d;
+[data-tema='antracite'] {     /* Antracite pastello (grigio azzurrato) */
+  --t-notte: #333b44; --t-titolo: #414c57; --t-primario: #7a8896; --t-accento: #6b7987;
+  --t-etichetta: #93a1ae; --t-soft: #b4bfc9; --t-side-testo: #d8dee3; --t-side-forte: #eff2f4;
+  --t-bg: #f4f6f7; --t-card: #fbfcfc; --t-tenue: #eceff1; --t-riga: #eaedef; --t-testo: #3a4148;
 }
 
 @layer base {

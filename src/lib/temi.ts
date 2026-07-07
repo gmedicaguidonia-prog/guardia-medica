@@ -6,10 +6,10 @@
 export interface Tema { id: string; nome: string; c1: string; c2: string }   // c1/c2 = i due colori del quadratino
 
 export const TEMI: Tema[] = [
-  { id: 'verde',     nome: 'Verde bosco (classico)', c1: '#476540', c2: '#f4f1ea' },
-  { id: 'azzurro',   nome: 'Azzurro Windows',        c1: '#1668b0', c2: '#eff4f9' },
-  { id: 'bordeaux',  nome: 'Bordeaux',               c1: '#7d2a38', c2: '#f7f1f0' },
-  { id: 'antracite', nome: 'Antracite',              c1: '#3f4a54', c2: '#f1f2f3' },
+  { id: 'verde',     nome: 'Verde bosco (classico)',  c1: '#476540', c2: '#f4f1ea' },
+  { id: 'azzurro',   nome: 'Celeste pastello',        c1: '#5aa7d6', c2: '#f0f7fb' },
+  { id: 'bordeaux',  nome: 'Bordeaux pastello',       c1: '#b0687a', c2: '#f9f3f4' },
+  { id: 'antracite', nome: 'Antracite pastello',      c1: '#7a8896', c2: '#f4f6f7' },
 ]
 
 const LS_TEMA = 'gm_tema'

@@ -206,11 +206,11 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
             <span className="hidden lg:inline">Esci</span>
           </button>
 
-          {/* Versione build (commit SHA + data) */}
+          {/* Versione build (solo commit SHA; la data resta nel tooltip) */}
           <span className="hidden lg:block text-[10px] font-mono shrink-0"
             style={{ color: 'var(--t-side-testo)' }}
             title={`Commit ${__APP_VERSION__} — build del ${__BUILD_DATE__}`}>
-            v{__APP_VERSION__} · {__BUILD_DATE__}
+            v{__APP_VERSION__}
           </span>
         </div>
       </div>
