@@ -185,6 +185,7 @@ export interface Turno {
   slot: number              // 0..n_turnisti-1
   turnista_id: string | null
   created_at: string
+  nome_congelato?: string | null   // nome "fantasma": turnista cancellato dopo l'archiviazione → resta il nome (badge sostituibile)
 }
 
 // ─── Regole turni fisse (settimanali, versionate) ───────────────────

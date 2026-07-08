@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser, History, Star, ArrowRightLeft } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser, History, Star, ArrowRightLeft, Ghost } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
@@ -27,6 +27,12 @@ import type { TurnoSchema, Turnista, TurnistaMese, Turno, Livello, ConfigVersion
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
 const itDate = (iso: string) => { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
+// Fantasma: uno slot con il NOME congelato di un turnista cancellato (nessun id). Passa
+// nella staged-map come sentinel "ghost:<nome>" così il salvataggio lo tratta come una
+// normale assegnazione (togli → setAssegnazione null; sostituisci → setAssegnazione tid).
+const GHOST_PFX = 'ghost:'
+const isGhostVal = (v: string | null | undefined): v is string => typeof v === 'string' && v.startsWith(GHOST_PFX)
+const ghostNome = (v: string) => v.slice(GHOST_PFX.length)
 const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 const REP_SLOT = -1   // slot speciale per il reperibile
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
@@ -113,7 +119,11 @@ export function GestioneTurniPage() {
 
   const serverMap = useMemo(() => {
     const m = new Map<string, string>()
-    turni.forEach(t => { if (t.turnista_id) m.set(`${t.data}|${t.turno_schema_id}|${t.slot}`, t.turnista_id) })
+    turni.forEach(t => {
+      const k = `${t.data}|${t.turno_schema_id}|${t.slot}`
+      if (t.turnista_id) m.set(k, t.turnista_id)
+      else if (t.nome_congelato) m.set(k, `${GHOST_PFX}${t.nome_congelato}`)   // fantasma: turnista cancellato, nome conservato
+    })
     return m
   }, [turni])
   const { local, dirty, set, replaceAll, diff, discard } = useStagedAssignments(serverMap, meseKey)
@@ -153,6 +163,7 @@ export function GestioneTurniPage() {
   const riepilogo = useMemo(() => {
     const stat = new Map<string, { T: number; N: number; F: number; PF: number; SF: number }>()
     for (const [key, tid] of local) {
+      if (isGhostVal(tid)) continue   // i fantasmi non entrano nei conteggi
       const [ds, turnoId, slotStr] = key.split('|')
       if (+slotStr < 0) continue   // esclude il reperibile
       const turno = schema.find(s => s.id === turnoId); if (!turno) continue
@@ -625,6 +636,15 @@ export function GestioneTurniPage() {
       <button onClick={onX} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
     </span>
   )
+  // Badge FANTASMA: turnista non più in anagrafica → resta il nome (grigio corsivo), togliibile e sostituibile.
+  const GhostChip = (nome: string, onX: () => void) => (
+    <span data-chip className="relative rounded px-2 py-0.5 text-[11px] font-medium shadow-sm inline-flex items-center gap-1"
+      style={{ background: '#eceae7', color: '#78716c', border: '1px dashed #b8b2a8', fontStyle: 'italic' }}
+      title="Turnista non più in anagrafica: nome conservato. Togli (×) o assegna un altro al suo posto.">
+      <Ghost size={11} /> {nome}
+      <button onClick={onX} title="Togli" className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow" style={{ background: '#dc2626', color: '#fff', lineHeight: 1 }}><X size={10} strokeWidth={3} /></button>
+    </span>
+  )
   const dropStyle = (key: string, fill = false): CSSProperties => {
     // fill = ULTIMA colonna: si allarga fino a fine pagina (width auto), contenuto a sinistra.
     // Le altre colonne si adattano al contenuto (width 1) tenendo i turnisti su una riga.
@@ -889,7 +909,7 @@ export function GestioneTurniPage() {
                       onClick={e => { if ((e.target as HTMLElement).closest('[data-chip]')) return; setPicker({ ds, turno, tipo: 'turnisti', x: e.clientX, y: e.clientY }) }}
                       style={{ ...dropStyle(kT, !showRep), cursor: 'copy' }}>
                       <div className="flex flex-nowrap gap-2 items-start">
-                        {slots.map((tid, slot) => tid ? <span key={slot}>{Chip(tid, () => set(`${ds}|${turno.id}|${slot}`, null))}</span> : null)}
+                        {slots.map((val, slot) => val ? <span key={slot}>{isGhostVal(val) ? GhostChip(ghostNome(val), () => set(`${ds}|${turno.id}|${slot}`, null)) : Chip(val, () => set(`${ds}|${turno.id}|${slot}`, null))}</span> : null)}
                         {slots.every(s => s === null) && <span className="text-[10px] text-stone-300 italic">trascina o clicca</span>}
                       </div>
                     </td>
@@ -898,7 +918,7 @@ export function GestioneTurniPage() {
                         onDragOver={e => { e.preventDefault(); setOverKey(kR) }} onDragLeave={() => setOverKey(k => k === kR ? null : k)} onDrop={e => { e.preventDefault(); handleDrop(ds, turno, 'reperibile') }}
                         onClick={e => { if ((e.target as HTMLElement).closest('[data-chip]')) return; setPicker({ ds, turno, tipo: 'reperibile', x: e.clientX, y: e.clientY }) }}
                         style={{ ...dropStyle(kR, true), cursor: 'copy' }}>
-                        {rep ? Chip(rep, () => set(`${ds}|${turno.id}|${REP_SLOT}`, null)) : <span className="text-[10px] text-stone-300 italic">trascina o clicca</span>}
+                        {rep ? (isGhostVal(rep) ? GhostChip(ghostNome(rep), () => set(`${ds}|${turno.id}|${REP_SLOT}`, null)) : Chip(rep, () => set(`${ds}|${turno.id}|${REP_SLOT}`, null))) : <span className="text-[10px] text-stone-300 italic">trascina o clicca</span>}
                       </td>
                     )}
                   </tr>

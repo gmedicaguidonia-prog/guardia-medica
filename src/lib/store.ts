@@ -460,7 +460,7 @@ const supaStore = {
       const { error } = await supabase.from('turni').delete().match({ data, turno_schema_id: turnoSchemaId, slot })
       if (error) throw error
     } else {
-      const { error } = await supabase.from('turni').upsert({ data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, postazione_id: postazioneId }, { onConflict: 'data,turno_schema_id,slot' })
+      const { error } = await supabase.from('turni').upsert({ data, turno_schema_id: turnoSchemaId, slot, turnista_id: turnistaId, postazione_id: postazioneId, nome_congelato: null }, { onConflict: 'data,turno_schema_id,slot' })
       if (error) throw error
     }
   },

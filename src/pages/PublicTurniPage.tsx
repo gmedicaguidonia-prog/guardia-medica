@@ -23,6 +23,11 @@ const REP = -1
 const thStyle: CSSProperties = { background: 'var(--t-titolo)', color: '#fff', fontWeight: 700, fontSize: 12, padding: '6px 10px', textAlign: 'left', border: '1px solid #1f2d18' }
 const tdBase: CSSProperties = { padding: '6px 10px', border: '1px solid #e5e7eb', verticalAlign: 'top' }
 const itDate = (iso: string) => { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
+// Fantasma: slot con il nome congelato di un turnista cancellato (nessun id). Nel pubblico
+// è una semplice etichetta di sola lettura (niente cambio turno).
+const GHOST_PFX = 'ghost:'
+const isGhost = (v: string | null | undefined): v is string => typeof v === 'string' && v.startsWith(GHOST_PFX)
+const ghostNome = (v: string) => v.slice(GHOST_PFX.length)
 
 function Avviso({ children }: { children: React.ReactNode }) {
   return (
@@ -100,7 +105,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   // calendario: assegnazioni
   const assegn = useMemo(() => {
     const m = new Map<string, string[]>(), rep = new Map<string, string>()
-    turni.forEach(t => { if (!t.turnista_id) return; const k = `${t.data}|${t.turno_schema_id}`; if (t.slot === REP) rep.set(k, t.turnista_id); else { const a = m.get(k) ?? []; a.push(t.turnista_id); m.set(k, a) } })
+    turni.forEach(t => { const val = t.turnista_id ?? (t.nome_congelato ? `${GHOST_PFX}${t.nome_congelato}` : null); if (!val) return; const k = `${t.data}|${t.turno_schema_id}`; if (t.slot === REP) rep.set(k, val); else { const a = m.get(k) ?? []; a.push(val); m.set(k, a) } })
     return { m, rep }
   }, [turni])
   const hasRep = assegn.rep.size > 0   // mostra la colonna Reperibile solo se ce n'è almeno uno
@@ -376,6 +381,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                               <div className="flex gap-1.5 items-center">
                                 {ids.length === 0 && !(pianificazione && mancano > 0) && <span className="text-[11px] text-stone-300 italic">—</span>}
                                 {ids.map((id, idx) => {
+                                  if (isGhost(id)) return <span key={`${id}|${idx}`} className="rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap" style={{ background: '#eceae7', color: '#78716c', border: '1px dashed #b8b2a8', fontStyle: 'italic' }} title="Turnista non più in anagrafica">{ghostNome(id)}</span>
                                   const io = id === mia?.membershipId
                                   const stile = io ? { background: '#2e7d32', color: '#fff' } : { background: 'var(--t-tenue)', color: 'var(--t-testo)' }
                                   const cliccabile = cambiAttivi && (io || puoGestireCambi)
@@ -399,7 +405,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                             {hasRep && (
                               <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                                 {rep
-                                  ? (cambiAttivi && (rep === mia?.membershipId || puoGestireCambi)
+                                  ? (isGhost(rep)
+                                    ? <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap" style={{ background: '#eceae7', color: '#78716c', border: '1px dashed #b8b2a8', fontStyle: 'italic' }} title="Turnista non più in anagrafica"><Phone size={10} /> {ghostNome(rep)}</span>
+                                    : cambiAttivi && (rep === mia?.membershipId || puoGestireCambi)
                                     ? <button onClick={e => clickTurnista(e, ds, turno, rep, REP)} title="Chiedi il cambio di questa reperibilità"
                                         className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap transition-transform hover:scale-105"
                                         style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff', cursor: 'pointer' } : { background: '#fff5e6', color: '#92400e', cursor: 'pointer' }}><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</button>

@@ -21,6 +21,17 @@ function nomeStampa(t: Turnista | undefined): string {
   const n = (t.nome ?? '').trim()
   return n ? `${c} ${n[0].toUpperCase()}.` : c
 }
+const GHOST_PFX = 'ghost:'
+/** Risolve un valore di assegnazione in "COGNOME N.": un turnista reale oppure un nome
+ *  FANTASMA congelato (turnista cancellato) passato come "ghost:Cognome Nome". */
+function nomeStampaVal(val: string, tById: Map<string, Turnista>): string {
+  if (val.startsWith(GHOST_PFX)) {
+    const parts = val.slice(GHOST_PFX.length).trim().split(/\s+/)
+    const c = (parts[0] ?? '').toUpperCase()
+    return parts[1] ? `${c} ${parts[1][0].toUpperCase()}.` : c
+  }
+  return nomeStampa(tById.get(val))
+}
 
 const bordo = '1px solid #000'
 const td: CSSProperties = { border: bordo, padding: '2px 8px', fontSize: 13, color: '#000', background: '#fff' }
@@ -59,10 +70,11 @@ export function StampaTurniPage() {
   const { perCella, repCella } = useMemo(() => {
     const pc = new Map<string, string[]>(); const rc = new Map<string, string>()
     for (const t of turni) {
-      if (!t.turnista_id) continue
+      const val = t.turnista_id ?? (t.nome_congelato ? `${GHOST_PFX}${t.nome_congelato}` : null)   // fantasma: nome congelato
+      if (!val) continue
       const k = `${t.data}|${t.turno_schema_id}`
-      if (t.slot >= 0) { const a = pc.get(k); if (a) a.push(t.turnista_id); else pc.set(k, [t.turnista_id]) }
-      else rc.set(k, t.turnista_id)
+      if (t.slot >= 0) { const a = pc.get(k); if (a) a.push(val); else pc.set(k, [val]) }
+      else rc.set(k, val)
     }
     return { perCella: pc, repCella: rc }
   }, [turni])
@@ -75,8 +87,8 @@ export function StampaTurniPage() {
       const k = `${isoDate(d)}|${c.id}`
       righe.push({
         ds: isoDate(d), d, turno: c,
-        nomi: (perCella.get(k) ?? []).map(id => nomeStampa(tById.get(id))),
-        rep: repCella.has(k) ? nomeStampa(tById.get(repCella.get(k)!)) : null,
+        nomi: (perCella.get(k) ?? []).map(val => nomeStampaVal(val, tById)),
+        rep: repCella.has(k) ? nomeStampaVal(repCella.get(k)!, tById) : null,
       })
     }))
     return { foglio: fc.foglio, righe, conRep: righe.some(r => r.rep) }
