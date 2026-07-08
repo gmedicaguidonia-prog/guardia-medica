@@ -777,7 +777,7 @@ export function GestioneTurniPage() {
         }}>
 
         {/* Palette */}
-        <aside className="w-40 sm:w-44 shrink-0 space-y-3" style={{ position: 'sticky', top: 8 }}>
+        <aside className="w-48 sm:w-56 shrink-0 space-y-3" style={{ position: 'sticky', top: 8 }}>
           {paletteGruppi.length ? paletteGruppi.map(g => (
             <div key={g.liv} className="card p-2">
               <h3 className="text-[11px] font-bold uppercase tracking-wider px-1 mb-1.5 flex items-center gap-1" style={{ color: ROLE_COLOR[g.liv].fg }}><IconaLivello livello={g.liv} size={11} /> {g.label}</h3>
