@@ -89,7 +89,7 @@ export function PostazioniPage() {
 
       {/* Sezioni del Centro di Controllo: impaginazione liquida a colonne (2–3 in base
           alla larghezza), ogni sezione con uno sfondo pastello molto trasparente. */}
-      <div style={{ columnWidth: 300, columnGap: 16 }}>
+      <div className="columns-1 md:columns-2 xl:columns-3" style={{ columnGap: 16 }}>
 
       {/* Blocco: Postazioni */}
       <div className="card p-4 space-y-3" style={{ background: '#60a5fa1f', breakInside: 'avoid', marginBottom: 18 }}>

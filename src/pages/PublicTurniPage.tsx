@@ -5,7 +5,6 @@ import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapP
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
-import { TEMI, applicaTema, temaSalvato } from '../lib/temi'
 import { useFestivita } from '../hooks/useFestivita'
 import { useFinalizzato } from '../hooks/useFinalizzato'
 import { nomeCompleto, cmpTurnisti } from '../types'
@@ -85,19 +84,6 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
   const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
 
-  // Tema interfaccia: un solo quadratino ciclico accanto al titolo (mostra il tema attivo;
-  // ogni click passa e applica il tema successivo). Salvato per utente (DB) + localStorage.
-  const [temaAttivo, setTemaAttivo] = useState<string>(() => temaSalvato())
-  useEffect(() => {
-    const h = (e: Event) => setTemaAttivo((e as CustomEvent<string>).detail)
-    window.addEventListener('gm-tema', h)
-    return () => window.removeEventListener('gm-tema', h)
-  }, [])
-  const temaCorr = TEMI.find(t => t.id === temaAttivo) ?? TEMI[0]
-  function ciclaTema() {
-    const next = TEMI[(TEMI.findIndex(t => t.id === temaAttivo) + 1) % TEMI.length]
-    applicaTema(next.id); setTemaAttivo(next.id); store.setMioTema(next.id).catch(() => {})
-  }
   const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente desiderata/candidature
   const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
@@ -274,9 +260,6 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
       <div className="flex items-center gap-2">
         <CalendarDays size={22} style={{ color: 'var(--t-accento)' }} />
         <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>I miei turni</h1>
-        <button onClick={ciclaTema} title={`Tema: ${temaCorr.nome} — clicca per cambiarlo`} aria-label={`Cambia tema (attuale: ${temaCorr.nome})`}
-          className="shrink-0 ml-1 transition-transform hover:scale-110"
-          style={{ width: 22, height: 22, borderRadius: 6, background: `linear-gradient(135deg, ${temaCorr.c1} 50%, ${temaCorr.c2} 50%)`, border: '1px solid rgba(0,0,0,0.22)', boxShadow: '0 1px 2px rgba(0,0,0,0.15)', cursor: 'pointer' }} />
       </div>
 
       {opzioni.length === 0 ? (

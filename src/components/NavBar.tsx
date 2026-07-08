@@ -7,6 +7,7 @@ import { usePostazione } from '../contexts/PostazioneContext'
 import { useDebug } from '../contexts/DebugContext'
 import { CentroMessaggi } from './CentroMessaggi'
 import { store } from '../lib/store'
+import { TEMI, applicaTema, temaSalvato } from '../lib/temi'
 import type { AuthUser, Livello, UtenteImpersonabile } from '../types'
 
 // Finestre dedicate: l'amministrazione vive in una finestra/scheda a parte e le
@@ -32,6 +33,19 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   // Nella pagina pubblica "I miei turni" il selettore postazione è già nel corpo:
   // nasconderlo dalla navbar per non confondere.
   const mostraSelettore = haAccessoAdmin(user) && postazioni.length > 0 && loc.pathname !== '/turni'
+
+  // Tema interfaccia: quadratino ciclico nella navbar (mostra il tema attivo; ogni click applica il successivo)
+  const [temaAttivo, setTemaAttivo] = useState<string>(() => temaSalvato())
+  useEffect(() => {
+    const h = (e: Event) => setTemaAttivo((e as CustomEvent<string>).detail)
+    window.addEventListener('gm-tema', h)
+    return () => window.removeEventListener('gm-tema', h)
+  }, [])
+  const temaCorr = TEMI.find(t => t.id === temaAttivo) ?? TEMI[0]
+  function ciclaTema() {
+    const next = TEMI[(TEMI.findIndex(t => t.id === temaAttivo) + 1) % TEMI.length]
+    applicaTema(next.id); setTemaAttivo(next.id); store.setMioTema(next.id).catch(() => {})
+  }
 
   // ── Debug: modalità Admin + Doppleganger (solo per l'admin reale) ──
   const { isRealAdmin, realUser, adminMode, doppleganger, setAdminMode, setDoppleganger } = useDebug()
@@ -119,8 +133,11 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
         )}
 
         {/* Link */}
-        <div className="flex items-center gap-1 ml-1">
+        <div className="flex items-center gap-2 ml-1">
           {link('/turni', 'I miei turni', CalendarDays)}
+          <button onClick={ciclaTema} title={`Tema: ${temaCorr.nome} — clicca per cambiarlo`} aria-label={`Cambia tema (attuale: ${temaCorr.nome})`}
+            className="shrink-0 transition-transform hover:scale-110"
+            style={{ width: 20, height: 20, borderRadius: 5, background: `linear-gradient(135deg, ${temaCorr.c1} 50%, ${temaCorr.c2} 50%)`, border: '1px solid rgba(255,255,255,0.4)', cursor: 'pointer' }} />
           {haAccessoAdmin(user) && link('/admin', 'Admin', Settings)}
         </div>
 
