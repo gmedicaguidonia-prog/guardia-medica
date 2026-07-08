@@ -330,7 +330,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: 58 }} />
-                      <col style={{ width: 96 }} />
+                      <col style={{ width: 116 }} />
                       <col />
                       {hasRep && <col style={{ width: 130 }} />}
                     </colgroup>
@@ -351,7 +351,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                           <tr key={k} style={{ background: rowBg }}>
                             <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
                             <td style={tdBase}>
-                              <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
+                              <span className="inline-flex items-center gap-1" style={{ color: '#475569', fontSize: 14 }}>{overnight ? <Moon size={13} style={{ color: '#64748b' }} /> : <Sun size={13} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
                             </td>
                             <td style={{ ...tdBase, wordBreak: 'break-word' }}>
@@ -363,9 +363,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                                   const cliccabile = cambiAttivi && (io || puoGestireCambi)
                                   return cliccabile
                                     ? <button key={`${id}|${idx}`} onClick={e => clickTurnista(e, ds, turno, id)} title="Chiedi il cambio di questo turno"
-                                        className="rounded px-2 py-0.5 text-[11px] font-medium transition-transform hover:scale-105"
+                                        className="rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap transition-transform hover:scale-105"
                                         style={{ ...stile, cursor: 'pointer', border: io ? '1px solid #1b5e20' : '1px solid rgba(0,0,0,0.08)' }}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</button>
-                                    : <span key={`${id}|${idx}`} className="rounded px-2 py-0.5 text-[11px] font-medium" style={stile}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</span>
+                                    : <span key={`${id}|${idx}`} className="rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap" style={stile}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</span>
                                 })}
                                 {pianificazione && mancano > 0 && (hoChiesto ? (
                                   <button onClick={() => setAnnulla({ ds, turno })} title="Proposta inviata — clicca per annullarla" className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold transition-transform hover:scale-105" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', cursor: 'pointer' }}><Clock size={10} /> Proposta inviata</button>
@@ -383,9 +383,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                                 {rep
                                   ? (cambiAttivi && (rep === mia?.membershipId || puoGestireCambi)
                                     ? <button onClick={e => clickTurnista(e, ds, turno, rep, REP)} title="Chiedi il cambio di questa reperibilità"
-                                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-transform hover:scale-105"
+                                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap transition-transform hover:scale-105"
                                         style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff', cursor: 'pointer' } : { background: '#fff5e6', color: '#92400e', cursor: 'pointer' }}><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</button>
-                                    : <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium" style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff' } : { background: '#fff5e6', color: '#92400e' }} title="Reperibile"><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</span>)
+                                    : <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap" style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff' } : { background: '#fff5e6', color: '#92400e' }} title="Reperibile"><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</span>)
                                   : <span className="text-[11px] text-stone-300 italic">—</span>}
                               </td>
                             )}
