@@ -862,7 +862,7 @@ export function GestioneTurniPage() {
             <tbody>
               {righeF.map(({ ds, d, turno }) => {
                 const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
-                const superF = isSuperfestivo(d, superSet)
+                const superF = isSuperfestivo(d, superSet) && !!superTurniByData.get(ds)?.includes(turno.id)
                 const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                 const overnight = turno.ora_fine <= turno.ora_inizio
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'

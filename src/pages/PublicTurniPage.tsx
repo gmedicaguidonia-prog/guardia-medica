@@ -80,6 +80,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
   const { festivoSet, superSet } = useFestivita(postazioneId)   // festivi locali + superfestivi
+  // turni SPECIFICI marcati come superfestivo: la stellina va SOLO su questi, non su tutti i turni del giorno
+  const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
+  const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
   const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente desiderata/candidature
   const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
@@ -338,7 +341,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
-                        const superF = isSuperfestivo(d, superSet)
+                        const superF = isSuperfestivo(d, superSet) && !!superTurniByData.get(ds)?.includes(turno.id)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
@@ -440,7 +443,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
-                        const superF = isSuperfestivo(d, superSet)
+                        const superF = isSuperfestivo(d, superSet) && !!superTurniByData.get(ds)?.includes(turno.id)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
@@ -514,7 +517,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
-                        const superF = isSuperfestivo(d, superSet)
+                        const superF = isSuperfestivo(d, superSet) && !!superTurniByData.get(ds)?.includes(turno.id)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                         const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio

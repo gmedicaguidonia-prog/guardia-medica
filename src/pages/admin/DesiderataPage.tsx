@@ -63,6 +63,9 @@ export function DesiderataPage() {
   const { impaginazioneOk, fogliConTurni, loadingImpag } = useImpaginazione(postazioneId, meseKey, schema)
   const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3
   const { festivoSet, superSet } = useFestivita(postazioneId)   // festivi locali + superfestivi
+  // turni SPECIFICI marcati come superfestivo: la stellina va SOLO su questi, non su tutti i turni del giorno
+  const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
+  const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
   const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente salvataggi
   // Tempo reale: desiderata dei turnisti (pagina pubblica), periodo, personale del mese
   useRealtimePostazione(postazioneId, [
@@ -471,7 +474,7 @@ export function DesiderataPage() {
             <tbody>
               {righeF.map(({ ds, d, turno }) => {
                 const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
-                const superF = isSuperfestivo(d, superSet)
+                const superF = isSuperfestivo(d, superSet) && !!superTurniByData.get(ds)?.includes(turno.id)
                 const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
                 const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                 const overnight = turno.ora_fine <= turno.ora_inizio
