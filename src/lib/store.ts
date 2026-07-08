@@ -360,10 +360,11 @@ const supaStore = {
     if (error) throw error
     return (data ?? []) as CambioTurno[]
   },
-  async richiediCambio(postazioneId: string, data: string, turnoSchemaId: string, slot: number, daTurnista: string, aTurnista: string, forzato: boolean, descrizione: string, autore?: string | null): Promise<{ auto: boolean }> {
+  async richiediCambio(postazioneId: string, data: string, turnoSchemaId: string, slot: number, daTurnista: string, aTurnista: string, forzato: boolean, descrizione: string, autore?: string | null, soloApprovazione?: boolean): Promise<{ auto: boolean }> {
     const { data: out, error } = await supabase.rpc('crea_cambio_turno', {
       p_postazione: postazioneId, p_data: data, p_turno: turnoSchemaId, p_slot: slot,
       p_da: daTurnista, p_a: aTurnista, p_forzato: forzato, p_descrizione: descrizione, p_autore: autore ?? _autoreCorrente,
+      p_solo_approvazione: !!soloApprovazione,
     })
     if (error) throw error
     return { auto: !!(out as { auto?: boolean } | null)?.auto }
@@ -1203,7 +1204,7 @@ const localStore = {
   async getCambiPendenti(postazioneId: string): Promise<CambioTurno[]> {
     return read<CambioTurno[]>('gm_cambi_turno', []).filter(c => (c as CambioTurno & { postazione_id?: string }).postazione_id === postazioneId && c.stato === 'in_attesa').sort((a, b) => a.created_at.localeCompare(b.created_at))
   },
-  async richiediCambio(postazioneId: string, data: string, turnoSchemaId: string, slot: number, daTurnista: string, aTurnista: string, forzato: boolean, descrizione: string, autore?: string | null): Promise<{ auto: boolean }> {
+  async richiediCambio(postazioneId: string, data: string, turnoSchemaId: string, slot: number, daTurnista: string, aTurnista: string, forzato: boolean, descrizione: string, autore?: string | null, soloApprovazione?: boolean): Promise<{ auto: boolean }> {
     const mese = data.slice(0, 7)
     const turni = read<WithPost<Turno>[]>(LS_TURNI, [])
     const own = turni.find(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId && t.data === data && t.turno_schema_id === turnoSchemaId && t.slot === slot && t.turnista_id === daTurnista)
@@ -1211,7 +1212,7 @@ const localStore = {
     const cambi = read<(CambioTurno & { postazione_id: string })[]>('gm_cambi_turno', [])
     if (cambi.some(c => c.postazione_id === postazioneId && c.data === data && c.turno_schema_id === turnoSchemaId && c.slot === slot && c.stato === 'in_attesa')) throw new Error('Esiste già una richiesta di cambio in attesa per questo turno.')
     const regole = await localStore.getRegoleVersioneMese(postazioneId, mese)
-    const auto = !!regole?.cambio_auto
+    const auto = !!regole?.cambio_auto && !soloApprovazione
     const nuovo: CambioTurno & { postazione_id: string } = {
       id: uid(), postazione_id: postazioneId, mese, data, turno_schema_id: turnoSchemaId, slot,
       da_turnista: daTurnista, a_turnista: aTurnista, stato: auto ? 'approvato' : 'in_attesa', forzato,

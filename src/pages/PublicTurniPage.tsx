@@ -588,7 +588,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               <button onClick={e => { e.stopPropagation(); setWizCambio({ ds: tipCambio.ds, turno: tipCambio.turno, slot: tipCambio.slot, da: tipCambio.da }); setTipCambio(null) }}
                 className="fixed flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg shadow-lg transition-transform hover:scale-105"
                 style={{ top: Math.max(8, Math.min(tipCambio.y + 10, window.innerHeight - 56)), left: Math.max(8, Math.min(tipCambio.x - 30, window.innerWidth - 190)), background: 'var(--t-notte)', color: '#fff', zIndex: 46, animation: 'fadeSlideIn 120ms ease-out' }}>
-                <ArrowRightLeft size={14} /> Chiedi cambio?
+                <ArrowRightLeft size={14} /> Cambio turno
               </button>
             </div>
           )}
@@ -679,8 +679,11 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
         const conf = sovrapposti(turniDest, ds, turno)
         if (conf.length) { setConflitti(conf); setStep(3); setBusy(false); return }
       }
-      const descr = `${nomeById.get(da) ?? '—'} → ${nomeCompleto(dest)} — ${nomeTurno} di ${itDs(ds)} (${postazioneNome})`
-      const { auto } = await store.richiediCambio(postazioneId, ds, turno.id, slot, da, dest.id, forza, descr)
+      // destinatario appena creato dal wizard ⇒ il cambio richiede SEMPRE l'approvazione
+      // del responsabile (anche col cambio automatico attivo): approvandolo "abilita" il nuovo esterno
+      const nuovoEsterno = extra.some(e => e.id === dest.id)
+      const descr = `${nomeById.get(da) ?? '—'} → ${nomeCompleto(dest)}${nuovoEsterno ? ' (nuovo esterno)' : ''} — ${nomeTurno} di ${itDs(ds)} (${postazioneNome})`
+      const { auto } = await store.richiediCambio(postazioneId, ds, turno.id, slot, da, dest.id, forza, descr, undefined, nuovoEsterno)
       store.addNotifica({ postazioneId, mese: ds.slice(0, 7), tipo: 'cambio_turno', messaggio: auto ? `Cambio turno effettuato automaticamente: ${descr}.` : `Richiesta di cambio turno da approvare: ${descr}.`, target: '/admin/turni', perAdmin: true }).catch(() => {})
       setEsito(auto ? 'auto' : 'attesa'); setStep(4); onFatto()
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
@@ -741,6 +744,7 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
             ) : (
               <div className="rounded-lg border p-3 mb-3 space-y-2" style={{ borderColor: 'var(--t-riga)' }}>
                 <p className="text-xs font-semibold" style={{ color: 'var(--t-titolo)' }}>Nuova persona (verrà inserita come <strong>esterno</strong>)</p>
+                <p className="text-[11px] text-stone-500">Il cambio verso un nominativo nuovo richiede <strong>sempre</strong> l'approvazione del responsabile, anche se il cambio automatico è attivo.</p>
                 <div className="flex gap-2">
                   <input type="text" value={nNome} onChange={e => setNNome(e.target.value)} placeholder="Nome" className="input text-sm flex-1" />
                   <input type="text" value={nCognome} onChange={e => setNCognome(e.target.value)} placeholder="Cognome" className="input text-sm flex-1" />
