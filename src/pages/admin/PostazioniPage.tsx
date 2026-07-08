@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { MapPin, Plus, Trash2, Pencil, Save, X, Shield, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText, Search, UserRound, UsersRound, Ban, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -9,7 +9,7 @@ import { IconaLivello } from '../../components/IconaLivello'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { ADMIN_EMAIL } from '../../lib/constants'
 import { nomeCompleto } from '../../types'
-import type { AuthUser, Postazione, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, LogPostazione } from '../../types'
+import type { AuthUser, Postazione, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, LogPostazione, Livello } from '../../types'
 
 function fmtDT(iso: string) {
   return new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -77,7 +77,7 @@ export function PostazioniPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
+    <div className="max-w-6xl mx-auto p-6 space-y-4">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
 
       <div>
@@ -87,8 +87,12 @@ export function PostazioniPage() {
         <p className="text-sm text-stone-600 mt-0.5">Le impostazioni generali del programma, divise per funzione.</p>
       </div>
 
+      {/* Sezioni del Centro di Controllo: impaginazione liquida a colonne (2–3 in base
+          alla larghezza), ogni sezione con uno sfondo pastello molto trasparente. */}
+      <div style={{ columnWidth: 300, columnGap: 16 }}>
+
       {/* Blocco: Postazioni */}
-      <div className="card p-4 space-y-3">
+      <div className="card p-4 space-y-3" style={{ background: '#60a5fa1f', breakInside: 'avoid', marginBottom: 18 }}>
         <div>
           <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><MapPin size={15} style={{ color: 'var(--t-accento)' }} /> Postazioni</h2>
           <p className="text-xs text-stone-500 mt-0.5">Ogni postazione ha il suo personale, turni, regole e desiderata. Seleziona quella attiva dal menu in alto; i <strong>Responsabili</strong> si assegnano dalla pagina <strong>Personale</strong>.</p>
@@ -142,7 +146,7 @@ export function PostazioniPage() {
       <AnagraficaUtentiBox />
 
       {/* Blocco: Log Postazioni — storico eventi globali (non si cancella con la postazione) */}
-      <div className="card p-4 space-y-3">
+      <div className="card p-4 space-y-3" style={{ background: '#a78bfa1f', breakInside: 'avoid', marginBottom: 18 }}>
         <div>
           <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><ScrollText size={15} style={{ color: 'var(--t-accento)' }} /> Log Postazioni</h2>
           <p className="text-xs text-stone-500 mt-0.5">Storico di creazioni, rinomine ed eliminazioni delle postazioni, con autore e data.</p>
@@ -159,6 +163,7 @@ export function PostazioniPage() {
             ))}
           </div>
         )}
+      </div>
       </div>
     </div>
   )
@@ -206,7 +211,7 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
   }
 
   return (
-    <div className="card p-4 space-y-3">
+    <div className="card p-4 space-y-3" style={{ background: '#fbbf241f', breakInside: 'avoid', marginBottom: 18 }}>
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <div>
         <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><ShieldCheck size={15} style={{ color: 'var(--t-accento)' }} /> Amministratori</h2>
@@ -263,6 +268,15 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
 //  sue postazioni (ruolo + icona, link al Personale), la modifica dei dati, la
 //  sospensione reversibile dell'accesso e l'eliminazione definitiva.
 const PAGINA_UTENTI = 20
+// Etichetta + colore del ruolo complessivo mostrato nell'elenco (l'ordinamento è nel data layer).
+const RUOLO_META: Record<string, { label: string; color: string }> = {
+  admin:        { label: 'Admin',        color: '#a16207' },
+  supervisore:  { label: 'Supervisore',  color: '#0369a1' },
+  responsabile: { label: 'Responsabile', color: '#ca8a04' },
+  turnista:     { label: 'Turnista',     color: '#1e40af' },
+  esterno:      { label: 'Esterno',      color: '#166534' },
+  '—':          { label: 'Nessun ruolo', color: '#9ca3af' },
+}
 function AnagraficaUtentiBox() {
   const { confirm, notify, confirmState } = useConfirm()
   const [search, setSearch] = useState('')
@@ -285,11 +299,8 @@ function AnagraficaUtentiBox() {
   const total = data?.total ?? 0
   const nPagine = Math.max(1, Math.ceil(total / PAGINA_UTENTI))
 
-  const { data: supervisori = [] } = useQuery<Supervisore[]>({ queryKey: ['supervisori'], queryFn: () => store.getSupervisori() })
-  const supSet = useMemo(() => new Set(supervisori.map(s => s.id)), [supervisori])
-
   return (
-    <div className="card p-4 space-y-3">
+    <div className="card p-4 space-y-3" style={{ background: '#34d3991f', breakInside: 'avoid', marginBottom: 18 }}>
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <div>
         <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><UsersRound size={15} style={{ color: 'var(--t-accento)' }} /> Anagrafica Utenti</h2>
@@ -307,21 +318,27 @@ function AnagraficaUtentiBox() {
         <p className="text-sm text-stone-500">{isFetching ? 'Caricamento…' : debounced ? 'Nessun utente trovato.' : 'Nessun utente.'}</p>
       ) : (
         <div className="space-y-1.5" style={{ opacity: isFetching ? 0.6 : 1 }}>
-          {rows.map(u => (
+          {rows.map(u => {
+            const meta = RUOLO_META[u.ruolo] ?? RUOLO_META['—']
+            return (
             <div key={u.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
               <button onClick={() => setAperto(aperto === u.id ? null : u.id)} className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left">
-                <UserRound size={15} className="shrink-0" style={{ color: u.attivo ? 'var(--t-accento)' : '#9ca3af' }} />
+                {u.ruolo === 'supervisore'
+                  ? <Shield size={15} className="shrink-0" style={{ color: u.attivo ? meta.color : '#9ca3af' }} />
+                  : u.ruolo === '—'
+                    ? <UserRound size={15} className="shrink-0" style={{ color: '#9ca3af' }} />
+                    : <IconaLivello livello={u.ruolo as Livello} size={15} className="shrink-0" color={u.attivo ? undefined : '#9ca3af'} />}
                 <span className="text-sm font-semibold" style={{ color: u.attivo ? 'var(--t-titolo)' : '#9ca3af', textDecoration: u.attivo ? 'none' : 'line-through' }}>{nomeCompleto(u)}</span>
-                {u.admin && <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#fef9c3', color: '#854d0e' }}><Crown size={9} /> ADMIN</span>}
-                {supSet.has(u.id) && !u.admin && <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#e0f2fe', color: '#075985' }}><Shield size={9} /> SUPERV.</span>}
-                {!u.attivo && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#fee2e2', color: '#b91c1c' }}>SOSPESO</span>}
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: meta.color + '22', color: meta.color }}>{meta.label}</span>
+                {!u.attivo && <span className="text-[9px] font-bold px-1 py-0.5 rounded shrink-0" style={{ background: '#fee2e2', color: '#b91c1c' }}>SOSPESO</span>}
                 <span className="text-xs text-stone-400 hidden sm:inline truncate">{u.email}</span>
                 <div className="flex-1" />
                 <ChevronRight size={14} className="shrink-0 text-stone-400 transition-transform" style={{ transform: aperto === u.id ? 'rotate(90deg)' : 'none' }} />
               </button>
               {aperto === u.id && <SchedaUtente u={u} confirm={confirm} notify={notify} onChiudi={() => setAperto(null)} />}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -503,7 +520,7 @@ function SupervisoriBox() {
   }
 
   return (
-    <div className="card p-4 space-y-3">
+    <div className="card p-4 space-y-3" style={{ background: '#38bdf81f', breakInside: 'avoid', marginBottom: 18 }}>
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <div>
         <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><Shield size={15} style={{ color: '#0284c7' }} fill="#7dd3fc" /> Supervisori</h2>

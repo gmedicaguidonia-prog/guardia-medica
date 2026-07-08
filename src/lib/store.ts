@@ -18,6 +18,8 @@ function mapNotifica(r: Record<string, unknown>): Notifica {
 }
 
 const RANK_LIVELLO: Record<string, number> = { responsabile: 3, turnista: 2, esterno: 1 }
+// Potere complessivo di un utente nell'Anagrafica (dal più al meno potente), per l'ordinamento.
+const RANK_RUOLO: Record<string, number> = { admin: 5, supervisore: 4, responsabile: 3, turnista: 2, esterno: 1, '—': 0 }
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoMembro { nome: string; cognome: string; email: string; livello: Livello; utenteId?: string }
@@ -781,13 +783,25 @@ const supaStore = {
   // ── Anagrafica Utenti (Centro di Controllo, solo admin) ──
   //  Elenco paginato di TUTTE le identità del sistema, con ricerca su nome/cognome/email.
   async getUtentiAnagrafica(search: string, offset: number, limit: number): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
-    let q = supabase.from('utenti').select('id, nome, cognome, email, admin, attivo', { count: 'exact' })
-    const s = search.trim().replace(/[%,]/g, ' ')
-    if (s) q = q.or(`nome.ilike.%${s}%,cognome.ilike.%${s}%,email.ilike.%${s}%`)
-    const { data, error, count } = await q.order('cognome').order('nome').range(offset, offset + limit - 1)
-    if (error) throw error
-    const rows = (data ?? []).map(x => ({ id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin: !!x.admin, attivo: (x.attivo as boolean) !== false }))
-    return { rows, total: count ?? rows.length }
+    // Il ruolo (per ordinare) dipende da admin + supervisore + miglior livello di appartenenza,
+    // quindi carichiamo tutto e ordiniamo/paginiamo lato client (l'anagrafica è piccola).
+    const [u, m, sup] = await Promise.all([
+      supabase.from('utenti').select('id, nome, cognome, email, admin, attivo'),
+      supabase.from('turnisti').select('utente_id, livello'),
+      supabase.from('supervisori').select('utente_id'),
+    ])
+    if (u.error) throw u.error
+    if (m.error) throw m.error
+    if (sup.error) throw sup.error
+    const supSet = new Set((sup.data ?? []).map(s => s.utente_id as string))
+    const best = new Map<string, string>()
+    ;(m.data ?? []).forEach(r => { const id = r.utente_id as string, lv = r.livello as string; const cur = best.get(id); if (!cur || (RANK_LIVELLO[lv] ?? 0) > (RANK_LIVELLO[cur] ?? 0)) best.set(id, lv) })
+    const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : (best.get(id) ?? '—')
+    let rows: UtenteAnagrafica[] = (u.data ?? []).map(x => { const id = x.id as string, admin = !!x.admin; return { id, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin, attivo: (x.attivo as boolean) !== false, ruolo: ruoloOf(id, admin) } })
+    const s = search.trim().toLowerCase()
+    if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
+    rows.sort((a, b) => (RANK_RUOLO[b.ruolo] - RANK_RUOLO[a.ruolo]) || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+    return { rows: rows.slice(offset, offset + limit), total: rows.length }
   },
   // Appartenenze (postazione + ruolo) di un utente, per la sua scheda.
   async getMembershipUtente(utenteId: string): Promise<MembershipUtente[]> {
@@ -1609,13 +1623,20 @@ const localStore = {
     ensureSeed()
     const adminSet = new Set(read<string[]>('gm_dev_admins', []))
     const sosp = new Set(read<string[]>('gm_utenti_sospesi', []))
-    const map = new Map<string, UtenteAnagrafica>()
-    read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => { const uid2 = t.utente_id ?? t.id; if (!map.has(uid2)) map.set(uid2, { id: uid2, nome: t.nome, cognome: t.cognome, email: t.email, admin: t.email === ADMIN_EMAIL || adminSet.has(uid2), attivo: !sosp.has(uid2) }) })
-    read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!map.has(u.id)) map.set(u.id, { id: u.id, nome: u.nome, cognome: u.cognome, email: u.email, admin: u.admin || adminSet.has(u.id), attivo: !sosp.has(u.id) }) })
-    let rows = [...map.values()]
+    const supSet = new Set(read<{ utenteId: string }[]>('gm_dev_supervisori', []).map(s => s.utenteId))
+    const best = new Map<string, string>()
+    const base = new Map<string, { id: string; nome: string; cognome: string; email: string }>()
+    read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
+      const id = t.utente_id ?? t.id
+      const cur = best.get(id); if (!cur || (RANK_LIVELLO[t.livello] ?? 0) > (RANK_LIVELLO[cur] ?? 0)) best.set(id, t.livello)
+      if (!base.has(id)) base.set(id, { id, nome: t.nome, cognome: t.cognome, email: t.email })
+    })
+    read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!base.has(u.id)) base.set(u.id, { id: u.id, nome: u.nome, cognome: u.cognome, email: u.email }) })
+    const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : (best.get(id) ?? '—')
+    let rows: UtenteAnagrafica[] = [...base.values()].map(x => { const admin = x.email === ADMIN_EMAIL || adminSet.has(x.id); return { ...x, admin, attivo: !sosp.has(x.id), ruolo: ruoloOf(x.id, admin) } })
     const s = search.trim().toLowerCase()
     if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
-    rows.sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+    rows.sort((a, b) => (RANK_RUOLO[b.ruolo] - RANK_RUOLO[a.ruolo]) || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
     return { rows: rows.slice(offset, offset + limit), total: rows.length }
   },
   async getMembershipUtente(utenteId: string): Promise<MembershipUtente[]> {

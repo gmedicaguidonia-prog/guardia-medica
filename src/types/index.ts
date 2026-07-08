@@ -55,6 +55,7 @@ export interface UtenteAnagrafica {
   email: string
   admin: boolean
   attivo: boolean
+  ruolo: string   // ruolo complessivo (admin | supervisore | responsabile | turnista | esterno | —), per ordinamento/etichetta
 }
 
 /** Un'appartenenza di un utente a una postazione (per la scheda Anagrafica Utenti). */
