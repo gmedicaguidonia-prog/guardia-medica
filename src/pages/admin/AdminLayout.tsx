@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper, ClipboardCheck, Lock } from 'lucide-react'
+import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper, ClipboardCheck, Lock, ArrowRightLeft } from 'lucide-react'
 import type { AuthUser, CambioTurno } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
@@ -83,6 +83,15 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
     setMeseAnno(a, m)
   }
+  // Badge "Cambi turno": porta a Turni del Mese impostando il mese del cambio più vecchio in attesa.
+  async function vaiAiCambi() {
+    const primo = cambiPend[0]
+    if (!primo) return
+    if (hasUnsaved && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Vuoi uscire senza salvarle?', confirmLabel: 'Esci senza salvare', danger: true }))) return
+    const [a, m] = primo.mese.split('-').map(Number)
+    setMeseAnno(a, m)
+    navigate('/admin/turni')
+  }
 
   return (
     <div className="flex h-[calc(100vh-48px)]">
@@ -102,28 +111,23 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
 
         {visibleLinks.map(({ to, label, Icon, num }) => {
           const isActive = location.pathname === to || (to !== '/admin' && location.pathname.startsWith(to + '/'))
-          const nBadge = to === '/admin/turni' ? nCambi : 0   // cambi turno da approvare
           return (
             <button
               key={to}
               onClick={() => handleNav(to)}
-              title={nBadge > 0 ? `${label} · ${nBadge} cambio turno da approvare` : label}
-              className={`relative flex items-center gap-2 py-2.5 text-sm transition-colors text-left w-full ${collapsed ? 'justify-center px-0' : 'px-4'}`}
+              title={label}
+              className={`flex items-center gap-2 py-2.5 text-sm transition-colors text-left w-full ${collapsed ? 'justify-center px-0' : 'px-4'}`}
               style={isActive ? { background: 'var(--t-primario)', color: '#fff' } : { color: 'var(--t-soft)' }}
               onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#fff' }}
               onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = 'var(--t-soft)' }}
             >
               {collapsed ? (
-                <>
-                  {num != null ? <NumCircle num={num} size={20} /> : <Icon size={18} />}
-                  {nBadge > 0 && <span style={{ position: 'absolute', top: 4, right: 6, minWidth: 15, height: 15, borderRadius: 8, background: '#f59e0b', color: '#fff', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '1.5px solid var(--t-notte)' }}>{nBadge}</span>}
-                </>
+                num != null ? <NumCircle num={num} size={20} /> : <Icon size={18} />
               ) : (
                 <>
                   {num != null ? <NumCircle num={num} /> : <span className="shrink-0" style={{ width: 18 }} />}
                   <Icon size={15} className="shrink-0" />
                   <span className="leading-tight">{label}</span>
-                  {nBadge > 0 && <span className="ml-auto shrink-0" style={{ background: '#f59e0b', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 9, padding: '1px 6px', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' }}>{nBadge}</span>}
                 </>
               )}
             </button>
@@ -186,6 +190,19 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
             ))}
           </div>
         </div>
+
+        {/* Cambi turno da approvare: badge arancione in fondo, sotto i quadratini del tema */}
+        {nCambi > 0 && (
+          <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+            <button onClick={vaiAiCambi} title={`${nCambi} cambio turno da approvare — vai a Turni del Mese`}
+              className={`rounded-lg transition-transform hover:scale-[1.03] ${collapsed ? 'mx-auto flex flex-col items-center gap-0.5 px-1.5 py-1' : 'mx-4 flex items-center gap-2 px-2.5 py-1.5'}`}
+              style={{ background: '#f59e0b', color: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+              <ArrowRightLeft size={collapsed ? 15 : 14} className="shrink-0" />
+              {!collapsed && <span className="text-xs font-semibold leading-tight">Cambi turno</span>}
+              <span className={collapsed ? 'text-[11px] font-extrabold leading-none' : 'ml-auto text-[11px] font-extrabold rounded-full px-1.5'} style={collapsed ? undefined : { background: 'rgba(0,0,0,0.20)' }}>{nCambi}</span>
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Contenuto: wrapper a colonna alto almeno quanto l'area → i pulsanti mese
