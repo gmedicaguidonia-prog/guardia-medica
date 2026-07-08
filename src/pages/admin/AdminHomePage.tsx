@@ -8,7 +8,7 @@ import { usePostazione } from '../../contexts/PostazioneContext'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { NOTIFICA_CATEGORIE, categoriaNotifica } from '../../types'
-import type { ConfigVersione, DesiderataFinestra, Notifica } from '../../types'
+import type { ConfigVersione, DesiderataFinestra, Notifica, CambioTurno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 function meseKeyOffset(off: number): string {
@@ -52,8 +52,13 @@ export function AdminHomePage() {
   const qc = useQueryClient()
   const { data: notifiche = [] } = useQuery<Notifica[]>({ queryKey: ['notifiche-admin', postazioneId], queryFn: () => store.getNotificheAdmin(postazioneId!), enabled: !!postazioneId })
   useEffect(() => { if (postazioneId) store.cleanupNotifiche(postazioneId).catch(() => {}) }, [postazioneId])
+  // Cambi turno in attesa (riquadro dedicato, aggiornato in tempo reale)
+  const { data: cambiPend = [] } = useQuery<CambioTurno[]>({ queryKey: ['cambi-pendenti', postazioneId], queryFn: () => store.getCambiPendenti(postazioneId!), enabled: !!postazioneId })
   // tempo reale: nuovi eventi compaiono nel Centro Notifiche senza ricaricare
-  useRealtimePostazione(postazioneId, [{ tabella: 'notifiche', invalida: [['notifiche-admin', postazioneId]] }])
+  useRealtimePostazione(postazioneId, [
+    { tabella: 'notifiche',   invalida: [['notifiche-admin', postazioneId]] },
+    { tabella: 'cambi_turno', invalida: [['cambi-pendenti', postazioneId]] },
+  ])
   // Il CORPO mostra le notifiche del MESE SELEZIONATO (raggruppate per categoria);
   // un riepilogo a chip dà visibilità ai NON letti degli ALTRI mesi (anche non mostrati).
   const notificheMese = useMemo(() => notifiche.filter(n => n.mese === meseKey), [notifiche, meseKey])
@@ -135,11 +140,31 @@ export function AdminHomePage() {
           ))}
         </section>
 
-        {/* Funzioni in arrivo (placeholder) */}
+        {/* Cambi turno: richieste in attesa di approvazione */}
         <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">In arrivo</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <PlaceholderCard Icon={ArrowRightLeft} titolo="Cambi turno" descr="Avvisi delle richieste e dei cambi turno effettuati dai turnisti." />
+          <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500">Cambi turno</h2>
+          <div className="card p-4">
+            <div className="flex items-center gap-2 mb-1.5">
+              <ArrowRightLeft size={16} style={{ color: cambiPend.length ? '#b45309' : '#9ca3af' }} />
+              <span className="font-semibold text-sm text-stone-700">Richieste di cambio turno</span>
+              {cambiPend.length > 0 && <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#f59e0b', color: '#fff' }}>{cambiPend.length} in attesa</span>}
+            </div>
+            {cambiPend.length === 0 ? (
+              <p className="text-xs text-stone-500">Nessuna richiesta in attesa di approvazione.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {cambiPend.slice(0, 5).map(c => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
+                    <span className="text-xs flex-1 leading-tight" style={{ color: 'var(--t-testo)' }}>
+                      {c.descrizione || `Cambio del ${c.data}`}
+                      {c.forzato && <span className="ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded align-middle" style={{ background: '#fee2e2', color: '#b91c1c' }}>FORZATO</span>}
+                    </span>
+                    <button onClick={() => { vaiAlMese(c.mese); navigate('/admin/turni') }} className="btn-primary text-[11px] py-0.5 px-2.5 shrink-0">Vai</button>
+                  </div>
+                ))}
+                {cambiPend.length > 5 && <p className="text-[10px] text-stone-400">…e {cambiPend.length - 5} altr{cambiPend.length - 5 === 1 ? 'a' : 'e'}.</p>}
+              </div>
+            )}
           </div>
         </section>
 

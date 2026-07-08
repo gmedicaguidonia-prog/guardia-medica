@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno, Festivita } from '../types'
+import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno, Festivita, CambioTurno, TurnoPersona } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -205,7 +205,9 @@ const supaStore = {
     return (data ?? []).map(r => r.mese as string)
   },
   async attivaPasso(postazioneId: string, mese: string, passo: number, autore?: string | null): Promise<void> {
-    const { error } = await supabase.from('attivazioni_mese').upsert({ postazione_id: postazioneId, mese, passo, autore: autore ?? _autoreCorrente }, { onConflict: 'postazione_id,mese,passo' })
+    // ignoreDuplicates: se il passo è già attivo non serve toccare la riga (resta l'autore
+    // della PRIMA attivazione) — e la ri-conferma non può fallire per RLS/duplicati.
+    const { error } = await supabase.from('attivazioni_mese').upsert({ postazione_id: postazioneId, mese, passo, autore: autore ?? _autoreCorrente }, { onConflict: 'postazione_id,mese,passo', ignoreDuplicates: true })
     if (error) throw error
   },
   async disattivaMese(postazioneId: string, mese: string): Promise<void> {
@@ -345,6 +347,56 @@ const supaStore = {
   async setEmailMittente(postazioneId: string, email: string): Promise<void> {
     const { error } = await supabase.from('postazione_impostazioni').upsert({ postazione_id: postazioneId, email_mittente: email || null, updated_at: new Date().toISOString() }, { onConflict: 'postazione_id' })
     if (error) throw error
+  },
+
+  // ── Cambi turno (cessione con eventuale approvazione) ──
+  async getCambiMese(postazioneId: string, mese: string): Promise<CambioTurno[]> {
+    const { data, error } = await supabase.from('cambi_turno').select('*').eq('postazione_id', postazioneId).eq('mese', mese).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []) as CambioTurno[]
+  },
+  async getCambiPendenti(postazioneId: string): Promise<CambioTurno[]> {
+    const { data, error } = await supabase.from('cambi_turno').select('*').eq('postazione_id', postazioneId).eq('stato', 'in_attesa').order('created_at')
+    if (error) throw error
+    return (data ?? []) as CambioTurno[]
+  },
+  async richiediCambio(postazioneId: string, data: string, turnoSchemaId: string, slot: number, daTurnista: string, aTurnista: string, forzato: boolean, descrizione: string, autore?: string | null): Promise<{ auto: boolean }> {
+    const { data: out, error } = await supabase.rpc('crea_cambio_turno', {
+      p_postazione: postazioneId, p_data: data, p_turno: turnoSchemaId, p_slot: slot,
+      p_da: daTurnista, p_a: aTurnista, p_forzato: forzato, p_descrizione: descrizione, p_autore: autore ?? _autoreCorrente,
+    })
+    if (error) throw error
+    return { auto: !!(out as { auto?: boolean } | null)?.auto }
+  },
+  async decidiCambio(cambioId: string, approva: boolean, autore?: string | null): Promise<void> {
+    const { error } = await supabase.rpc('decidi_cambio_turno', { p_cambio: cambioId, p_approva: approva, p_autore: autore ?? _autoreCorrente })
+    if (error) throw error
+  },
+  // Tutti i turni (slot ≥ 0) di una PERSONA (per utente, su ogni postazione) nella data
+  // indicata e nel giorno precedente (per intercettare le notti che sconfinano).
+  async getTurniPersonaData(utenteId: string, data: string): Promise<TurnoPersona[]> {
+    const { data: membs, error: e1 } = await supabase.from('turnisti').select('id, postazione_id').eq('utente_id', utenteId)
+    if (e1) throw e1
+    const ids = (membs ?? []).map(m => m.id as string)
+    if (!ids.length) return []
+    const [y, m, d] = data.split('-').map(Number)
+    const prima = new Date(y, m - 1, d - 1)
+    const primaIso = `${prima.getFullYear()}-${String(prima.getMonth() + 1).padStart(2, '0')}-${String(prima.getDate()).padStart(2, '0')}`
+    const { data: rows, error: e2 } = await supabase.from('turni').select('data, slot, turno_schema_id, postazione_id').in('turnista_id', ids).in('data', [data, primaIso]).gte('slot', 0)
+    if (e2) throw e2
+    if (!rows?.length) return []
+    const turnoIds = [...new Set(rows.map(r => r.turno_schema_id as string))]
+    const postIds = [...new Set(rows.map(r => r.postazione_id as string))]
+    const [{ data: schemi }, { data: posts }] = await Promise.all([
+      supabase.from('schema_turni').select('id, nome, ora_inizio, ora_fine').in('id', turnoIds),
+      supabase.from('postazioni').select('id, nome').in('id', postIds),
+    ])
+    const sById = new Map((schemi ?? []).map(s => [s.id as string, s]))
+    const pById = new Map((posts ?? []).map(p => [p.id as string, p.nome as string]))
+    return rows.map(r => {
+      const s = sById.get(r.turno_schema_id as string)
+      return { data: r.data as string, ora_inizio: (s?.ora_inizio as string) ?? '00:00', ora_fine: (s?.ora_fine as string) ?? '00:00', turnoNome: (s?.nome as string) ?? 'Turno', postazioneNome: pById.get(r.postazione_id as string) ?? '—' }
+    })
   },
   async setSuperfestivoTurni(postazioneId: string, mese: string, data: string, turnoSchemaIds: string[]): Promise<void> {
     const del = await supabase.from('superfestivo_turni').delete().eq('postazione_id', postazioneId).eq('mese', mese).eq('data', data)
@@ -1142,6 +1194,66 @@ const localStore = {
   },
   async setEmailMittente(postazioneId: string, email: string): Promise<void> {
     const m = read<Record<string, string>>('gm_email_mittente', {}); m[postazioneId] = email; writeLs('gm_email_mittente', m)
+  },
+
+  // ── Cambi turno (DEV) — replica la logica delle RPC ──
+  async getCambiMese(postazioneId: string, mese: string): Promise<CambioTurno[]> {
+    return read<CambioTurno[]>('gm_cambi_turno', []).filter(c => (c as CambioTurno & { postazione_id?: string }).postazione_id === postazioneId && c.mese === mese).sort((a, b) => b.created_at.localeCompare(a.created_at))
+  },
+  async getCambiPendenti(postazioneId: string): Promise<CambioTurno[]> {
+    return read<CambioTurno[]>('gm_cambi_turno', []).filter(c => (c as CambioTurno & { postazione_id?: string }).postazione_id === postazioneId && c.stato === 'in_attesa').sort((a, b) => a.created_at.localeCompare(b.created_at))
+  },
+  async richiediCambio(postazioneId: string, data: string, turnoSchemaId: string, slot: number, daTurnista: string, aTurnista: string, forzato: boolean, descrizione: string, autore?: string | null): Promise<{ auto: boolean }> {
+    const mese = data.slice(0, 7)
+    const turni = read<WithPost<Turno>[]>(LS_TURNI, [])
+    const own = turni.find(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId && t.data === data && t.turno_schema_id === turnoSchemaId && t.slot === slot && t.turnista_id === daTurnista)
+    if (!own) throw new Error('Il turno non risulta (più) assegnato al cedente.')
+    const cambi = read<(CambioTurno & { postazione_id: string })[]>('gm_cambi_turno', [])
+    if (cambi.some(c => c.postazione_id === postazioneId && c.data === data && c.turno_schema_id === turnoSchemaId && c.slot === slot && c.stato === 'in_attesa')) throw new Error('Esiste già una richiesta di cambio in attesa per questo turno.')
+    const regole = await localStore.getRegoleVersioneMese(postazioneId, mese)
+    const auto = !!regole?.cambio_auto
+    const nuovo: CambioTurno & { postazione_id: string } = {
+      id: uid(), postazione_id: postazioneId, mese, data, turno_schema_id: turnoSchemaId, slot,
+      da_turnista: daTurnista, a_turnista: aTurnista, stato: auto ? 'approvato' : 'in_attesa', forzato,
+      descrizione, richiesto_da: autore ?? _autoreCorrente, created_at: new Date().toISOString(),
+      deciso_da: auto ? 'automatico' : null, deciso_il: auto ? new Date().toISOString() : null,
+    }
+    if (auto) {
+      writeLs(LS_TURNI, turni.map(t => t === own ? { ...t, turnista_id: aTurnista } : t))
+      await localStore.addTurnistaMese(postazioneId, mese, aTurnista, read<WithPost<Turnista>[]>(LS_TURNISTI, []).find(t => t.id === aTurnista)?.livello)
+    }
+    writeLs('gm_cambi_turno', [...cambi, nuovo])
+    return { auto }
+  },
+  async decidiCambio(cambioId: string, approva: boolean, autore?: string | null): Promise<void> {
+    const cambi = read<(CambioTurno & { postazione_id: string })[]>('gm_cambi_turno', [])
+    const c = cambi.find(x => x.id === cambioId)
+    if (!c) throw new Error('Richiesta di cambio non trovata.')
+    if (c.stato !== 'in_attesa') throw new Error(`Richiesta già decisa (${c.stato}).`)
+    if (approva) {
+      const turni = read<WithPost<Turno>[]>(LS_TURNI, [])
+      const own = turni.find(t => (t.postazione_id ?? DEV_POSTAZIONE) === c.postazione_id && t.data === c.data && t.turno_schema_id === c.turno_schema_id && t.slot === c.slot && t.turnista_id === c.da_turnista)
+      if (!own) throw new Error('Il turno non risulta (più) assegnato al cedente: cambio non applicabile.')
+      writeLs(LS_TURNI, turni.map(t => t === own ? { ...t, turnista_id: c.a_turnista } : t))
+      await localStore.addTurnistaMese(c.postazione_id, c.mese, c.a_turnista, read<WithPost<Turnista>[]>(LS_TURNISTI, []).find(t => t.id === c.a_turnista)?.livello)
+    }
+    writeLs('gm_cambi_turno', cambi.map(x => x.id === cambioId ? { ...x, stato: approva ? 'approvato' : 'rifiutato', deciso_da: autore ?? _autoreCorrente, deciso_il: new Date().toISOString() } : x))
+  },
+  async getTurniPersonaData(utenteId: string, data: string): Promise<TurnoPersona[]> {
+    const membs = read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.utente_id ?? t.id) === utenteId)
+    const ids = new Set(membs.map(m => m.id))
+    if (!ids.size) return []
+    const [y, m, d] = data.split('-').map(Number)
+    const prima = new Date(y, m - 1, d - 1)
+    const primaIso = `${prima.getFullYear()}-${String(prima.getMonth() + 1).padStart(2, '0')}-${String(prima.getDate()).padStart(2, '0')}`
+    const schema = read<TurnoSchema[]>(LS_SCHEMA, [])
+    const posts = read<Postazione[]>(LS_POSTAZIONI, [])
+    return read<WithPost<Turno>[]>(LS_TURNI, [])
+      .filter(t => t.turnista_id && ids.has(t.turnista_id) && t.slot >= 0 && (t.data === data || t.data === primaIso))
+      .map(t => {
+        const s = schema.find(x => x.id === t.turno_schema_id)
+        return { data: t.data, ora_inizio: s?.ora_inizio ?? '00:00', ora_fine: s?.ora_fine ?? '00:00', turnoNome: s?.nome ?? 'Turno', postazioneNome: posts.find(p => p.id === (t.postazione_id ?? DEV_POSTAZIONE))?.nome ?? '—' }
+      })
   },
   async addTurnoSchema(versioneId: string, input: NuovoTurnoInput): Promise<TurnoSchema> {
     const list = read<TurnoSchema[]>(LS_SCHEMA, [])

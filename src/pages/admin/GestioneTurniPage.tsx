@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser, History, Star } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, AlertCircle, AlertTriangle, Save, RotateCcw, X, Phone, UserPlus, Check, Moon, Sun, Wand2, Eye, EyeOff, Users, LayoutGrid, Eraser, History, Star, ArrowRightLeft } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello, STATI_CALENDARIO, STATO_CALENDARIO_STILE } from '../../types'
 import { giorniDelMese, turnoSiApplica } from '../../lib/turniLogic'
@@ -22,7 +22,7 @@ import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
-import type { TurnoSchema, Turnista, TurnistaMese, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser, BackupTurni } from '../../types'
+import type { TurnoSchema, Turnista, TurnistaMese, Turno, Livello, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno, AuthUser, BackupTurni, CambioTurno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -76,13 +76,32 @@ export function GestioneTurniPage() {
   const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente salvataggi
   const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
   const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
-  // Tempo reale: candidature in arrivo, turni, stato calendario, desiderata.
+  // Cambi turno del mese (le richieste in attesa si approvano/rifiutano qui)
+  const { data: cambi = [] } = useQuery<CambioTurno[]>({ queryKey: ['cambi', postazioneId, meseKey], queryFn: () => store.getCambiMese(postazioneId!, meseKey), enabled: !!postazioneId })
+  const cambiPendenti = useMemo(() => cambi.filter(c => c.stato === 'in_attesa'), [cambi])
+  const [decidendo, setDecidendo] = useState<string | null>(null)
+  async function decidiCambioTurno(c: CambioTurno, approva: boolean) {
+    if (finalizzato) { await notify({ title: 'Mese finalizzato', message: 'Sblocca il mese dalla pagina ⑧ Finalizzazione per decidere i cambi turno.' }); return }
+    setDecidendo(c.id)
+    try {
+      await store.decidiCambio(c.id, approva)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'cambio_turno', messaggio: `Cambio turno ${approva ? 'APPROVATO' : 'RIFIUTATO'}: ${c.descrizione}.`, target: '/admin/turni', perAdmin: true }).catch(() => {})
+      await qc.invalidateQueries({ queryKey: ['cambi', postazioneId] })
+      await qc.invalidateQueries({ queryKey: ['turni', postazioneId] })
+      await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId] })
+    } catch (e) {
+      await notify({ title: 'Cambio non applicato', message: (e as Error).message })
+      await qc.invalidateQueries({ queryKey: ['cambi', postazioneId] })
+    } finally { setDecidendo(null) }
+  }
+  // Tempo reale: candidature in arrivo, turni, stato calendario, desiderata, cambi turno.
   // Le modifiche NON salvate restano (useStagedAssignments riallinea solo se non si sta editando).
   useRealtimePostazione(postazioneId, [
     { tabella: 'richieste_turno', invalida: [['richieste', postazioneId]] },
     { tabella: 'turni',           invalida: [['turni', postazioneId]] },
     { tabella: 'turni_stato',     invalida: [['turni-stato', postazioneId]] },
     { tabella: 'desiderata',      invalida: [['desiderata', postazioneId]] },
+    { tabella: 'cambi_turno',     invalida: [['cambi', postazioneId]] },
   ])
   // ordinate per giorno crescente (stesso giorno raggruppato), poi per turno e arrivo
   const richiesteOrdinate = useMemo(() => {
@@ -803,6 +822,27 @@ export function GestioneTurniPage() {
 
         {/* Una griglia per foglio (passo ④ Impaginazione) */}
         <div className="flex-1 min-w-0 space-y-4">
+          {/* Cambi turno in attesa di approvazione */}
+          {cambiPendenti.length > 0 && (
+            <div className="card p-3" style={{ border: '1px solid #fcd34d', background: '#fffbeb' }}>
+              <h3 className="text-sm font-bold flex items-center gap-1.5 mb-2" style={{ color: '#92400e' }}>
+                <ArrowRightLeft size={15} /> Cambi turno da approvare · {cambiPendenti.length}
+              </h3>
+              <div className="space-y-1.5">
+                {cambiPendenti.map(c => (
+                  <div key={c.id} className="flex items-center gap-2 flex-wrap rounded-lg px-2.5 py-1.5" style={{ background: '#fff', border: '1px solid #fde68a' }}>
+                    <span className="text-sm flex-1 min-w-[220px]" style={{ color: 'var(--t-testo)' }}>
+                      {c.descrizione || `${nomeTurnista(c.da_turnista)} → ${nomeTurnista(c.a_turnista)} — ${c.data}`}
+                      {c.forzato && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded align-middle" style={{ background: '#fee2e2', color: '#b91c1c' }} title="Il richiedente ha forzato una sovrapposizione d'orario">FORZATO</span>}
+                    </span>
+                    <span className="text-[10px] text-stone-400 shrink-0">{c.richiesto_da ?? ''}</span>
+                    <button onClick={() => decidiCambioTurno(c, true)} disabled={decidendo === c.id} className="text-xs font-semibold px-2.5 py-1 rounded-lg disabled:opacity-50" style={{ background: '#2e7d32', color: '#fff' }}>Approva</button>
+                    <button onClick={() => decidiCambioTurno(c, false)} disabled={decidendo === c.id} className="text-xs font-semibold px-2.5 py-1 rounded-lg disabled:opacity-50" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}>Rifiuta</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {righePerFoglio.map(({ foglio, righe: righeF }) => (
           <div key={foglio.id} className="card overflow-auto">
             <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>

@@ -1,13 +1,14 @@
 import { useState, useMemo, useEffect } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star } from 'lucide-react'
+import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2 } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
 import { useFestivita } from '../hooks/useFestivita'
 import { useFinalizzato } from '../hooks/useFinalizzato'
 import { nomeCompleto, cmpTurnisti } from '../types'
+import type { TurnoPersona } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
 import { useRealtimePostazione } from '../hooks/useRealtime'
@@ -109,6 +110,26 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     desiderata.filter(d => d.turnista_id === mia?.membershipId).forEach(d => m.set(`${d.data}|${d.turno_schema_id}`, d.tipo))
     return m
   }, [desiderata, mia])
+
+  // ── CAMBI TURNO: click sul nome → tooltip «Chiedi cambio?» → procedura guidata ──
+  //  Ognuno può cedere SOLO i propri turni; admin e supervisori possono avviare il
+  //  cambio per chiunque (il server verifica comunque i permessi per postazione).
+  const puoGestireCambi = user?.livello === 'admin' || !!user?.isSupervisore
+  const cambiAttivi = statoCal !== 'non_pubblicato' && !finalizzato
+  const [tipCambio, setTipCambio] = useState<{ x: number; y: number; ds: string; turno: TurnoSchema; slot: number; da: string } | null>(null)
+  const [wizCambio, setWizCambio] = useState<{ ds: string; turno: TurnoSchema; slot: number; da: string } | null>(null)
+  function clickTurnista(e: ReactMouseEvent, ds: string, turno: TurnoSchema, id: string, slotRep?: number) {
+    if (!cambiAttivi) return
+    if (id !== mia?.membershipId && !puoGestireCambi) return
+    const slot = slotRep ?? turni.find(t => t.data === ds && t.turno_schema_id === turno.id && t.turnista_id === id && t.slot >= 0)?.slot
+    if (slot === undefined) return
+    setTipCambio({ x: e.clientX, y: e.clientY, ds, turno, slot, da: id })
+  }
+  function cambioFatto() {
+    qc.invalidateQueries({ queryKey: ['turni', postazioneId] })
+    qc.invalidateQueries({ queryKey: ['turnisti', postazioneId] })
+    qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId] })
+  }
 
   // pianificazione: i turni per cui IO ho già inviato una richiesta di candidatura
   const mieRichieste = useMemo(() => {
@@ -336,9 +357,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                             <td style={{ ...tdBase, wordBreak: 'break-word' }}>
                               <div className="flex flex-wrap gap-1.5 items-center">
                                 {ids.length === 0 && !(pianificazione && mancano > 0) && <span className="text-[11px] text-stone-300 italic">—</span>}
-                                {ids.map(id => {
+                                {ids.map((id, idx) => {
                                   const io = id === mia?.membershipId
-                                  return <span key={id} className="rounded px-2 py-0.5 text-[11px] font-medium" style={io ? { background: '#2e7d32', color: '#fff' } : { background: 'var(--t-tenue)', color: 'var(--t-testo)' }}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</span>
+                                  const stile = io ? { background: '#2e7d32', color: '#fff' } : { background: 'var(--t-tenue)', color: 'var(--t-testo)' }
+                                  const cliccabile = cambiAttivi && (io || puoGestireCambi)
+                                  return cliccabile
+                                    ? <button key={`${id}|${idx}`} onClick={e => clickTurnista(e, ds, turno, id)} title="Chiedi il cambio di questo turno"
+                                        className="rounded px-2 py-0.5 text-[11px] font-medium transition-transform hover:scale-105"
+                                        style={{ ...stile, cursor: 'pointer', border: io ? '1px solid #1b5e20' : '1px solid rgba(0,0,0,0.08)' }}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</button>
+                                    : <span key={`${id}|${idx}`} className="rounded px-2 py-0.5 text-[11px] font-medium" style={stile}>{nomeById.get(id) ?? '—'}{io && ' (tu)'}</span>
                                 })}
                                 {pianificazione && mancano > 0 && (hoChiesto ? (
                                   <button onClick={() => setAnnulla({ ds, turno })} title="Proposta inviata — clicca per annullarla" className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold transition-transform hover:scale-105" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', cursor: 'pointer' }}><Clock size={10} /> Proposta inviata</button>
@@ -354,7 +381,11 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                             {hasRep && (
                               <td style={{ ...tdBase, wordBreak: 'break-word' }}>
                                 {rep
-                                  ? <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium" style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff' } : { background: '#fff5e6', color: '#92400e' }} title="Reperibile"><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</span>
+                                  ? (cambiAttivi && (rep === mia?.membershipId || puoGestireCambi)
+                                    ? <button onClick={e => clickTurnista(e, ds, turno, rep, REP)} title="Chiedi il cambio di questa reperibilità"
+                                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-transform hover:scale-105"
+                                        style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff', cursor: 'pointer' } : { background: '#fff5e6', color: '#92400e', cursor: 'pointer' }}><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</button>
+                                    : <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium" style={rep === mia?.membershipId ? { background: '#b45309', color: '#fff' } : { background: '#fff5e6', color: '#92400e' }} title="Reperibile"><Phone size={10} /> {nomeById.get(rep) ?? '—'}{rep === mia?.membershipId && ' (tu)'}</span>)
                                   : <span className="text-[11px] text-stone-300 italic">—</span>}
                               </td>
                             )}
@@ -551,6 +582,28 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             </div>
           )}
 
+          {/* CAMBIO TURNO: tooltip «Chiedi cambio?» sul nome cliccato */}
+          {tipCambio && (
+            <div className="fixed inset-0" style={{ zIndex: 45 }} onClick={() => setTipCambio(null)}>
+              <button onClick={e => { e.stopPropagation(); setWizCambio({ ds: tipCambio.ds, turno: tipCambio.turno, slot: tipCambio.slot, da: tipCambio.da }); setTipCambio(null) }}
+                className="fixed flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg shadow-lg transition-transform hover:scale-105"
+                style={{ top: Math.max(8, Math.min(tipCambio.y + 10, window.innerHeight - 56)), left: Math.max(8, Math.min(tipCambio.x - 30, window.innerWidth - 190)), background: 'var(--t-notte)', color: '#fff', zIndex: 46, animation: 'fadeSlideIn 120ms ease-out' }}>
+                <ArrowRightLeft size={14} /> Chiedi cambio?
+              </button>
+            </div>
+          )}
+
+          {/* CAMBIO TURNO: procedura guidata */}
+          {wizCambio && postazioneId && (
+            <CambioTurnoWizard
+              postazioneId={postazioneId}
+              postazioneNome={opzioni.find(o => o.postazioneId === postazioneId)?.nome ?? ''}
+              ds={wizCambio.ds} turno={wizCambio.turno} slot={wizCambio.slot} da={wizCambio.da}
+              personale={personale} livMese={livMese} nomeById={nomeById}
+              onChiudi={() => setWizCambio(null)} onFatto={cambioFatto}
+            />
+          )}
+
           {/* Modal: esito annullamento (già approvata / già rifiutata) */}
           {annullaMsg && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setAnnullaMsg(null)}>
@@ -563,6 +616,185 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ─── Utilità cambi turno ─────────────────────────────────────────────
+function itDs(ds: string): string { const [a, m, g] = ds.split('-'); return `${g}/${m}/${a}` }
+/** Turni della persona che si SOVRAPPONGONO al turno target (gestisce le notti a cavallo). */
+function sovrapposti(turniPersona: TurnoPersona[], ds: string, turno: TurnoSchema): TurnoPersona[] {
+  const hm = (s: string) => { const [h, mi] = s.split(':').map(Number); return h * 60 + mi }
+  const range = (base: number, i: string, f: string): [number, number] => { const s = base + hm(i); let e = base + hm(f); if (e <= s) e += 1440; return [s, e] }
+  const [ts, te] = range(0, turno.ora_inizio, turno.ora_fine)
+  return turniPersona.filter(t => { const [s, e] = range(t.data === ds ? 0 : -1440, t.ora_inizio, t.ora_fine); return s < te && ts < e })
+}
+
+/** Procedura guidata «Chiedi cambio»: cede il turno (data, turno, slot) di `da` a un
+ *  collega scelto dalla lista (turnisti poi esterni) o a un NUOVO esterno creato al volo.
+ *  Controlla le sovrapposizioni d'orario del destinatario (forzabili); con il flag
+ *  «cambio automaticamente approvato» delle Regole il cambio è immediato, altrimenti
+ *  resta in attesa dell'approvazione del responsabile (pagina Turni del Mese). */
+function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, personale, livMese, nomeById, onChiudi, onFatto }: {
+  postazioneId: string; postazioneNome: string; ds: string; turno: TurnoSchema; slot: number; da: string
+  personale: Turnista[]; livMese: (id: string) => Livello; nomeById: Map<string, string>
+  onChiudi: () => void; onFatto: () => void
+}) {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+  const [nuovo, setNuovo] = useState(false)
+  const [destId, setDestId] = useState('')
+  const [extra, setExtra] = useState<Turnista[]>([])
+  const [nNome, setNNome] = useState(''); const [nCognome, setNCognome] = useState(''); const [nEmail, setNEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [conflitti, setConflitti] = useState<TurnoPersona[]>([])
+  const [esito, setEsito] = useState<'auto' | 'attesa' | null>(null)
+
+  const tutti = useMemo(() => { const m = new Map(personale.map(p => [p.id, p])); extra.forEach(p => m.set(p.id, p)); return [...m.values()] }, [personale, extra])
+  const candidati = useMemo(() => tutti.filter(p => p.id !== da), [tutti, da])
+  const gTurnisti = useMemo(() => candidati.filter(p => livMese(p.id) !== 'esterno').sort(cmpTurnisti), [candidati, livMese])
+  const gEsterni = useMemo(() => candidati.filter(p => livMese(p.id) === 'esterno').sort(cmpTurnisti), [candidati, livMese])
+  const dest = tutti.find(p => p.id === destId) ?? null
+  const repLabel = slot < 0 ? ' (reperibilità)' : ''
+  const nomeTurno = `${turno.nome || 'Turno'} ${turno.ora_inizio}–${turno.ora_fine}${repLabel}`
+
+  async function creaEsterno() {
+    if (!nNome.trim() || !nCognome.trim() || !nEmail.trim()) { setErr('Nome, cognome ed email sono obbligatori.'); return }
+    setBusy(true); setErr(null)
+    try {
+      await store.addMembro(postazioneId, { nome: nNome.trim(), cognome: nCognome.trim(), email: nEmail.trim(), livello: 'esterno' })
+      const lista = await store.getTurnisti(postazioneId)
+      const trovato = lista.find(p => p.email.toLowerCase() === nEmail.trim().toLowerCase())
+      if (trovato) { setExtra(x => [...x.filter(e => e.id !== trovato.id), trovato]); setDestId(trovato.id) }
+      setNuovo(false); setNNome(''); setNCognome(''); setNEmail('')
+    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  async function invia(forza: boolean) {
+    if (!dest) return
+    setBusy(true); setErr(null)
+    try {
+      if (!forza) {
+        const turniDest = await store.getTurniPersonaData(dest.utente_id, ds)
+        const conf = sovrapposti(turniDest, ds, turno)
+        if (conf.length) { setConflitti(conf); setStep(3); setBusy(false); return }
+      }
+      const descr = `${nomeById.get(da) ?? '—'} → ${nomeCompleto(dest)} — ${nomeTurno} di ${itDs(ds)} (${postazioneNome})`
+      const { auto } = await store.richiediCambio(postazioneId, ds, turno.id, slot, da, dest.id, forza, descr)
+      store.addNotifica({ postazioneId, mese: ds.slice(0, 7), tipo: 'cambio_turno', messaggio: auto ? `Cambio turno effettuato automaticamente: ${descr}.` : `Richiesta di cambio turno da approvare: ${descr}.`, target: '/admin/turni', perAdmin: true }).catch(() => {})
+      setEsito(auto ? 'auto' : 'attesa'); setStep(4); onFatto()
+    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
+  const Riepilogo = (
+    <div className="rounded-lg p-3 mb-3 text-sm" style={{ background: 'var(--t-tenue)', color: 'var(--t-testo)' }}>
+      <p><strong>{nomeTurno}</strong></p>
+      <p>{itDs(ds)} · {postazioneNome}</p>
+      <p className="mt-1">Turno di <strong>{nomeById.get(da) ?? '—'}</strong></p>
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => !busy && onChiudi()}>
+      <div className="card w-full max-w-md p-5" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-2">
+          <ArrowRightLeft size={18} style={{ color: 'var(--t-accento)' }} />
+          <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Cambio turno {step < 4 && <span className="text-xs font-semibold text-stone-400">· passo {step === 3 ? 2 : step} di 2</span>}</h3>
+        </div>
+
+        {step === 1 && (
+          <>
+            <p className="text-sm text-stone-600 mb-2">Vuoi chiedere il <strong>cambio</strong> di questo turno?</p>
+            {Riepilogo}
+            <div className="flex justify-end gap-2">
+              <button onClick={onChiudi} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
+              <button onClick={() => setStep(2)} className="btn-primary text-sm py-1.5 px-4">Sì, continua</button>
+            </div>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <p className="text-sm text-stone-600 mb-2">A <strong>chi</strong> vuoi cedere il turno?</p>
+            {Riepilogo}
+            {!nuovo ? (
+              <>
+                <div className="max-h-56 overflow-auto rounded-lg border mb-2" style={{ borderColor: 'var(--t-riga)' }}>
+                  {[{ label: 'Turnisti', items: gTurnisti }, { label: 'Esterni', items: gEsterni }].filter(g => g.items.length).map(g => (
+                    <div key={g.label}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider px-2.5 pt-2 pb-1" style={{ color: 'var(--t-etichetta)' }}>{g.label}</p>
+                      {g.items.map(p => (
+                        <button key={p.id} onClick={() => setDestId(p.id)}
+                          className="w-full text-left px-2.5 py-1.5 text-sm flex items-center gap-2"
+                          style={destId === p.id ? { background: 'var(--t-primario)', color: '#fff', fontWeight: 600 } : { color: 'var(--t-testo)' }}>
+                          {destId === p.id && <Check size={14} />} {nomeCompleto(p)}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                  {gTurnisti.length + gEsterni.length === 0 && <p className="text-sm text-stone-400 italic p-3">Nessuno in lista.</p>}
+                </div>
+                <button onClick={() => { setNuovo(true); setErr(null) }} className="text-xs font-semibold inline-flex items-center gap-1 mb-3" style={{ color: 'var(--t-accento)' }}>
+                  <UserPlus2 size={13} /> Non è in lista? Aggiungilo
+                </button>
+              </>
+            ) : (
+              <div className="rounded-lg border p-3 mb-3 space-y-2" style={{ borderColor: 'var(--t-riga)' }}>
+                <p className="text-xs font-semibold" style={{ color: 'var(--t-titolo)' }}>Nuova persona (verrà inserita come <strong>esterno</strong>)</p>
+                <div className="flex gap-2">
+                  <input type="text" value={nNome} onChange={e => setNNome(e.target.value)} placeholder="Nome" className="input text-sm flex-1" />
+                  <input type="text" value={nCognome} onChange={e => setNCognome(e.target.value)} placeholder="Cognome" className="input text-sm flex-1" />
+                </div>
+                <input type="email" value={nEmail} onChange={e => setNEmail(e.target.value)} placeholder="Indirizzo email" className="input text-sm w-full" />
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setNuovo(false)} disabled={busy} className="btn-secondary text-xs py-1 px-2.5">Indietro</button>
+                  <button onClick={creaEsterno} disabled={busy} className="btn-primary text-xs py-1 px-3">{busy ? 'Aggiungo…' : 'Aggiungi'}</button>
+                </div>
+              </div>
+            )}
+            {err && <p className="text-xs mb-2 inline-flex items-center gap-1" style={{ color: '#b91c1c' }}><AlertTriangle size={12} /> {err}</p>}
+            {!nuovo && (
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setStep(1)} disabled={busy} className="btn-secondary text-sm py-1.5 px-3">Indietro</button>
+                <button onClick={() => invia(false)} disabled={busy || !dest} className="btn-primary text-sm py-1.5 px-4">{busy ? 'Invio…' : 'Invia'}</button>
+              </div>
+            )}
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <div className="rounded-lg p-3 mb-3" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+              <p className="text-sm font-semibold mb-1 inline-flex items-center gap-1.5" style={{ color: '#b91c1c' }}><AlertTriangle size={15} /> Attenzione: sovrapposizione d'orario</p>
+              <p className="text-xs mb-1.5" style={{ color: '#7f1d1d' }}><strong>{dest ? nomeCompleto(dest) : ''}</strong> ha già in quell'orario:</p>
+              <ul className="list-disc ml-4 text-xs space-y-0.5" style={{ color: '#7f1d1d' }}>
+                {conflitti.map((c, i) => <li key={i}>{c.turnoNome} {c.ora_inizio}–{c.ora_fine} di {itDs(c.data)} ({c.postazioneNome})</li>)}
+              </ul>
+            </div>
+            {err && <p className="text-xs mb-2 inline-flex items-center gap-1" style={{ color: '#b91c1c' }}><AlertTriangle size={12} /> {err}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setStep(2); setErr(null) }} disabled={busy} className="btn-secondary text-sm py-1.5 px-3">Indietro</button>
+              <button onClick={() => invia(true)} disabled={busy} className="text-sm font-semibold py-1.5 px-4 rounded-lg" style={{ background: '#dc2626', color: '#fff' }}>{busy ? 'Invio…' : 'Forza comunque'}</button>
+            </div>
+          </>
+        )}
+
+        {step === 4 && (
+          <>
+            {esito === 'auto' ? (
+              <div className="rounded-lg p-3 mb-3 text-sm font-semibold inline-flex items-center gap-2" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>
+                <Check size={16} /> Cambio effettuato: il turno è passato a {dest ? nomeCompleto(dest) : '—'}.
+              </div>
+            ) : (
+              <div className="rounded-lg p-3 mb-3 text-sm" style={{ background: '#fef9c3', color: '#713f12', border: '1px solid #fde047' }}>
+                <p className="font-semibold inline-flex items-center gap-1.5 mb-1"><Clock size={14} /> Richiesta inviata</p>
+                <p className="text-xs">Il cambio sarà effettivo dopo l'<strong>approvazione del responsabile</strong> (che è stato avvisato). Fino ad allora il turno resta a {nomeById.get(da) ?? '—'}.</p>
+              </div>
+            )}
+            <div className="flex justify-end"><button onClick={onChiudi} className="btn-primary text-sm py-1.5 px-4">Chiudi</button></div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

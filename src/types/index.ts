@@ -271,6 +271,27 @@ export const STATO_CALENDARIO_STILE: Record<StatoCalendario, { bg: string; fg: s
 //  se prova ad annullare, sa se è ancora in attesa, già approvata o rifiutata.
 export type StatoRichiesta = 'in_attesa' | 'approvata' | 'rifiutata'
 
+// ─── Cambi turno (CESSIONE di un turno: da A a B, eventualmente con approvazione) ─
+export type StatoCambio = 'in_attesa' | 'approvato' | 'rifiutato' | 'annullato'
+export interface CambioTurno {
+  id: string
+  mese: string               // 'YYYY-MM'
+  data: string               // 'YYYY-MM-DD'
+  turno_schema_id: string
+  slot: number
+  da_turnista: string        // chi cede (turnisti.id)
+  a_turnista: string         // chi riceve (turnisti.id)
+  stato: StatoCambio
+  forzato: boolean           // conflitto d'orario forzato dal richiedente
+  descrizione: string        // riassunto leggibile ("ROSSI M. → VERDI L. — Giorno 15/08…")
+  richiesto_da: string | null
+  created_at: string
+  deciso_da: string | null
+  deciso_il: string | null
+}
+/** Un turno di una persona in una certa data (per il controllo sovrapposizioni). */
+export interface TurnoPersona { data: string; ora_inizio: string; ora_fine: string; turnoNome: string; postazioneNome: string }
+
 export interface RichiestaTurno {
   id: string
   data: string             // 'YYYY-MM-DD'

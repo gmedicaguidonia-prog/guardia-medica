@@ -97,7 +97,7 @@ export function TurnistiPage() {
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Personale di ${MESI[mese - 1]} ${anno} ${nuovaProcedura ? 'confermato' : 'salvato'} (${staged.size} person${staged.size === 1 ? 'a' : 'e'}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId, meseKey] })
       await qc.invalidateQueries({ queryKey: ['attivazioni', postazioneId, meseKey] })
-    } catch (e) { console.error('[Personale] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio del personale.' }) }
+    } catch (e) { console.error('[Personale] salvataggio fallito:', e); void notify({ title: 'Errore', message: `Errore nel salvataggio del personale: ${(e as Error).message ?? 'sconosciuto'}` }) }
     finally { setSalvando(false) }
   }
 
