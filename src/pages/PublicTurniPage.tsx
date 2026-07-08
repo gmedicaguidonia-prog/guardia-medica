@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, CalendarCheck, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search } from 'lucide-react'
+import { CalendarDays, CalendarHeart, CalendarCheck, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search, Lock } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
@@ -61,8 +61,10 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: schema = [] } = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: personale = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
   const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'turni' })
-  const pianificazione = tab === 'turni' && statoCal === 'pianificazione'
-  const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'turni' && statoCal !== 'non_pubblicato' })
+  const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese finalizzato ⇒ calendario definitivo in sola lettura (letto dal JSON)
+  const pianificazione = tab === 'turni' && statoCal === 'pianificazione' && !finalizzato   // niente candidature su un mese chiuso
+  // un mese finalizzato mostra COMUNQUE il calendario (letto dal JSON), anche se lo stato archiviato non fosse 'pubblicato'
+  const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) })
   const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
@@ -86,7 +88,6 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
   const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
 
-  const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese bloccato ⇒ niente desiderata/candidature
   const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
   // Una griglia per foglio (passo ③ Impaginazione): righe = (giorno, turno) di quel foglio
@@ -291,14 +292,6 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             </div>
           </div>
 
-          {/* Mese finalizzato: calendario definitivo, niente modifiche */}
-          {finalizzato && (
-            <div className="card p-3 flex items-center gap-2" style={{ background: '#f0fdf4', border: '1px solid #86efac' }}>
-              <Check size={15} className="shrink-0" style={{ color: '#166534' }} />
-              <p className="text-sm" style={{ color: '#166534' }}><strong>Calendario definitivo:</strong> il mese è stato finalizzato. Desiderata e candidature non sono più modificabili.</p>
-            </div>
-          )}
-
           {/* Schede */}
           <div className="flex gap-2">
             {([['turni', 'Calendario Turni', CalendarDays], ['desiderata', 'Desiderata - Indisponibilità', CalendarHeart]] as const).map(([key, label, Icon]) => (
@@ -310,21 +303,29 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             ))}
           </div>
 
-          {/* Selettore mese + Sincronizza Calendario (turnista, calendario pubblicato o in pianificazione) */}
-          <div className="flex justify-end items-center gap-2 flex-wrap">
-            {tab === 'turni' && statoCal !== 'non_pubblicato' && mia && (
-              <button onClick={() => setSyncOpen(true)}
-                className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5"
-                title="Sincronizza i tuoi turni di questo mese con il tuo Google Calendar">
-                <CalendarCheck size={15} /> Sincronizza Calendario
-              </button>
-            )}
-            {MeseNav}
+          {/* Navigatore mese + banner "mese chiuso" (finalizzato) + Sincronizza Calendario */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            {finalizzato ? (
+              <div className="flex items-center gap-1.5 rounded-lg px-3 py-1.5" style={{ background: '#fef9c3', border: '1px solid #fde047' }}>
+                <Lock size={14} className="shrink-0" style={{ color: '#a16207' }} />
+                <span className="text-sm font-semibold" style={{ color: '#713f12' }}>Mese chiuso: calendario definitivo, sola lettura</span>
+              </div>
+            ) : <span />}
+            <div className="flex items-center gap-2 flex-wrap">
+              {tab === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) && mia && (
+                <button onClick={() => setSyncOpen(true)}
+                  className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5"
+                  title="Sincronizza i tuoi turni di questo mese con il tuo Google Calendar">
+                  <CalendarCheck size={15} /> Sincronizza Calendario
+                </button>
+              )}
+              {MeseNav}
+            </div>
           </div>
 
           {/* ───── CALENDARIO TURNI ───── */}
           {tab === 'turni' && (
-            statoCal === 'non_pubblicato' ? (
+            statoCal === 'non_pubblicato' && !finalizzato ? (
               <Avviso>Il <strong>calendario turni</strong> di {MESI[mese - 1]} {anno} non è ancora stato pubblicato per questa postazione.</Avviso>
             ) : !turniConfigurati ? (
               <Avviso>Non ci sono turni configurati per {MESI[mese - 1]} {anno}.</Avviso>
