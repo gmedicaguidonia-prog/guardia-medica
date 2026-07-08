@@ -264,50 +264,83 @@ async function findOrCreateCalendar(token: string, colorId: string, calSummary: 
 // Eventi: build desiderati (del mese) + lettura esistenti + diff
 // ════════════════════════════════════════════════════════════════════
 
-/** ID evento deterministico (base32hex: 0-9 a-v): prefisso ("trn" turno / "rep"
- *  reperibilità) + turnista senza trattini + data senza trattini + turno senza
- *  trattini. Univoco per (turnista, giorno, turno, ruolo). */
-function eventId(turnistaId: string, dataISO: string, schemaId: string, rep: boolean): string {
-  const t = turnistaId.replace(/-/g, '').toLowerCase()
-  const day = dataISO.replace(/-/g, '')
-  const s = schemaId.replace(/-/g, '').toLowerCase()
-  return `${rep ? 'rep' : 'trn'}${t}${day}${s}`
-}
-
-/** Aggiunge un giorno a una data ISO 'YYYY-MM-DD' (per i turni notturni a cavallo). */
-function addGiorno(iso: string): string {
+/** Aggiunge (o sottrae, con delta negativo) giorni a una data ISO 'YYYY-MM-DD'. */
+function addGiorno(iso: string, delta = 1): string {
   const [y, m, d] = iso.split('-').map(Number)
-  const dt = new Date(y, m - 1, d + 1)
+  const dt = new Date(y, m - 1, d + delta)
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 
+/** Datetime che precede di `mins` minuti l'orario `endTime` del giorno `endDate`.
+ *  Ritorna [dataISO, 'HH:MM'] gestendo l'eventuale rientro al giorno precedente. */
+function primaDi(endDate: string, endTime: string, mins: number): [string, string] {
+  const [hh, mm] = endTime.split(':').map(Number)
+  let tot = hh * 60 + mm - mins
+  let date = endDate
+  if (tot < 0) { tot += 1440; date = addGiorno(endDate, -1) }
+  return [date, `${String(Math.floor(tot / 60)).padStart(2, '0')}:${String(tot % 60).padStart(2, '0')}`]
+}
+
 interface Desiderato {
-  id: string; date: string; startDT: string; endDT: string
+  id: string; date: string; mese: string; startDT: string; endDT: string
   title: string; sig: string; colorId: string
 }
 
-/** Costruisce gli eventi desiderati del MESE per il turnista: un evento per ogni
- *  turno assegnato, con orario/nome presi dallo schema turni. */
+/** Costruisce gli eventi desiderati del MESE per il turnista: uno o più eventi per
+ *  ogni turno assegnato, con orario/nome presi dallo schema turni.
+ *
+ *  Regola turni A CAVALLO del giorno (es. 20:00→08:00):
+ *   - turno NORMALE → DUE eventi: parte 1 (inizio→mezzanotte) col nome del turno,
+ *     e parte 2 "Smonto <nome>" (due ore prima della fine → fine) il giorno dopo,
+ *     così si capisce che è la coda del turno iniziato il giorno prima;
+ *   - REPERIBILITÀ → UN solo evento continuo (inizio→fine), senza seconda parte.
+ *  `mese` (il mese del turno) va tra le proprietà private così la cancellazione
+ *  per-mese non elimina lo "Smonto" che cade nel mese successivo. IDs deterministici
+ *  base32hex (0-9 a-v): prefisso trn/rep/smo + turnista + data + turno (no trattini). */
 function buildDesiderati(
   turni: Turno[], schemaById: Map<string, TurnoSchema>, turnistaId: string, colorId: string,
 ): Map<string, Desiderato> {
   const m = new Map<string, Desiderato>()
+  const put = (d: Desiderato) => m.set(d.id, d)
   for (const t of turni) {
     if (t.turnista_id !== turnistaId) continue
     const sc = schemaById.get(t.turno_schema_id)
     if (!sc) continue
     const rep = t.slot < 0
-    const id = eventId(turnistaId, t.data, t.turno_schema_id, rep)
-    const endDay = sc.ora_fine <= sc.ora_inizio ? addGiorno(t.data) : t.data   // notte a cavallo
     const nome = sc.nome || 'Turno'
-    m.set(id, {
-      id, date: t.data,
-      startDT: `${t.data}T${sc.ora_inizio}:00`,
-      endDT:   `${endDay}T${sc.ora_fine}:00`,
-      title:   rep ? `${nome} (reperibilità)` : nome,
-      colorId,
-      sig:     `${nome}|${sc.ora_inizio}|${sc.ora_fine}|${rep ? 'r' : '-'}|c${colorId}`,
-    })
+    const mese = t.data.slice(0, 7)
+    const overnight = sc.ora_fine <= sc.ora_inizio
+    const base = `${turnistaId.replace(/-/g, '').toLowerCase()}${t.data.replace(/-/g, '')}${t.turno_schema_id.replace(/-/g, '').toLowerCase()}`
+
+    if (rep || !overnight) {
+      // Reperibilità (anche a cavallo: resta un unico evento) o turno nello stesso giorno.
+      const endDay = overnight ? addGiorno(t.data) : t.data
+      put({
+        id: `${rep ? 'rep' : 'trn'}${base}`, date: t.data, mese,
+        startDT: `${t.data}T${sc.ora_inizio}:00`,
+        endDT:   `${endDay}T${sc.ora_fine}:00`,
+        title:   rep ? `${nome} (reperibilità)` : nome,
+        colorId, sig: `${rep ? 'rep' : 'one'}|${nome}|${sc.ora_inizio}|${sc.ora_fine}|c${colorId}`,
+      })
+    } else {
+      // Turno normale a cavallo del giorno → due parti.
+      const nextDay = addGiorno(t.data)
+      put({   // parte 1: inizio → mezzanotte
+        id: `trn${base}`, date: t.data, mese,
+        startDT: `${t.data}T${sc.ora_inizio}:00`,
+        endDT:   `${nextDay}T00:00:00`,
+        title:   nome,
+        colorId, sig: `p1|${nome}|${sc.ora_inizio}|c${colorId}`,
+      })
+      const [s2date, s2time] = primaDi(nextDay, sc.ora_fine, 120)   // due ore prima della fine
+      put({   // parte 2: "Smonto" — coda del turno, il giorno dopo
+        id: `smo${base}`, date: s2date, mese,
+        startDT: `${s2date}T${s2time}:00`,
+        endDT:   `${nextDay}T${sc.ora_fine}:00`,
+        title:   `Smonto ${nome}`,
+        colorId, sig: `smo|${nome}|${s2time}|${sc.ora_fine}|c${colorId}`,
+      })
+    }
   }
   return m
 }
@@ -319,7 +352,7 @@ function eventBody(d: Desiderato) {
     colorId: d.colorId,
     start: { dateTime: d.startDT, timeZone: TZ },
     end:   { dateTime: d.endDT,   timeZone: TZ },
-    extendedProperties: { private: { app: APP_TAG, sig: d.sig } },
+    extendedProperties: { private: { app: APP_TAG, sig: d.sig, mese: d.mese } },
     reminders: { useDefault: false },   // niente promemoria pop-up per i turni
   }
 }
@@ -328,7 +361,7 @@ interface GEvent {
   id: string
   summary?: string
   start?: { dateTime?: string; date?: string }
-  extendedProperties?: { private?: { sig?: string } }
+  extendedProperties?: { private?: { sig?: string; mese?: string } }
 }
 interface EventsResp { items?: GEvent[]; nextPageToken?: string }
 
@@ -359,9 +392,12 @@ async function listManagedEvents(token: string, calId: string): Promise<Map<stri
   return map
 }
 
-/** Mese ('YYYY-MM') di un evento esistente, dal suo start. */
+/** Mese ('YYYY-MM') di appartenenza di un evento gestito: il tag privato `mese`
+ *  (= mese del turno) così lo "Smonto" che cade nel mese dopo resta legato al suo
+ *  mese e NON viene cancellato sincronizzando quello successivo. Fallback allo
+ *  start per eventuali eventi vecchi senza il tag. */
 function meseDiEvento(ev: GEvent): string {
-  return (ev.start?.dateTime ?? ev.start?.date ?? '').slice(0, 7)
+  return ev.extendedProperties?.private?.mese ?? (ev.start?.dateTime ?? ev.start?.date ?? '').slice(0, 7)
 }
 
 // ── Pool di concorrenza per non saturare l'API ─────────────────────
