@@ -338,19 +338,21 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   </div>
                 )}
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
+                <div key={foglio.id} className="card overflow-x-auto">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
                     <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
-                  <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', tableLayout: 'fixed' }}>
+                  {/* layout AUTO: le colonne si adattano al contenuto — nome turno, turnisti e reperibili
+                      mai troncati né a capo; la colonna Turnisti assorbe lo spazio extra (calendario a tutta larghezza) */}
+                  <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
                     <colgroup>
-                      <col style={{ width: 58 }} />
-                      <col style={{ width: 116 }} />
                       <col />
-                      {hasRep && <col style={{ width: 130 }} />}
+                      <col />
+                      <col style={{ width: '100%' }} />
+                      {hasRep && <col />}
                     </colgroup>
-                    <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={thStyle}>Turnisti</th>{hasRep && <th style={thStyle}>Reperibile</th>}</tr></thead>
+                    <thead><tr><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Giorno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turnisti</th>{hasRep && <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Reperibile</th>}</tr></thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
@@ -366,12 +368,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         return (
                           <tr key={k} style={{ background: rowBg }}>
                             <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
-                            <td style={tdBase}>
+                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                               <span className="inline-flex items-center gap-1" style={{ color: '#475569', fontSize: 14 }}>{overnight ? <Moon size={13} style={{ color: '#64748b' }} /> : <Sun size={13} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
                             </td>
-                            <td style={{ ...tdBase, wordBreak: 'break-word' }}>
-                              <div className="flex flex-wrap gap-1.5 items-center">
+                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
+                              <div className="flex gap-1.5 items-center">
                                 {ids.length === 0 && !(pianificazione && mancano > 0) && <span className="text-[11px] text-stone-300 italic">—</span>}
                                 {ids.map((id, idx) => {
                                   const io = id === mia?.membershipId
@@ -395,7 +397,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                               </div>
                             </td>
                             {hasRep && (
-                              <td style={{ ...tdBase, wordBreak: 'break-word' }}>
+                              <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                                 {rep
                                   ? (cambiAttivi && (rep === mia?.membershipId || puoGestireCambi)
                                     ? <button onClick={e => clickTurnista(e, ds, turno, rep, REP)} title="Chiedi il cambio di questa reperibilità"
