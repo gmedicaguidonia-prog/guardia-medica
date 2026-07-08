@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardCheck, ChevronLeft, ChevronRight, Lock, Unlock, Printer, BellRing, Table2, Check } from 'lucide-react'
+import { ClipboardCheck, ChevronLeft, ChevronRight, Lock, Unlock, Printer, Table2, Check } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
 import { isFestivo, isPrefestivo, isSuperfestivo } from '../../lib/holidays'
@@ -35,7 +35,7 @@ export function FinalizzazionePage() {
   const { user: actore } = useOutletContext<{ user: AuthUser | null }>()
   const nomeAutore = actore ? nomeCompleto(actore) : null
   const navigate = useNavigate()
-  const { confirm, notify, confirmState } = useConfirm()
+  const { confirm, confirmState } = useConfirm()
   const passi = usePassiCompleti(postazioneId, meseKey)
   const { finalizzato, info, invalida } = useFinalizzato(postazioneId, meseKey)
   const { festivoSet, superSet } = useFestivita(postazioneId)
@@ -100,9 +100,6 @@ export function FinalizzazionePage() {
     store.addLogPostazione(`«${postazioneAttiva?.nome ?? ''}»: ${MESI[mese - 1]} ${anno} SBLOCCATO (di nuovo modificabile).`, nomeAutore).catch(() => {})
     invalida()
   }
-  async function notificaTurnisti() {
-    await notify({ title: 'In arrivo', message: 'La notifica del calendario definitivo ai turnisti sarà attivata in una prossima versione.' })
-  }
 
   if (!postazioneAttiva) return <div className="p-6 text-sm text-stone-600">Seleziona una postazione dal Centro di Controllo.</div>
 
@@ -111,7 +108,7 @@ export function FinalizzazionePage() {
       <ClipboardCheck size={22} style={{ color: 'var(--t-accento)' }} className="mt-1 shrink-0" />
       <div className="flex-1">
         <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Finalizzazione - {postazioneAttiva.nome}</h1>
-        <p className="text-sm text-stone-600">Chiusura di <strong>{MESI[mese - 1]} {anno}</strong>: blocco del mese, stampa/PDF ufficiale, conteggi di fine mese e notifica ai turnisti.</p>
+        <p className="text-sm text-stone-600">Chiusura di <strong>{MESI[mese - 1]} {anno}</strong>: blocco del mese, stampa/PDF ufficiale e conteggi di fine mese.</p>
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
@@ -217,18 +214,6 @@ export function FinalizzazionePage() {
             <p className="text-[10px] leading-snug text-stone-400 mt-1.5"><strong>T</strong>=turni · <strong>Ore</strong>=ore totali · <strong>N</strong>=notti · <strong>F</strong>=festivi · <strong>PF</strong>=prefestivi · <strong>SF</strong>=superfestivi (solo turni abbinati nel passo ⑤)</p>
           </>
         )}
-      </div>
-
-      {/* ── 🔔 Notifica ai turnisti ── */}
-      <div className="card p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <BellRing size={16} style={{ color: 'var(--t-accento)' }} />
-          <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Notifica calendario definitivo</h2>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <p className="text-sm text-stone-600 flex-1 min-w-[220px]">Avvisa i turnisti che i turni di {MESI[mese - 1]} {anno} sono definitivi.</p>
-          <button onClick={notificaTurnisti} className="btn-secondary text-sm inline-flex items-center gap-1.5"><BellRing size={14} /> Notifica i turnisti</button>
-        </div>
       </div>
 
     </div>
