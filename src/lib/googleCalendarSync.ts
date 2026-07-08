@@ -293,7 +293,8 @@ interface Desiderato {
  *   - turno NORMALE → DUE eventi: parte 1 (inizio→mezzanotte) col nome del turno,
  *     e parte 2 "Smonto <nome>" (due ore prima della fine → fine) il giorno dopo,
  *     così si capisce che è la coda del turno iniziato il giorno prima;
- *   - REPERIBILITÀ → UN solo evento continuo (inizio→fine), senza seconda parte.
+ *   - REPERIBILITÀ → SOLO la parte 1 (inizio→mezzanotte); la seconda parte NON si
+ *     scrive. (La reperibilità nello stesso giorno resta un evento unico.)
  *  `mese` (il mese del turno) va tra le proprietà private così la cancellazione
  *  per-mese non elimina lo "Smonto" che cade nel mese successivo. IDs deterministici
  *  base32hex (0-9 a-v): prefisso trn/rep/smo + turnista + data + turno (no trattini). */
@@ -312,34 +313,37 @@ function buildDesiderati(
     const overnight = sc.ora_fine <= sc.ora_inizio
     const base = `${turnistaId.replace(/-/g, '').toLowerCase()}${t.data.replace(/-/g, '')}${t.turno_schema_id.replace(/-/g, '').toLowerCase()}`
 
-    if (rep || !overnight) {
-      // Reperibilità (anche a cavallo: resta un unico evento) o turno nello stesso giorno.
-      const endDay = overnight ? addGiorno(t.data) : t.data
+    if (!overnight) {
+      // Turno o reperibilità nello stesso giorno: evento unico inizio→fine.
       put({
         id: `${rep ? 'rep' : 'trn'}${base}`, date: t.data, mese,
         startDT: `${t.data}T${sc.ora_inizio}:00`,
-        endDT:   `${endDay}T${sc.ora_fine}:00`,
+        endDT:   `${t.data}T${sc.ora_fine}:00`,
         title:   rep ? `${nome} (reperibilità)` : nome,
         colorId, sig: `${rep ? 'rep' : 'one'}|${nome}|${sc.ora_inizio}|${sc.ora_fine}|c${colorId}`,
       })
     } else {
-      // Turno normale a cavallo del giorno → due parti.
+      // A cavallo del giorno → parte 1 (inizio → mezzanotte), sia turno che reperibilità.
       const nextDay = addGiorno(t.data)
-      put({   // parte 1: inizio → mezzanotte
-        id: `trn${base}`, date: t.data, mese,
+      put({
+        id: `${rep ? 'rep' : 'trn'}${base}`, date: t.data, mese,
         startDT: `${t.data}T${sc.ora_inizio}:00`,
         endDT:   `${nextDay}T00:00:00`,
-        title:   nome,
-        colorId, sig: `p1|${nome}|${sc.ora_inizio}|c${colorId}`,
+        title:   rep ? `${nome} (reperibilità)` : nome,
+        colorId, sig: `${rep ? 'rep1' : 'p1'}|${nome}|${sc.ora_inizio}|c${colorId}`,
       })
-      const [s2date, s2time] = primaDi(nextDay, sc.ora_fine, 120)   // due ore prima della fine
-      put({   // parte 2: "Smonto" — coda del turno, il giorno dopo
-        id: `smo${base}`, date: s2date, mese,
-        startDT: `${s2date}T${s2time}:00`,
-        endDT:   `${nextDay}T${sc.ora_fine}:00`,
-        title:   `Smonto ${nome}`,
-        colorId, sig: `smo|${nome}|${s2time}|${sc.ora_fine}|c${colorId}`,
-      })
+      // Parte 2 "Smonto" (due ore prima della fine → fine, il giorno dopo): SOLO i turni
+      // normali; per la REPERIBILITÀ la seconda parte NON si scrive.
+      if (!rep) {
+        const [s2date, s2time] = primaDi(nextDay, sc.ora_fine, 120)
+        put({
+          id: `smo${base}`, date: s2date, mese,
+          startDT: `${s2date}T${s2time}:00`,
+          endDT:   `${nextDay}T${sc.ora_fine}:00`,
+          title:   `Smonto ${nome}`,
+          colorId, sig: `smo|${nome}|${s2time}|${sc.ora_fine}|c${colorId}`,
+        })
+      }
     }
   }
   return m
