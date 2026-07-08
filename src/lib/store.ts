@@ -353,6 +353,12 @@ const supaStore = {
     if (error) throw error
     return data ? { autore: (data.autore as string | null) ?? null, createdAt: data.created_at as string } : null
   },
+  // Mesi con un calendario (turni o archiviati) + se sono finalizzati — per promemoria home e datepicker
+  async getMesiPanoramica(postazioneId: string): Promise<{ mese: string; finalizzato: boolean }[]> {
+    const { data, error } = await supabase.rpc('mesi_panoramica', { p_postazione: postazioneId })
+    if (error) throw error
+    return ((data ?? []) as { mese: string; finalizzato: boolean }[]).map(r => ({ mese: r.mese, finalizzato: !!r.finalizzato }))
+  },
   async finalizzaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
     const { error } = await supabase.from('finalizzazioni').upsert({ postazione_id: postazioneId, mese, autore: autore ?? _autoreCorrente }, { onConflict: 'postazione_id,mese' })
     if (error) throw error
@@ -1293,6 +1299,12 @@ const localStore = {
     const f = read<{ postazioneId: string; mese: string; autore: string | null; createdAt: string }[]>(LS_FINALIZZAZIONI, [])
       .find(x => x.postazioneId === postazioneId && x.mese === mese)
     return f ? { autore: f.autore, createdAt: f.createdAt } : null
+  },
+  async getMesiPanoramica(postazioneId: string): Promise<{ mese: string; finalizzato: boolean }[]> {
+    const byPost = (pid?: string) => (pid ?? DEV_POSTAZIONE) === postazioneId
+    const mesiTurni = new Set(read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => byPost(t.postazione_id)).map(t => t.data.slice(0, 7)))
+    const mesiFin = new Set(read<{ postazioneId?: string; mese: string }[]>(LS_FINALIZZAZIONI, []).filter(f => byPost(f.postazioneId)).map(f => f.mese))
+    return [...new Set([...mesiTurni, ...mesiFin])].sort().map(mese => ({ mese, finalizzato: mesiFin.has(mese) }))
   },
   async finalizzaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
     const list = read<{ postazioneId: string; mese: string; autore: string | null; createdAt: string }[]>(LS_FINALIZZAZIONI, [])

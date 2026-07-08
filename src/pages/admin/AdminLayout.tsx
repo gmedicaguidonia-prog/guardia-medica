@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper, ClipboardCheck, Lock, ArrowRightLeft } from 'lucide-react'
@@ -18,6 +18,7 @@ import { store } from '../../lib/store'
 const ROTTE_NUMERATE = new Set(['/admin/turnisti', '/admin/schema', '/admin/regole', '/admin/impaginazione', '/admin/festivita', '/admin/desiderata', '/admin/turni'])
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
+const MESI_BREVI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 
 const links: { to: string; label: string; Icon: typeof Home; num: number | null; adminOnly?: boolean }[] = [
@@ -51,6 +52,16 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const { meseKey, mese, anno, setMeseAnno } = useMeseSelezionato()
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(LS_COLLAPSED) === '1')
   const { finalizzato, info: infoFin } = useFinalizzato(postazioneAttiva?.id, meseKey)
+  // Datepicker mesi/anni (cliccando il mese in "Stai gestendo"): colori per stato del mese
+  const [pickerAperto, setPickerAperto] = useState(false)
+  const [pickerAnno, setPickerAnno] = useState(anno)
+  const { data: mesiPanoramica = [] } = useQuery<{ mese: string; finalizzato: boolean }[]>({ queryKey: ['mesi-panoramica', postazioneAttiva?.id], queryFn: () => store.getMesiPanoramica(postazioneAttiva!.id), enabled: !!postazioneAttiva })
+  const panMap = useMemo(() => new Map(mesiPanoramica.map(x => [x.mese, x.finalizzato])), [mesiPanoramica])
+  function apriPicker() { setPickerAnno(anno); setPickerAperto(true) }
+  async function scegliMese(a: number, m: number) {
+    if (hasUnsaved && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Cambiare mese senza salvarle?', confirmLabel: 'Sì, cambia', danger: true }))) return
+    setMeseAnno(a, m); setPickerAperto(false)
+  }
   // Tema interfaccia: applicato subito, salvato per l'utente (DB) e sul dispositivo
   const [temaAttivo, setTemaAttivo] = useState<string>(() => temaSalvato())
   useEffect(() => {   // il quadratino evidenziato segue il tema anche quando arriva dal profilo (nuovo dispositivo)
@@ -96,6 +107,39 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   return (
     <div className="flex h-[calc(100vh-48px)]">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      {/* Datepicker mesi/anni: verde = calendario presente non finalizzato, bianco = finalizzato, tema = niente */}
+      {pickerAperto && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setPickerAperto(false)}>
+          <div className="card p-4 w-full max-w-xs" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={() => setPickerAnno(a => a - 1)} className="p-1.5 rounded hover:bg-stone-100 transition-colors" style={{ color: 'var(--t-accento)' }} title="Anno precedente"><ChevronLeft size={18} /></button>
+              <span className="text-lg font-bold" style={{ color: 'var(--t-titolo)' }}>{pickerAnno}</span>
+              <button onClick={() => setPickerAnno(a => a + 1)} className="p-1.5 rounded hover:bg-stone-100 transition-colors" style={{ color: 'var(--t-accento)' }} title="Anno successivo"><ChevronRight size={18} /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {MESI_BREVI.map((nomeM, i) => {
+                const m = i + 1
+                const mk = `${pickerAnno}-${String(m).padStart(2, '0')}`
+                const inPan = panMap.has(mk), fin = panMap.get(mk), attivo = mk === meseKey
+                const stile = inPan
+                  ? (fin ? { background: '#fff', color: 'var(--t-titolo)', border: '1px solid #d6d3cc' }
+                         : { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' })
+                  : { background: 'var(--t-tenue)', color: 'var(--t-testo)', border: '1px solid var(--t-riga)' }
+                return (
+                  <button key={m} onClick={() => scegliMese(pickerAnno, m)}
+                    title={inPan ? (fin ? 'Mese finalizzato' : 'Calendario presente (non finalizzato)') : 'Nessun calendario'}
+                    className="text-sm font-semibold py-2 rounded-lg transition-transform hover:scale-105"
+                    style={{ ...stile, boxShadow: attivo ? '0 0 0 2px var(--t-accento)' : undefined }}>{nomeM}</button>
+                )
+              })}
+            </div>
+            <div className="flex items-center justify-center gap-3 mt-3 text-[10px] text-stone-500">
+              <span className="inline-flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 2, background: '#dcfce7', border: '1px solid #86efac', display: 'inline-block' }} /> non finalizzato</span>
+              <span className="inline-flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 2, background: '#fff', border: '1px solid #d6d3cc', display: 'inline-block' }} /> finalizzato</span>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <aside className="shrink-0 flex flex-col py-4 overflow-y-auto overflow-x-hidden"
         style={{ width: collapsed ? 56 : 208, background: 'var(--t-notte)', color: 'var(--t-side-testo)', transition: 'width 160ms ease' }}>
@@ -140,7 +184,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
             <div className="flex flex-col items-center gap-1" title={`${postNome ?? 'Nessuna postazione'} · ${meseLabel(meseKey)}`}>
               <MapPin size={15} style={{ color: 'var(--t-soft)' }} />
               <CalendarDays size={15} style={{ color: 'var(--t-soft)' }} />
-              <span className="text-[11px] font-bold leading-none" style={{ color: '#fff' }}>{String(mese).padStart(2, '0')}/{String(anno).slice(2)}</span>
+              <button onClick={apriPicker} title="Scegli mese e anno" className="text-[11px] font-bold leading-none rounded px-0.5 hover:bg-white/10 transition-colors" style={{ color: '#fff' }}>{String(mese).padStart(2, '0')}/{String(anno).slice(2)}</button>
               <div className="flex items-center gap-1 mt-0.5">
                 <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
                   <ChevronLeft size={16} />
@@ -159,7 +203,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
               </div>
               <div className="flex items-center gap-1.5">
                 <CalendarDays size={16} className="shrink-0" style={{ color: 'var(--t-soft)' }} />
-                <span className="text-base font-bold whitespace-nowrap" style={{ color: '#fff' }}>{meseLabel(meseKey)}</span>
+                <button onClick={apriPicker} title="Scegli mese e anno" className="text-base font-bold whitespace-nowrap rounded px-1 -mx-1 hover:bg-white/10 transition-colors" style={{ color: '#fff' }}>{meseLabel(meseKey)}</button>
                 <div className="flex items-center gap-0.5 ml-auto">
                   <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
                     <ChevronLeft size={18} />

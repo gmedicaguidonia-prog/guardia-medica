@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardCheck, ChevronLeft, ChevronRight, Lock, Unlock, Printer, Mail, BellRing, Table2, Check, AlertTriangle } from 'lucide-react'
-import { checkInvioGmail } from '../../lib/gmailCheck'
+import { ClipboardCheck, ChevronLeft, ChevronRight, Lock, Unlock, Printer, BellRing, Table2, Check } from 'lucide-react'
 import { store } from '../../lib/store'
 import { nomeCompleto, gruppiPerLivello } from '../../types'
 import { isFestivo, isPrefestivo, isSuperfestivo } from '../../lib/holidays'
@@ -78,43 +77,6 @@ export function FinalizzazionePage() {
     return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
   }, [turni, turnoById, turnisti, ruoloMese, festivoSet, superSet, superTurniByData])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Email: mittente (per postazione, su DB) + «Check invio» + destinatari ──
-  const [destinatari, setDestinatari] = useState<string>(() => { try { return localStorage.getItem(`gm_finalizza_email_${postazioneId ?? ''}`) ?? '' } catch { return '' } })
-  function salvaDestinatari(v: string) { setDestinatari(v); try { localStorage.setItem(`gm_finalizza_email_${postazioneId ?? ''}`, v) } catch { /* ignore */ } }
-  const { data: mittenteSalvato = '' } = useQuery<string>({ queryKey: ['email-mittente', postazioneId], queryFn: () => store.getEmailMittente(postazioneId!), enabled: !!postazioneId })
-  const [mittente, setMittente] = useState('')
-  useEffect(() => { setMittente(mittenteSalvato) }, [mittenteSalvato])
-  function salvaMittente() { if (postazioneId) store.setEmailMittente(postazioneId, mittente.trim()).catch(() => {}) }
-  // Stato del check: idle → inCorso → ok (verde) / errore (rosso + consigli).
-  // Cambiando mittente si torna al pulsante; l'esito positivo è ricordato per (postazione, mittente).
-  type StatoCheck = { fase: 'idle' } | { fase: 'inCorso' } | { fase: 'ok'; email: string; quando: string } | { fase: 'errore'; messaggio: string; consigli: string[] }
-  const CHECK_KEY = `gm_gmail_check_${postazioneId ?? ''}`
-  const [check, setCheck] = useState<StatoCheck>({ fase: 'idle' })
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CHECK_KEY)
-      const st = raw ? JSON.parse(raw) as { mittente: string; quando: string } : null
-      if (st && mittente.trim() && st.mittente === mittente.trim().toLowerCase()) setCheck({ fase: 'ok', email: st.mittente, quando: st.quando })
-      else setCheck(c => (c.fase === 'inCorso' ? c : { fase: 'idle' }))
-    } catch { setCheck({ fase: 'idle' }) }
-  }, [mittente, CHECK_KEY])
-  async function eseguiCheck() {
-    salvaMittente()
-    setCheck({ fase: 'inCorso' })
-    const esito = await checkInvioGmail(mittente)
-    if (esito.ok) {
-      const quando = new Date().toISOString()
-      try { localStorage.setItem(CHECK_KEY, JSON.stringify({ mittente: esito.email, quando })) } catch { /* ignore */ }
-      setCheck({ fase: 'ok', email: esito.email, quando })
-    } else {
-      setCheck({ fase: 'errore', messaggio: esito.messaggio, consigli: esito.consigli })
-    }
-  }
-  function apriEmail() {
-    const oggetto = encodeURIComponent(`Turni ${postazioneAttiva?.nome ?? ''} — ${MESI[mese - 1]} ${anno}`)
-    const corpo = encodeURIComponent(`In allegato il calendario turni di ${MESI[mese - 1]} ${anno} per ${postazioneAttiva?.nome ?? ''}.\n(Genera prima il PDF con "Stampa / salva PDF" e allegalo a questa email.)\n\nCalendario online: ${location.origin}${import.meta.env.BASE_URL}turni`)
-    location.href = `mailto:${destinatari.trim()}?subject=${oggetto}&body=${corpo}`
-  }
 
   async function finalizza() {
     if (!postazioneId) return
@@ -149,7 +111,7 @@ export function FinalizzazionePage() {
       <ClipboardCheck size={22} style={{ color: 'var(--t-accento)' }} className="mt-1 shrink-0" />
       <div className="flex-1">
         <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>Finalizzazione - {postazioneAttiva.nome}</h1>
-        <p className="text-sm text-stone-600">Chiusura di <strong>{MESI[mese - 1]} {anno}</strong>: blocco del mese, stampa/PDF ufficiale con invio email, conteggi di fine mese e notifica ai turnisti.</p>
+        <p className="text-sm text-stone-600">Chiusura di <strong>{MESI[mese - 1]} {anno}</strong>: blocco del mese, stampa/PDF ufficiale, conteggi di fine mese e notifica ai turnisti.</p>
       </div>
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         <button onClick={() => cambiaMese(-1)} className="btn-secondary px-2 py-1" title="Mese precedente"><ChevronLeft size={16} /></button>
@@ -204,47 +166,11 @@ export function FinalizzazionePage() {
       <div className="card p-4">
         <div className="flex items-center gap-2 mb-2">
           <Printer size={16} style={{ color: 'var(--t-accento)' }} />
-          <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Stampa / PDF ufficiale ed email</h2>
+          <h2 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Stampa / PDF ufficiale</h2>
         </div>
-        <div className="flex items-center gap-3 flex-wrap mb-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <p className="text-sm text-stone-600 flex-1 min-w-[220px]">Apre in una <strong>nuova scheda</strong> il tabellone del mese impaginato per fogli (secondo il passo ④ Impaginazione): da lì lo stampi o lo salvi come <strong>PDF</strong>.</p>
           <button onClick={() => window.open(`${import.meta.env.BASE_URL}admin/stampa?p=${postazioneId}&m=${meseKey}`, '_blank')} className="btn-primary text-sm inline-flex items-center gap-1.5"><Printer size={14} /> Stampa / salva PDF</button>
-        </div>
-        <div className="pt-3" style={{ borderTop: '1px solid var(--t-riga)' }}>
-          <div className="flex items-center gap-2 mb-1.5"><Mail size={14} style={{ color: 'var(--t-accento)' }} /><p className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Invio per email</p></div>
-          <p className="text-xs text-stone-500 mb-2">Indica l'indirizzo Gmail <strong>mittente</strong> della postazione e premi <strong>Check invio</strong>: parte la verifica con Google e la richiesta delle autorizzazioni per spedire le email come quell'account. Con «Apri bozza email» puoi comunque inviare subito dal tuo programma di posta.</p>
-          <div className="flex items-end gap-2 flex-wrap mb-1.5">
-            <label className="text-xs text-stone-600 flex-1 min-w-[220px]">Mittente (account Gmail che invierà le email)<br />
-              <input type="email" value={mittente} onChange={e => setMittente(e.target.value)} onBlur={salvaMittente} placeholder="postazione@gmail.com" className="input text-sm w-full" />
-            </label>
-            {check.fase === 'ok' ? (
-              <span className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }} title={`Invio autorizzato per ${check.email}`}>
-                <Check size={15} /> Check positivo
-              </span>
-            ) : (
-              <button onClick={eseguiCheck} disabled={check.fase === 'inCorso' || !mittente.trim()}
-                className="text-sm font-semibold inline-flex items-center gap-1.5 rounded-lg px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={check.fase === 'errore'
-                  ? { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }
-                  : { background: 'var(--t-tenue)', color: 'var(--t-accento)', border: '1px solid var(--t-riga)' }}>
-                {check.fase === 'inCorso' ? 'Verifica in corso…' : check.fase === 'errore' ? 'Check fallito — riprova' : 'Check invio'}
-              </button>
-            )}
-          </div>
-          {check.fase === 'errore' && (
-            <div className="rounded-lg p-2.5 mb-2 text-xs" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-              <p className="font-semibold mb-1 inline-flex items-center gap-1" style={{ color: '#b91c1c' }}><AlertTriangle size={13} /> {check.messaggio}</p>
-              <ul className="list-disc ml-4 space-y-0.5" style={{ color: '#7f1d1d' }}>
-                {check.consigli.map((c, i) => <li key={i}>{c}</li>)}
-              </ul>
-            </div>
-          )}
-          <div className="flex items-end gap-2 flex-wrap">
-            <label className="text-xs text-stone-600 flex-1 min-w-[220px]">Destinatari (separati da virgola)<br />
-              <input type="text" value={destinatari} onChange={e => salvaDestinatari(e.target.value)} placeholder="nome@esempio.it, altro@esempio.it" className="input text-sm w-full" />
-            </label>
-            <button onClick={apriEmail} className="btn-secondary text-sm inline-flex items-center gap-1.5"><Mail size={14} /> Apri bozza email</button>
-          </div>
         </div>
       </div>
 

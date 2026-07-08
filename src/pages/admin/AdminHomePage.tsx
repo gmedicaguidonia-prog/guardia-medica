@@ -3,12 +3,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, ArrowRightLeft, Bell, ChevronLeft, ChevronRight } from 'lucide-react'
 import { store } from '../../lib/store'
-import { ATTIVAZIONE_DA } from '../../lib/constants'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { NOTIFICA_CATEGORIE, categoriaNotifica } from '../../types'
-import type { ConfigVersione, DesiderataFinestra, Notifica, CambioTurno } from '../../types'
+import type { ConfigVersione, DesiderataFinestra, Notifica, CambioTurno, StatoCalendario } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 function meseKeyOffset(off: number): string {
@@ -18,6 +17,7 @@ function meseKeyOffset(off: number): string {
 }
 function meseLabel(key: string): string { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
 function itDate(iso: string): string { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
+function meseSucc(mese: string): string { const [a, m] = mese.split('-').map(Number); const d = new Date(a, m, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 function copre(v: ConfigVersione, mese: string): boolean {
   return v.valido_da <= mese && (v.valido_fino == null || mese <= v.valido_fino)
 }
@@ -42,11 +42,12 @@ export function AdminHomePage() {
   const { postazioneId, postazioneAttiva } = usePostazione()
   const { meseKey, setMeseAnno } = useMeseSelezionato()
   const meseProssimo = meseKeyOffset(1)
-  const mesePrecedente = meseKeyOffset(-1)
   const { data: versioni = [] } = useQuery<ConfigVersione[]>({ queryKey: ['versioni-all', postazioneId], queryFn: () => store.getVersioni(postazioneId!), enabled: !!postazioneId })
   const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseProssimo], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseProssimo), enabled: !!postazioneId })
-  // dal 1° del mese: il mese precedente va FINALIZZATO (solo per i mesi con la nuova procedura)
-  const { data: finPrecedente } = useQuery<{ autore: string | null; createdAt: string } | null>({ queryKey: ['finalizzazione', postazioneId, mesePrecedente], queryFn: () => store.getFinalizzazione(postazioneId!, mesePrecedente), enabled: !!postazioneId && mesePrecedente >= ATTIVAZIONE_DA })
+  // Stato del calendario del mese prossimo: se è già pubblicato non ha senso chiedere le desiderata
+  const { data: statoProssimo } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseProssimo], queryFn: () => store.getStatoCalendario(postazioneId!, meseProssimo), enabled: !!postazioneId })
+  // Panoramica dei mesi con calendario + finalizzati: per ricordare di finalizzare i mesi passati
+  const { data: mesiPanoramica = [] } = useQuery<{ mese: string; finalizzato: boolean }[]>({ queryKey: ['mesi-panoramica', postazioneId], queryFn: () => store.getMesiPanoramica(postazioneId!), enabled: !!postazioneId })
 
   // ── Centro Notifiche ──
   const qc = useQueryClient()
@@ -83,27 +84,30 @@ export function AdminHomePage() {
     const out: Avviso[] = []
     const mesi = [0, 1, 2].map(meseKeyOffset)   // corrente + 2
 
-    // Il mese precedente è terminato ma non è ancora stato finalizzato (avviso dal 1° del mese)
-    if (mesePrecedente >= ATTIVAZIONE_DA && finPrecedente === null) {
-      out.push({
-        testo: `${meseLabel(mesePrecedente)} è terminato ma non è ancora stato finalizzato: bloccalo, genera il PDF ufficiale e chiudi i conteggi.`,
+    // Tutti i mesi PASSATI che hanno un calendario ma NON sono ancora finalizzati (dal più recente)
+    const meseCorrente = meseKeyOffset(0)
+    mesiPanoramica
+      .filter(x => x.mese < meseCorrente && !x.finalizzato)
+      .sort((a, b) => b.mese.localeCompare(a.mese))
+      .forEach(x => out.push({
+        testo: `${meseLabel(x.mese)} è terminato ma non è ancora stato finalizzato: bloccalo, genera il PDF ufficiale e chiudi i conteggi.`,
         cta: 'Finalizza',
-        azione: () => { const [a, m] = mesePrecedente.split('-').map(Number); setMeseAnno(a, m); navigate('/admin/finalizza') },
-      })
-    }
+        azione: () => { const [a, m] = x.mese.split('-').map(Number); setMeseAnno(a, m); navigate('/admin/finalizza') },
+      }))
     // Mesi imminenti senza configurazione
     mesi.forEach(mk => {
       if (!versioni.some(v => copre(v, mk))) {
         out.push({ testo: `Nessuna configurazione turni per ${meseLabel(mk)}.`, cta: 'Configura', azione: () => navigate('/admin/schema') })
       }
     })
-    // Configurazione attiva in scadenza entro il mese prossimo
+    // Configurazione in scadenza ma SENZA una nuova config che copra il mese dopo (altrimenti nessun buco → nessun avviso)
     const corrente = versioni.filter(v => copre(v, mesi[0])).sort((a, b) => b.valido_da.localeCompare(a.valido_da))[0]
-    if (corrente?.valido_fino && corrente.valido_fino <= mesi[1]) {
-      out.push({ testo: `La configurazione turni scade a ${meseLabel(corrente.valido_fino)}: ricordati di riconfigurare i turni.`, cta: 'Configura', azione: () => navigate('/admin/schema') })
+    const scad = corrente?.valido_fino
+    if (scad && scad <= mesi[1] && !versioni.some(v => copre(v, meseSucc(scad)))) {
+      out.push({ testo: `La configurazione turni scade a ${meseLabel(scad)} e non c'è una nuova configurazione dopo: ricordati di riconfigurare i turni.`, cta: 'Configura', azione: () => navigate('/admin/schema') })
     }
-    // Raccolta desiderata per il mese prossimo (solo se i turni sono già configurati)
-    if (versioni.some(v => copre(v, meseProssimo))) {
+    // Raccolta desiderata per il mese prossimo: solo se i turni sono configurati E il calendario NON è già stato pubblicato
+    if (versioni.some(v => copre(v, meseProssimo)) && (statoProssimo ?? 'non_pubblicato') === 'non_pubblicato') {
       const oggiStr = new Date().toISOString().slice(0, 10)
       if (!finestraProssimo?.aperta_a) {
         out.push({ testo: `Non hai ancora impostato il periodo di raccolta desiderata per ${meseLabel(meseProssimo)}.`, cta: 'Imposta', azione: () => navigate('/admin/desiderata') })
@@ -112,7 +116,7 @@ export function AdminHomePage() {
       }
     }
     return out
-  }, [versioni, finestraProssimo, meseProssimo, mesePrecedente, finPrecedente, navigate, setMeseAnno])
+  }, [versioni, finestraProssimo, meseProssimo, statoProssimo, mesiPanoramica, navigate, setMeseAnno])
 
   return (
     <div className="relative min-h-full">
