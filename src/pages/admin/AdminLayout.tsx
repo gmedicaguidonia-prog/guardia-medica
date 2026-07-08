@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper, ClipboardCheck, Lock } from 'lucide-react'
-import type { AuthUser } from '../../types'
+import type { AuthUser, CambioTurno } from '../../types'
 import { useUnsaved } from '../../contexts/UnsavedContext'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
@@ -9,6 +10,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useFinalizzato } from '../../hooks/useFinalizzato'
+import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { TEMI, applicaTema, temaSalvato } from '../../lib/temi'
 import { store } from '../../lib/store'
 
@@ -60,6 +62,10 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
     applicaTema(id); setTemaAttivo(id)
     store.setMioTema(id).catch(() => {})   // best-effort: il localStorage copre comunque questo dispositivo
   }
+  // Cambi turno in attesa nella postazione attiva: badge arancione sulla voce "Turni del Mese"
+  const { data: cambiPend = [] } = useQuery<CambioTurno[]>({ queryKey: ['cambi-pendenti', postazioneAttiva?.id], queryFn: () => store.getCambiPendenti(postazioneAttiva!.id), enabled: !!postazioneAttiva })
+  const nCambi = cambiPend.length
+  useRealtimePostazione(postazioneAttiva?.id ?? null, [{ tabella: 'cambi_turno', invalida: [['cambi-pendenti', postazioneAttiva?.id]] }])
   // Mese finalizzato: VELO sopra i passi ①–⑦ (click bloccati); ⑧ Finalizzazione resta libera
   const layerBlocco = finalizzato && ROTTE_NUMERATE.has(location.pathname)
   const visibleLinks = links.filter(l => !l.adminOnly || user?.livello === 'admin')
@@ -96,23 +102,28 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
 
         {visibleLinks.map(({ to, label, Icon, num }) => {
           const isActive = location.pathname === to || (to !== '/admin' && location.pathname.startsWith(to + '/'))
+          const nBadge = to === '/admin/turni' ? nCambi : 0   // cambi turno da approvare
           return (
             <button
               key={to}
               onClick={() => handleNav(to)}
-              title={label}
-              className={`flex items-center gap-2 py-2.5 text-sm transition-colors text-left w-full ${collapsed ? 'justify-center px-0' : 'px-4'}`}
+              title={nBadge > 0 ? `${label} · ${nBadge} cambio turno da approvare` : label}
+              className={`relative flex items-center gap-2 py-2.5 text-sm transition-colors text-left w-full ${collapsed ? 'justify-center px-0' : 'px-4'}`}
               style={isActive ? { background: 'var(--t-primario)', color: '#fff' } : { color: 'var(--t-soft)' }}
               onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#fff' }}
               onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = 'var(--t-soft)' }}
             >
               {collapsed ? (
-                num != null ? <NumCircle num={num} size={20} /> : <Icon size={18} />
+                <>
+                  {num != null ? <NumCircle num={num} size={20} /> : <Icon size={18} />}
+                  {nBadge > 0 && <span style={{ position: 'absolute', top: 4, right: 6, minWidth: 15, height: 15, borderRadius: 8, background: '#f59e0b', color: '#fff', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '1.5px solid var(--t-notte)' }}>{nBadge}</span>}
+                </>
               ) : (
                 <>
                   {num != null ? <NumCircle num={num} /> : <span className="shrink-0" style={{ width: 18 }} />}
                   <Icon size={15} className="shrink-0" />
                   <span className="leading-tight">{label}</span>
+                  {nBadge > 0 && <span className="ml-auto shrink-0" style={{ background: '#f59e0b', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 9, padding: '1px 6px', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' }}>{nBadge}</span>}
                 </>
               )}
             </button>

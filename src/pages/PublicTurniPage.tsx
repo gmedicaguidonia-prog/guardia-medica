@@ -1,14 +1,14 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2 } from 'lucide-react'
+import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
 import { useFestivita } from '../hooks/useFestivita'
 import { useFinalizzato } from '../hooks/useFinalizzato'
 import { nomeCompleto, cmpTurnisti } from '../types'
-import type { TurnoPersona } from '../types'
+import type { TurnoPersona, Utente } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
 import { useRealtimePostazione } from '../hooks/useRealtime'
@@ -645,6 +645,7 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
   const [destId, setDestId] = useState('')
   const [extra, setExtra] = useState<Turnista[]>([])
   const [nNome, setNNome] = useState(''); const [nCognome, setNCognome] = useState(''); const [nEmail, setNEmail] = useState('')
+  const [cerca, setCerca] = useState(''); const [sugg, setSugg] = useState<Utente[]>([])   // ricerca anagrafica (anti-duplicati)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [conflitti, setConflitti] = useState<TurnoPersona[]>([])
@@ -658,6 +659,34 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
   const repLabel = slot < 0 ? ' (reperibilità)' : ''
   const nomeTurno = `${turno.nome || 'Turno'} ${turno.ora_inizio}–${turno.ora_fine}${repLabel}`
 
+  // Ricerca in anagrafica (dopo il 3° carattere) per NON creare doppioni: se la persona
+  // esiste già nel sistema la si riusa (stessa identità), anche se non è in questa postazione.
+  useEffect(() => {
+    if (!nuovo) { setSugg([]); return }
+    const q = cerca.trim()
+    if (q.length < 3) { setSugg([]); return }
+    let vivo = true
+    const t = setTimeout(async () => {
+      try { const r = await store.searchUtenti(q); if (vivo) setSugg(r) } catch { if (vivo) setSugg([]) }
+    }, 300)
+    return () => { vivo = false; clearTimeout(t) }
+  }, [cerca, nuovo])
+
+  // Riusa un utente già esistente in anagrafica (niente duplicati). Se è già membro di
+  // questa postazione lo seleziona; altrimenti lo aggiunge come esterno riusando l'identità.
+  async function pickEsistente(s: Utente) {
+    const giaMembro = tutti.find(t => t.utente_id === s.id)
+    if (giaMembro) { setDestId(giaMembro.id); setNuovo(false); setCerca(''); setSugg([]); return }
+    setBusy(true); setErr(null)
+    try {
+      await store.addMembro(postazioneId, { nome: s.nome, cognome: s.cognome, email: s.email, livello: 'esterno', utenteId: s.id })
+      const lista = await store.getTurnisti(postazioneId)
+      const trovato = lista.find(p => p.utente_id === s.id) ?? lista.find(p => p.email.toLowerCase() === s.email.toLowerCase())
+      if (trovato) { setExtra(x => [...x.filter(e => e.id !== trovato.id), trovato]); setDestId(trovato.id) }
+      setNuovo(false); setCerca(''); setSugg([]); setNNome(''); setNCognome(''); setNEmail('')
+    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+
   async function creaEsterno() {
     if (!nNome.trim() || !nCognome.trim() || !nEmail.trim()) { setErr('Nome, cognome ed email sono obbligatori.'); return }
     setBusy(true); setErr(null)
@@ -666,7 +695,7 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
       const lista = await store.getTurnisti(postazioneId)
       const trovato = lista.find(p => p.email.toLowerCase() === nEmail.trim().toLowerCase())
       if (trovato) { setExtra(x => [...x.filter(e => e.id !== trovato.id), trovato]); setDestId(trovato.id) }
-      setNuovo(false); setNNome(''); setNCognome(''); setNEmail('')
+      setNuovo(false); setNNome(''); setNCognome(''); setNEmail(''); setCerca(''); setSugg([])
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
   }
 
@@ -743,15 +772,42 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
               </>
             ) : (
               <div className="rounded-lg border p-3 mb-3 space-y-2" style={{ borderColor: 'var(--t-riga)' }}>
-                <p className="text-xs font-semibold" style={{ color: 'var(--t-titolo)' }}>Nuova persona (verrà inserita come <strong>esterno</strong>)</p>
+                <p className="text-xs font-semibold" style={{ color: 'var(--t-titolo)' }}>Aggiungi una persona (come <strong>esterno</strong>)</p>
                 <p className="text-[11px] text-stone-500">Il cambio verso un nominativo nuovo richiede <strong>sempre</strong> l'approvazione del responsabile, anche se il cambio automatico è attivo.</p>
-                <div className="flex gap-2">
-                  <input type="text" value={nNome} onChange={e => setNNome(e.target.value)} placeholder="Nome" className="input text-sm flex-1" />
-                  <input type="text" value={nCognome} onChange={e => setNCognome(e.target.value)} placeholder="Cognome" className="input text-sm flex-1" />
+
+                {/* Ricerca in anagrafica per non creare doppioni */}
+                <div className="relative">
+                  <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+                  <input type="text" value={cerca} onChange={e => setCerca(e.target.value)} placeholder="È già nel sistema? Cerca per nome o cognome…" className="input text-sm w-full" style={{ paddingLeft: 26 }} />
                 </div>
-                <input type="email" value={nEmail} onChange={e => setNEmail(e.target.value)} placeholder="Indirizzo email" className="input text-sm w-full" />
+                {cerca.trim().length >= 3 && (
+                  sugg.length > 0 ? (
+                    <div className="rounded-lg border max-h-40 overflow-auto" style={{ borderColor: 'var(--t-riga)' }}>
+                      {sugg.map(s => (
+                        <button key={s.id} onClick={() => pickEsistente(s)} disabled={busy}
+                          className="w-full text-left px-2.5 py-1.5 text-sm flex items-center gap-2 hover:bg-stone-50" style={{ color: 'var(--t-testo)' }}>
+                          <UserPlus2 size={13} style={{ color: 'var(--t-accento)' }} className="shrink-0" />
+                          <span className="font-medium">{nomeCompleto(s)}</span>
+                          <span className="text-[11px] text-stone-400 truncate">{s.email}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-stone-400 italic">Nessuno trovato con questo nome: inseriscilo a mano qui sotto.</p>
+                  )
+                )}
+
+                {/* Inserimento manuale (persona non ancora nel sistema) */}
+                <div className="pt-2" style={{ borderTop: '1px solid var(--t-riga)' }}>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Oppure inseriscilo a mano</p>
+                  <div className="flex gap-2">
+                    <input type="text" value={nNome} onChange={e => setNNome(e.target.value)} placeholder="Nome" className="input text-sm flex-1" />
+                    <input type="text" value={nCognome} onChange={e => setNCognome(e.target.value)} placeholder="Cognome" className="input text-sm flex-1" />
+                  </div>
+                  <input type="email" value={nEmail} onChange={e => setNEmail(e.target.value)} placeholder="Indirizzo email" className="input text-sm w-full mt-2" />
+                </div>
                 <div className="flex justify-end gap-2">
-                  <button onClick={() => setNuovo(false)} disabled={busy} className="btn-secondary text-xs py-1 px-2.5">Indietro</button>
+                  <button onClick={() => { setNuovo(false); setCerca(''); setSugg([]) }} disabled={busy} className="btn-secondary text-xs py-1 px-2.5">Indietro</button>
                   <button onClick={creaEsterno} disabled={busy} className="btn-primary text-xs py-1 px-3">{busy ? 'Aggiungo…' : 'Aggiungi'}</button>
                 </div>
               </div>

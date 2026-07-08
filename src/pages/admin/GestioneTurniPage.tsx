@@ -87,11 +87,13 @@ export function GestioneTurniPage() {
       await store.decidiCambio(c.id, approva)
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'cambio_turno', messaggio: `Cambio turno ${approva ? 'APPROVATO' : 'RIFIUTATO'}: ${c.descrizione}.`, target: '/admin/turni', perAdmin: true }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['cambi', postazioneId] })
+      await qc.invalidateQueries({ queryKey: ['cambi-pendenti', postazioneId] })   // badge sidebar + card Home
       await qc.invalidateQueries({ queryKey: ['turni', postazioneId] })
       await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId] })
     } catch (e) {
       await notify({ title: 'Cambio non applicato', message: (e as Error).message })
       await qc.invalidateQueries({ queryKey: ['cambi', postazioneId] })
+      await qc.invalidateQueries({ queryKey: ['cambi-pendenti', postazioneId] })
     } finally { setDecidendo(null) }
   }
   // Tempo reale: candidature in arrivo, turni, stato calendario, desiderata, cambi turno.
