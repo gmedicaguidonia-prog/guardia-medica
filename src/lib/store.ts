@@ -77,6 +77,27 @@ function normSchema(r: Record<string, unknown>): TurnoSchema {
   }
 }
 
+// ═══ Archivio mese: lettura-da-JSON per i mesi finalizzati+archiviati (Fase 1·2) ═══
+// Un mese con finalizzazioni.archiviato=true ha i dati SOLO nel JSON di setup_backup;
+// le letture li ricostruiscono da lì così calendario/PDF/conteggi restano identici.
+// ⚠️ REGOLA: ogni tabella nuova per-mese va aggiunta anche qui e nell'archivio/ripristino.
+type SnapMese = Record<string, any>   // eslint-disable-line @typescript-eslint/no-explicit-any
+const _archCache = new Map<string, SnapMese | null>()   // `${pid}|${mese}` → snapshot | null (non archiviato)
+const _archPerVersione = new Map<string, SnapMese>()     // versione_id (schema/impag/regole) → snapshot
+export function clearArchivioCache() { _archCache.clear(); _archPerVersione.clear() }
+function _registraVersioni(s: SnapMese) {
+  for (const v of [s.config_versione, s.impag_versione, s.regole_versione]) if (v && v.id) _archPerVersione.set(v.id as string, s)
+}
+async function _archSupa(pid: string, mese: string): Promise<SnapMese | null> {
+  const key = pid + '|' + mese
+  if (_archCache.has(key)) return _archCache.get(key) ?? null
+  const { data } = await supabase.rpc('archivio_snapshot', { p_postazione: pid, p_mese: mese })
+  const snap = (data as SnapMese) ?? null
+  _archCache.set(key, snap)
+  if (snap) _registraVersioni(snap)
+  return snap
+}
+
 const supaStore = {
   // ── Postazioni ──
   async getPostazioni(): Promise<Postazione[]> {
@@ -172,6 +193,8 @@ const supaStore = {
 
   // ── Versioni di configurazione ──
   async getVersioneMese(postazioneId: string, mese: string): Promise<ConfigVersione | null> {
+    const arch = await _archSupa(postazioneId, mese)
+    if (arch) return (arch.config_versione as ConfigVersione) ?? null
     const { data, error } = await supabase.from('schema_versioni').select('*').eq('postazione_id', postazioneId)
     if (error) throw error
     return pickVersione((data ?? []) as ConfigVersione[], mese)
@@ -220,6 +243,7 @@ const supaStore = {
   async cancellaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
     const { error } = await supabase.rpc('cancella_mese', { p_postazione: postazioneId, p_mese: mese, p_autore: autore ?? _autoreCorrente })
     if (error) throw error
+    clearArchivioCache()
   },
   // info sull'eventuale snapshot del mese (per mostrare il pulsante Ripristina)
   async getSetupBackup(postazioneId: string, mese: string): Promise<{ id: string; createdAt: string; autore: string | null } | null> {
@@ -244,6 +268,8 @@ const supaStore = {
 
   // ── Turni dello schema (per versione) ──
   async getSchemaVersione(versioneId: string): Promise<TurnoSchema[]> {
+    const arch = _archPerVersione.get(versioneId)
+    if (arch) return ((arch.config_turni as Record<string, unknown>[]) ?? []).map(normSchema)
     const { data, error } = await supabase.from('schema_turni').select('*').eq('versione_id', versioneId).order('ordine')
     if (error) throw error
     return (data ?? []).map(normSchema)
@@ -302,6 +328,8 @@ const supaStore = {
     if (error) throw error
   },
   async getSuperfestivoTurni(postazioneId: string, mese: string): Promise<{ data: string; turnoSchemaId: string }[]> {
+    const arch = await _archSupa(postazioneId, mese)
+    if (arch) return ((arch.superfestivo_turni as { data: string; turno_schema_id: string }[]) ?? []).map(r => ({ data: r.data, turnoSchemaId: r.turno_schema_id }))
     const { data, error } = await supabase.from('superfestivo_turni').select('data, turno_schema_id').eq('postazione_id', postazioneId).eq('mese', mese)
     if (error) throw error
     return (data ?? []).map(r => ({ data: r.data as string, turnoSchemaId: r.turno_schema_id as string }))
@@ -328,10 +356,12 @@ const supaStore = {
   async finalizzaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
     const { error } = await supabase.from('finalizzazioni').upsert({ postazione_id: postazioneId, mese, autore: autore ?? _autoreCorrente }, { onConflict: 'postazione_id,mese' })
     if (error) throw error
+    clearArchivioCache()
   },
   async sbloccaMese(postazioneId: string, mese: string): Promise<void> {
     const { error } = await supabase.from('finalizzazioni').delete().eq('postazione_id', postazioneId).eq('mese', mese)
     if (error) throw error
+    clearArchivioCache()
   },
 
   // ── Tema interfaccia (salvato per utente) ──
@@ -412,6 +442,8 @@ const supaStore = {
 
   // ── Turni assegnati ──
   async getTurniMese(postazioneId: string, anno: number, mese: number): Promise<Turno[]> {
+    const arch = await _archSupa(postazioneId, `${anno}-${String(mese).padStart(2, '0')}`)
+    if (arch) return (arch.turni as Turno[]) ?? []
     const { first, last } = meseRange(anno, mese)
     const { data, error } = await supabase.from('turni').select('*').eq('postazione_id', postazioneId).gte('data', first).lte('data', last)
     if (error) throw error
@@ -543,6 +575,8 @@ const supaStore = {
   },
   // personale "del mese" con ruolo congelato (per-mese)
   async getPersonaleMese(postazioneId: string, mese: string): Promise<TurnistaMese[]> {
+    const arch = await _archSupa(postazioneId, mese)
+    if (arch) return ((arch.turnisti_mese as { turnista_id: string; livello?: string }[]) ?? []).map(r => ({ turnista_id: r.turnista_id, livello: (r.livello ?? 'turnista') as Livello }))
     const { data, error } = await supabase.from('turnisti_mese').select('turnista_id, livello').eq('postazione_id', postazioneId).eq('mese', mese)
     if (error) throw error
     return (data ?? []).map(r => ({ turnista_id: r.turnista_id as string, livello: ((r.livello as string) ?? 'turnista') as Livello }))
@@ -574,6 +608,8 @@ const supaStore = {
 
   // ── Desiderata / Indisponibilità ──
   async getDesiderataMese(postazioneId: string, anno: number, mese: number): Promise<Desiderata[]> {
+    const arch = await _archSupa(postazioneId, `${anno}-${String(mese).padStart(2, '0')}`)
+    if (arch) return (arch.desiderata as Desiderata[]) ?? []
     const { first, last } = meseRange(anno, mese)
     const { data, error } = await supabase.from('desiderata').select('*').eq('postazione_id', postazioneId).gte('data', first).lte('data', last)
     if (error) throw error
@@ -589,6 +625,8 @@ const supaStore = {
     }
   },
   async getDesiderataFinestra(postazioneId: string, mese: string): Promise<DesiderataFinestra | null> {
+    const arch = await _archSupa(postazioneId, mese)
+    if (arch) { const df = arch.desiderata_finestra as { mese: string; aperta_da: string | null; aperta_a: string | null; pubbliche: boolean } | null; return df ? { mese: df.mese, aperta_da: df.aperta_da, aperta_a: df.aperta_a, pubbliche: !!df.pubbliche } : null }
     const { data, error } = await supabase.from('desiderata_finestra').select('*').eq('postazione_id', postazioneId).eq('mese', mese).maybeSingle()
     if (error) throw error
     return data ? { mese: data.mese as string, aperta_da: data.aperta_da as string | null, aperta_a: data.aperta_a as string | null, pubbliche: !!data.pubbliche } : null
@@ -608,6 +646,8 @@ const supaStore = {
 
   // ── Stato calendario turni (non_pubblicato | pubblicato | pianificazione) ──
   async getStatoCalendario(postazioneId: string, mese: string): Promise<StatoCalendario> {
+    const arch = await _archSupa(postazioneId, mese)
+    if (arch) return ((arch.turni_stato as { stato?: string } | null)?.stato as StatoCalendario) ?? 'pubblicato'
     const { data, error } = await supabase.from('turni_stato').select('stato').eq('postazione_id', postazioneId).eq('mese', mese).maybeSingle()
     if (error) throw error
     return (data?.stato as StatoCalendario) ?? 'non_pubblicato'
@@ -661,6 +701,8 @@ const supaStore = {
 
   // ── Impaginazione (versioni + fogli + turni dei fogli) ──
   async getImpaginazioneVersioneMese(postazioneId: string, mese: string): Promise<ImpaginazioneVersione | null> {
+    const arch = await _archSupa(postazioneId, mese)
+    if (arch) return (arch.impag_versione as ImpaginazioneVersione) ?? null
     const { data, error } = await supabase.from('impaginazione_versioni').select('*').eq('postazione_id', postazioneId)
     if (error) throw error
     return pickVersione((data ?? []) as ImpaginazioneVersione[], mese)
@@ -698,6 +740,8 @@ const supaStore = {
     if (error) throw error
   },
   async getFogli(versioneId: string): Promise<Foglio[]> {
+    const arch = _archPerVersione.get(versioneId)
+    if (arch) return [...((arch.fogli as Foglio[]) ?? [])].sort((a, b) => a.ordine - b.ordine)
     const { data, error } = await supabase.from('fogli').select('*').eq('versione_id', versioneId).order('ordine')
     if (error) throw error
     return (data ?? []) as Foglio[]
@@ -718,6 +762,8 @@ const supaStore = {
     if (error) throw error
   },
   async getFoglioTurni(versioneId: string): Promise<FoglioTurno[]> {
+    const arch = _archPerVersione.get(versioneId)
+    if (arch) return (arch.foglio_turni as FoglioTurno[]) ?? []
     const { data, error } = await supabase.from('foglio_turni').select('*').eq('versione_id', versioneId)
     if (error) throw error
     return (data ?? []) as FoglioTurno[]
@@ -999,6 +1045,23 @@ function ensureSeed(): void {
 
 type WithPost<T> = T & { postazione_id?: string }
 
+// Versione DEV del caricatore archivio (legge da localStorage: finalizzazioni + gm_setup_backup)
+function _archDev(pid: string, mese: string): SnapMese | null {
+  const key = 'dev|' + pid + '|' + mese
+  if (_archCache.has(key)) return _archCache.get(key) ?? null
+  const fin = read<{ postazioneId?: string; mese: string; archiviato?: boolean }[]>(LS_FINALIZZAZIONI, [])
+    .find(f => (f.postazioneId ?? DEV_POSTAZIONE) === pid && f.mese === mese)
+  let snap: SnapMese | null = null
+  if (fin && fin.archiviato) {
+    const bk = read<{ postazioneId?: string; mese: string; snapshot?: SnapMese }[]>('gm_setup_backup', [])
+      .filter(b => (b.postazioneId ?? DEV_POSTAZIONE) === pid && b.mese === mese)
+    snap = bk.length ? (bk[bk.length - 1].snapshot ?? null) : null
+  }
+  _archCache.set(key, snap)
+  if (snap) _registraVersioni(snap)
+  return snap
+}
+
 const localStore = {
   async getPostazioni(): Promise<Postazione[]> {
     ensureSeed()
@@ -1074,6 +1137,7 @@ const localStore = {
 
   async getVersioneMese(postazioneId: string, mese: string): Promise<ConfigVersione | null> {
     ensureSeed()
+    const arch = _archDev(postazioneId, mese); if (arch) return (arch.config_versione as ConfigVersione) ?? null
     return pickVersione(read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId), mese)
   },
   async getVersioni(postazioneId: string): Promise<ConfigVersione[]> {
@@ -1164,6 +1228,7 @@ const localStore = {
 
   async getSchemaVersione(versioneId: string): Promise<TurnoSchema[]> {
     ensureSeed()
+    const arch = _archPerVersione.get(versioneId); if (arch) return [...((arch.config_turni as TurnoSchema[]) ?? [])].sort((a, b) => a.ordine - b.ordine)
     return read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => s.versione_id === versioneId).slice().sort((a, b) => a.ordine - b.ordine)
   },
 
@@ -1202,6 +1267,7 @@ const localStore = {
     writeLs(LS_FEST_SUPER, list)
   },
   async getSuperfestivoTurni(postazioneId: string, mese: string): Promise<{ data: string; turnoSchemaId: string }[]> {
+    const arch = _archDev(postazioneId, mese); if (arch) return ((arch.superfestivo_turni as { data: string; turno_schema_id: string }[]) ?? []).map(r => ({ data: r.data, turnoSchemaId: r.turno_schema_id }))
     return read<{ postazione_id?: string; mese: string; data: string; turno_schema_id: string }[]>(LS_SUPERF_TURNI, [])
       .filter(x => (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId && x.mese === mese)
       .map(x => ({ data: x.data, turnoSchemaId: x.turno_schema_id }))
@@ -1232,10 +1298,10 @@ const localStore = {
     const list = read<{ postazioneId: string; mese: string; autore: string | null; createdAt: string }[]>(LS_FINALIZZAZIONI, [])
       .filter(x => !(x.postazioneId === postazioneId && x.mese === mese))
     list.push({ postazioneId, mese, autore: autore ?? _autoreCorrente, createdAt: new Date().toISOString() })
-    writeLs(LS_FINALIZZAZIONI, list)
+    writeLs(LS_FINALIZZAZIONI, list); clearArchivioCache()
   },
   async sbloccaMese(postazioneId: string, mese: string): Promise<void> {
-    writeLs(LS_FINALIZZAZIONI, read<{ postazioneId: string; mese: string }[]>(LS_FINALIZZAZIONI, []).filter(x => !(x.postazioneId === postazioneId && x.mese === mese)))
+    writeLs(LS_FINALIZZAZIONI, read<{ postazioneId: string; mese: string }[]>(LS_FINALIZZAZIONI, []).filter(x => !(x.postazioneId === postazioneId && x.mese === mese))); clearArchivioCache()
   },
   async setMioTema(_tema: string): Promise<void> { /* DEV: basta il localStorage di applicaTema */ },
   async getEmailMittente(postazioneId: string): Promise<string> {
@@ -1319,6 +1385,7 @@ const localStore = {
   },
 
   async getTurniMese(postazioneId: string, anno: number, mese: number): Promise<Turno[]> {
+    const arch = _archDev(postazioneId, `${anno}-${String(mese).padStart(2, '0')}`); if (arch) return (arch.turni as WithPost<Turno>[]) ?? []
     const { first, last } = meseRange(anno, mese)
     return read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId && t.data >= first && t.data <= last)
   },
@@ -1430,6 +1497,7 @@ const localStore = {
     writeLs(LS_TURNISTI_MESE, l)
   },
   async getPersonaleMese(postazioneId: string, mese: string): Promise<TurnistaMese[]> {
+    const arch = _archDev(postazioneId, mese); if (arch) return ((arch.turnisti_mese as { turnista_id: string; livello?: string }[]) ?? []).map(r => ({ turnista_id: r.turnista_id, livello: (r.livello ?? 'turnista') as Livello }))
     return read<{ mese: string; turnista_id: string; postazione_id?: string; livello?: Livello }[]>(LS_TURNISTI_MESE, [])
       .filter(x => x.mese === mese && (x.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
       .map(x => ({ turnista_id: x.turnista_id, livello: (x.livello ?? 'turnista') as Livello }))
@@ -1452,6 +1520,7 @@ const localStore = {
   },
 
   async getDesiderataMese(postazioneId: string, anno: number, mese: number): Promise<Desiderata[]> {
+    const arch = _archDev(postazioneId, `${anno}-${String(mese).padStart(2, '0')}`); if (arch) return (arch.desiderata as Desiderata[]) ?? []
     const { first, last } = meseRange(anno, mese)
     return read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => (d.postazione_id ?? DEV_POSTAZIONE) === postazioneId && d.data >= first && d.data <= last)
   },
@@ -1461,6 +1530,7 @@ const localStore = {
     writeLs(LS_DESIDERATA, list)
   },
   async getDesiderataFinestra(postazioneId: string, mese: string): Promise<DesiderataFinestra | null> {
+    const arch = _archDev(postazioneId, mese); if (arch) { const df = arch.desiderata_finestra as DesiderataFinestra | null; return df ? { mese: df.mese, aperta_da: df.aperta_da, aperta_a: df.aperta_a, pubbliche: !!df.pubbliche } : null }
     const f = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
     return f ? { mese: f.mese, aperta_da: f.aperta_da, aperta_a: f.aperta_a, pubbliche: !!f.pubbliche } : null
   },
@@ -1484,6 +1554,7 @@ const localStore = {
   },
 
   async getStatoCalendario(postazioneId: string, mese: string): Promise<StatoCalendario> {
+    const arch = _archDev(postazioneId, mese); if (arch) return ((arch.turni_stato as { stato?: string } | null)?.stato as StatoCalendario) ?? 'pubblicato'
     return read<{ postazione_id: string; mese: string; stato: StatoCalendario }[]>(LS_TURNI_STATO, []).find(s => s.mese === mese && (s.postazione_id ?? DEV_POSTAZIONE) === postazioneId)?.stato ?? 'non_pubblicato'
   },
   async setStatoCalendario(postazioneId: string, mese: string, stato: StatoCalendario): Promise<void> {
@@ -1524,6 +1595,7 @@ const localStore = {
   },
 
   async getImpaginazioneVersioneMese(postazioneId: string, mese: string): Promise<ImpaginazioneVersione | null> {
+    const arch = _archDev(postazioneId, mese); if (arch) return (arch.impag_versione as ImpaginazioneVersione) ?? null
     return pickVersione(read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId), mese)
   },
   async getImpaginazioneVersioni(postazioneId: string): Promise<ImpaginazioneVersione[]> {
@@ -1553,6 +1625,7 @@ const localStore = {
     writeLs(LS_FOGLIO_TURNI, read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => ft.versione_id !== id))
   },
   async getFogli(versioneId: string): Promise<Foglio[]> {
+    const arch = _archPerVersione.get(versioneId); if (arch) return [...((arch.fogli as Foglio[]) ?? [])].sort((a, b) => a.ordine - b.ordine)
     return read<Foglio[]>(LS_FOGLI, []).filter(f => f.versione_id === versioneId).slice().sort((a, b) => a.ordine - b.ordine)
   },
   async addFoglio(versioneId: string, nome: string): Promise<Foglio> {
@@ -1570,6 +1643,7 @@ const localStore = {
     writeLs(LS_FOGLIO_TURNI, read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => ft.foglio_id !== id))
   },
   async getFoglioTurni(versioneId: string): Promise<FoglioTurno[]> {
+    const arch = _archPerVersione.get(versioneId); if (arch) return (arch.foglio_turni as FoglioTurno[]) ?? []
     return read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => ft.versione_id === versioneId)
   },
   async setFoglioTurno(versioneId: string, turnoSchemaId: string, foglioId: string | null): Promise<void> {
