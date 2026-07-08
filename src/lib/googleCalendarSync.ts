@@ -295,11 +295,13 @@ interface Desiderato {
  *     così si capisce che è la coda del turno iniziato il giorno prima;
  *   - REPERIBILITÀ → SOLO la parte 1 (inizio→mezzanotte); la seconda parte NON si
  *     scrive. (La reperibilità nello stesso giorno resta un evento unico.)
+ *  Titolo evento: "<nome turno> (<postazione>)" es. "Notte (Tivoli)"; la reperibilità
+ *  è "Reperibilità (<postazione>)"; lo smonto "Smonto <nome> (<postazione>)".
  *  `mese` (il mese del turno) va tra le proprietà private così la cancellazione
  *  per-mese non elimina lo "Smonto" che cade nel mese successivo. IDs deterministici
  *  base32hex (0-9 a-v): prefisso trn/rep/smo + turnista + data + turno (no trattini). */
 function buildDesiderati(
-  turni: Turno[], schemaById: Map<string, TurnoSchema>, turnistaId: string, colorId: string,
+  turni: Turno[], schemaById: Map<string, TurnoSchema>, turnistaId: string, colorId: string, postazioneNome: string,
 ): Map<string, Desiderato> {
   const m = new Map<string, Desiderato>()
   const put = (d: Desiderato) => m.set(d.id, d)
@@ -312,6 +314,8 @@ function buildDesiderati(
     const mese = t.data.slice(0, 7)
     const overnight = sc.ora_fine <= sc.ora_inizio
     const base = `${turnistaId.replace(/-/g, '').toLowerCase()}${t.data.replace(/-/g, '')}${t.turno_schema_id.replace(/-/g, '').toLowerCase()}`
+    const pz = postazioneNome ? ` (${postazioneNome})` : ''
+    const titolo = rep ? `Reperibilità${pz}` : `${nome}${pz}`   // es. "Notte (Tivoli)" / "Reperibilità (Tivoli)"
 
     if (!overnight) {
       // Turno o reperibilità nello stesso giorno: evento unico inizio→fine.
@@ -319,8 +323,8 @@ function buildDesiderati(
         id: `${rep ? 'rep' : 'trn'}${base}`, date: t.data, mese,
         startDT: `${t.data}T${sc.ora_inizio}:00`,
         endDT:   `${t.data}T${sc.ora_fine}:00`,
-        title:   rep ? `${nome} (reperibilità)` : nome,
-        colorId, sig: `${rep ? 'rep' : 'one'}|${nome}|${sc.ora_inizio}|${sc.ora_fine}|c${colorId}`,
+        title:   titolo,
+        colorId, sig: `${rep ? 'rep' : 'one'}|${titolo}|${sc.ora_inizio}|${sc.ora_fine}|c${colorId}`,
       })
     } else {
       // A cavallo del giorno → parte 1 (inizio → mezzanotte), sia turno che reperibilità.
@@ -329,8 +333,8 @@ function buildDesiderati(
         id: `${rep ? 'rep' : 'trn'}${base}`, date: t.data, mese,
         startDT: `${t.data}T${sc.ora_inizio}:00`,
         endDT:   `${nextDay}T00:00:00`,
-        title:   rep ? `${nome} (reperibilità)` : nome,
-        colorId, sig: `${rep ? 'rep1' : 'p1'}|${nome}|${sc.ora_inizio}|c${colorId}`,
+        title:   titolo,
+        colorId, sig: `${rep ? 'rep1' : 'p1'}|${titolo}|${sc.ora_inizio}|c${colorId}`,
       })
       // Parte 2 "Smonto" (due ore prima della fine → fine, il giorno dopo): SOLO i turni
       // normali; per la REPERIBILITÀ la seconda parte NON si scrive.
@@ -340,8 +344,8 @@ function buildDesiderati(
           id: `smo${base}`, date: s2date, mese,
           startDT: `${s2date}T${s2time}:00`,
           endDT:   `${nextDay}T${sc.ora_fine}:00`,
-          title:   `Smonto ${nome}`,
-          colorId, sig: `smo|${nome}|${s2time}|${sc.ora_fine}|c${colorId}`,
+          title:   `Smonto ${nome}${pz}`,
+          colorId, sig: `smo|${nome}${pz}|${s2time}|${sc.ora_fine}|c${colorId}`,
         })
       }
     }
@@ -468,7 +472,7 @@ async function runSyncOnce(
   // Se appena ricreato (forceCreate) la lista è vuota → tutto da creare.
   const existing = forceCreate ? new Map<string, GEvent>() : await listManagedEvents(token, calId)
   const schemaById = new Map(schema.map(s => [s.id, s]))
-  const desired = buildDesiderati(turni, schemaById, turnistaId, colorId)
+  const desired = buildDesiderati(turni, schemaById, turnistaId, colorId, postazioneNome)
 
   // ── Diff (le CANCELLAZIONI sono limitate al MESE in corso) ──────────
   const toCreate: Desiderato[] = []
