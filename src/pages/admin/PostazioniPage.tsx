@@ -77,7 +77,7 @@ export function PostazioniPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-4">
+    <div className="py-6 space-y-4" style={{ paddingLeft: '5%', paddingRight: '5%' }}>
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
 
       <div>
