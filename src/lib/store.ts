@@ -360,12 +360,12 @@ const supaStore = {
     return ((data ?? []) as { mese: string; finalizzato: boolean }[]).map(r => ({ mese: r.mese, finalizzato: !!r.finalizzato }))
   },
   async finalizzaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
-    const { error } = await supabase.from('finalizzazioni').upsert({ postazione_id: postazioneId, mese, autore: autore ?? _autoreCorrente }, { onConflict: 'postazione_id,mese' })
+    const { error } = await supabase.rpc('finalizza_archivia_mese', { p_postazione: postazioneId, p_mese: mese, p_autore: autore ?? _autoreCorrente })
     if (error) throw error
     clearArchivioCache()
   },
   async sbloccaMese(postazioneId: string, mese: string): Promise<void> {
-    const { error } = await supabase.from('finalizzazioni').delete().eq('postazione_id', postazioneId).eq('mese', mese)
+    const { error } = await supabase.rpc('sblocca_mese', { p_postazione: postazioneId, p_mese: mese })
     if (error) throw error
     clearArchivioCache()
   },
@@ -1068,6 +1068,31 @@ function _archDev(pid: string, mese: string): SnapMese | null {
   return snap
 }
 
+// Snapshot DEV completo di un mese (stesse chiavi di _snapshot_mese) per finalize/archivio.
+function _snapshotDev(pid: string, mese: string): SnapMese {
+  const own = (p?: string) => (p ?? DEV_POSTAZIONE) === pid
+  const inMese = (d: string) => d.slice(0, 7) === mese
+  const cv = pickVersione(read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).filter(v => own(v.postazione_id)), mese)
+  const iv = pickVersione(read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).filter(v => own(v.postazione_id)), mese)
+  return {
+    mese, schema_version: 2,
+    config_versione: cv,
+    config_turni: cv ? read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => s.versione_id === cv.id) : [],
+    impag_versione: iv,
+    fogli: iv ? read<Foglio[]>(LS_FOGLI, []).filter(f => f.versione_id === iv.id) : [],
+    foglio_turni: iv ? read<FoglioTurno[]>(LS_FOGLIO_TURNI, []).filter(ft => ft.versione_id === iv.id) : [],
+    turni: read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => own(t.postazione_id) && inMese(t.data)),
+    turni_stato: read<{ postazione_id?: string; mese: string; stato: string }[]>(LS_TURNI_STATO, []).find(s => own(s.postazione_id) && s.mese === mese) ?? null,
+    desiderata: read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => own(d.postazione_id) && inMese(d.data)),
+    desiderata_finestra: read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).find(f => own(f.postazione_id) && f.mese === mese) ?? null,
+    turnisti_mese: read<{ postazione_id?: string; mese: string; turnista_id: string; livello?: string }[]>(LS_TURNISTI_MESE, []).filter(x => own(x.postazione_id) && x.mese === mese).map(x => ({ turnista_id: x.turnista_id, livello: x.livello })),
+    superfestivo_turni: read<{ postazione_id?: string; mese: string; data: string; turno_schema_id: string }[]>(LS_SUPERF_TURNI, []).filter(x => own(x.postazione_id) && x.mese === mese),
+    richieste: read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => own(r.postazione_id) && inMese(r.data)),
+    cambi_turno: read<(CambioTurno & { postazione_id: string })[]>('gm_cambi_turno', []).filter(c => c.postazione_id === pid && c.mese === mese),
+    attivazioni: read<{ postazioneId?: string; mese: string; passo: number }[]>('gm_attivazioni', []).filter(a => (a.postazioneId ?? DEV_POSTAZIONE) === pid && a.mese === mese).map(a => a.passo),
+  }
+}
+
 const localStore = {
   async getPostazioni(): Promise<Postazione[]> {
     ensureSeed()
@@ -1307,13 +1332,48 @@ const localStore = {
     return [...new Set([...mesiTurni, ...mesiFin])].sort().map(mese => ({ mese, finalizzato: mesiFin.has(mese) }))
   },
   async finalizzaMese(postazioneId: string, mese: string, autore?: string | null): Promise<void> {
-    const list = read<{ postazioneId: string; mese: string; autore: string | null; createdAt: string }[]>(LS_FINALIZZAZIONI, [])
+    const list = read<{ postazioneId: string; mese: string; autore: string | null; createdAt: string; archiviato?: boolean }[]>(LS_FINALIZZAZIONI, [])
       .filter(x => !(x.postazioneId === postazioneId && x.mese === mese))
-    list.push({ postazioneId, mese, autore: autore ?? _autoreCorrente, createdAt: new Date().toISOString() })
-    writeLs(LS_FINALIZZAZIONI, list); clearArchivioCache()
+    list.push({ postazioneId, mese, autore: autore ?? _autoreCorrente, createdAt: new Date().toISOString(), archiviato: true })
+    writeLs(LS_FINALIZZAZIONI, list)
+    // archivio JSON (se non già archiviato) + svuota i dati operativi del mese (versioni + attivazioni restano)
+    const backups = read<{ id: string; postazioneId?: string; mese: string; snapshot?: SnapMese }[]>('gm_setup_backup', [])
+    const giaBk = backups.some(b => (b.postazioneId ?? DEV_POSTAZIONE) === postazioneId && b.mese === mese)
+    if (!giaBk) {
+      backups.push({ id: uid(), postazioneId, mese, snapshot: _snapshotDev(postazioneId, mese) })
+      writeLs('gm_setup_backup', backups)
+      const own = (p?: string) => (p ?? DEV_POSTAZIONE) === postazioneId
+      const inMese = (d: string) => d.slice(0, 7) === mese
+      writeLs(LS_TURNI, read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => !(own(t.postazione_id) && inMese(t.data))))
+      writeLs(LS_TURNI_STATO, read<{ postazione_id?: string; mese: string }[]>(LS_TURNI_STATO, []).filter(s => !(own(s.postazione_id) && s.mese === mese)))
+      writeLs(LS_DESIDERATA, read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).filter(d => !(own(d.postazione_id) && inMese(d.data))))
+      writeLs(LS_DESIDERATA_FIN, read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).filter(f => !(own(f.postazione_id) && f.mese === mese)))
+      writeLs(LS_TURNISTI_MESE, read<{ postazione_id?: string; mese: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(own(x.postazione_id) && x.mese === mese)))
+      writeLs(LS_RICHIESTE, read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []).filter(r => !(own(r.postazione_id) && inMese(r.data))))
+      writeLs(LS_SUPERF_TURNI, read<{ postazione_id?: string; mese: string }[]>(LS_SUPERF_TURNI, []).filter(x => !(own(x.postazione_id) && x.mese === mese)))
+      writeLs('gm_cambi_turno', read<{ postazione_id: string; mese: string }[]>('gm_cambi_turno', []).filter(c => !(c.postazione_id === postazioneId && c.mese === mese)))
+    }
+    clearArchivioCache()
   },
   async sbloccaMese(postazioneId: string, mese: string): Promise<void> {
-    writeLs(LS_FINALIZZAZIONI, read<{ postazioneId: string; mese: string }[]>(LS_FINALIZZAZIONI, []).filter(x => !(x.postazioneId === postazioneId && x.mese === mese))); clearArchivioCache()
+    const fin = read<{ postazioneId: string; mese: string; archiviato?: boolean }[]>(LS_FINALIZZAZIONI, [])
+    const wasArch = !!fin.find(x => x.postazioneId === postazioneId && x.mese === mese)?.archiviato
+    const backups = read<{ postazioneId?: string; mese: string; snapshot?: SnapMese }[]>('gm_setup_backup', [])
+    const s = backups.filter(b => (b.postazioneId ?? DEV_POSTAZIONE) === postazioneId && b.mese === mese).slice(-1)[0]?.snapshot
+    if (wasArch && s) {
+      const own = (p?: string) => (p ?? DEV_POSTAZIONE) === postazioneId
+      writeLs(LS_TURNI, [...read<WithPost<Turno>[]>(LS_TURNI, []), ...(s.turni ?? [])])
+      if (s.turni_stato) writeLs(LS_TURNI_STATO, [...read<{ postazione_id?: string; mese: string }[]>(LS_TURNI_STATO, []).filter(x => !(own(x.postazione_id) && x.mese === mese)), s.turni_stato])
+      writeLs(LS_DESIDERATA, [...read<WithPost<Desiderata>[]>(LS_DESIDERATA, []), ...(s.desiderata ?? [])])
+      if (s.desiderata_finestra) writeLs(LS_DESIDERATA_FIN, [...read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).filter(x => !(own(x.postazione_id) && x.mese === mese)), s.desiderata_finestra])
+      writeLs(LS_TURNISTI_MESE, [...read<{ postazione_id: string; mese: string; turnista_id: string; livello?: string }[]>(LS_TURNISTI_MESE, []), ...((s.turnisti_mese ?? []).map((x: { turnista_id: string; livello?: string }) => ({ postazione_id: postazioneId, mese, turnista_id: x.turnista_id, livello: x.livello })))])
+      writeLs(LS_RICHIESTE, [...read<WithPost<RichiestaTurno>[]>(LS_RICHIESTE, []), ...(s.richieste ?? [])])
+      writeLs(LS_SUPERF_TURNI, [...read<{ postazione_id?: string }[]>(LS_SUPERF_TURNI, []), ...(s.superfestivo_turni ?? [])])
+      writeLs('gm_cambi_turno', [...read<unknown[]>('gm_cambi_turno', []), ...(s.cambi_turno ?? [])])
+      writeLs('gm_setup_backup', backups.filter(b => !((b.postazioneId ?? DEV_POSTAZIONE) === postazioneId && b.mese === mese)))
+    }
+    writeLs(LS_FINALIZZAZIONI, fin.filter(x => !(x.postazioneId === postazioneId && x.mese === mese)))
+    clearArchivioCache()
   },
   async setMioTema(_tema: string): Promise<void> { /* DEV: basta il localStorage di applicaTema */ },
   async getEmailMittente(postazioneId: string): Promise<string> {
