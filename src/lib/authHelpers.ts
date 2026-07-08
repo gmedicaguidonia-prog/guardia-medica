@@ -23,6 +23,18 @@ export function setCachedProfile(u: AuthUser) {
 export function clearCachedProfile() {
   try { sessionStorage.removeItem(CACHE_KEY) } catch {}
 }
+/** Aggiorna SOLO il tema nel profilo in cache: senza questo, un reload nella stessa
+ *  scheda ripristina il tema vecchio (processSession riusa il profilo cachato senza
+ *  rileggere dal DB) sovrascrivendo il tema appena scelto. */
+export function updateCachedTema(tema: string) {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY)
+    if (!raw) return
+    const p = JSON.parse(raw) as AuthUser
+    p.tema = tema
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(p))
+  } catch {}
+}
 
 // ── Flag "accesso negato" → letto da LoginPage per il banner ────────
 export function flagUnauthorized(email: string, reason: string) {

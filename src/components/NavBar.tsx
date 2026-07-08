@@ -8,6 +8,7 @@ import { useDebug } from '../contexts/DebugContext'
 import { CentroMessaggi } from './CentroMessaggi'
 import { store } from '../lib/store'
 import { TEMI, applicaTema, temaSalvato } from '../lib/temi'
+import { updateCachedTema } from '../lib/authHelpers'
 import type { AuthUser, Livello, UtenteImpersonabile } from '../types'
 
 // Finestre dedicate: l'amministrazione vive in una finestra/scheda a parte e le
@@ -44,7 +45,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   const temaCorr = TEMI.find(t => t.id === temaAttivo) ?? TEMI[0]
   function ciclaTema() {
     const next = TEMI[(TEMI.findIndex(t => t.id === temaAttivo) + 1) % TEMI.length]
-    applicaTema(next.id); setTemaAttivo(next.id); store.setMioTema(next.id).catch(() => {})
+    applicaTema(next.id); setTemaAttivo(next.id); updateCachedTema(next.id); store.setMioTema(next.id).catch(() => {})
   }
 
   // ── Debug: modalità Admin + Doppleganger (solo per l'admin reale) ──

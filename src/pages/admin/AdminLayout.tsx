@@ -12,6 +12,7 @@ import { CancellaMeseButton } from '../../components/CancellaMeseButton'
 import { useFinalizzato } from '../../hooks/useFinalizzato'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { TEMI, applicaTema, temaSalvato } from '../../lib/temi'
+import { updateCachedTema } from '../../lib/authHelpers'
 import { store } from '../../lib/store'
 
 // Pagine numerate (1-6): in fondo mostrano "Cancella/Ripristina impostazioni mese"
@@ -71,7 +72,8 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   }, [])
   function cambiaTema(id: string) {
     applicaTema(id); setTemaAttivo(id)
-    store.setMioTema(id).catch(() => {})   // best-effort: il localStorage copre comunque questo dispositivo
+    updateCachedTema(id)   // tiene in sync il profilo cachato → reload non ripristina il tema vecchio
+    store.setMioTema(id).catch(() => {})   // persiste sul DB (cross-device)
   }
   // Cambi turno in attesa nella postazione attiva: badge arancione sulla voce "Turni del Mese"
   const { data: cambiPend = [] } = useQuery<CambioTurno[]>({ queryKey: ['cambi-pendenti', postazioneAttiva?.id], queryFn: () => store.getCambiPendenti(postazioneAttiva!.id), enabled: !!postazioneAttiva })
