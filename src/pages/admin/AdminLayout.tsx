@@ -21,6 +21,7 @@ const ROTTE_NUMERATE = new Set(['/admin/turnisti', '/admin/schema', '/admin/rego
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const MESI_BREVI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic']
 const meseLabel = (key: string) => { const [a, m] = key.split('-').map(Number); return `${MESI[m - 1]} ${a}` }
+const addMese = (key: string, delta: number) => { const [a, m] = key.split('-').map(Number); const d = new Date(a, m - 1 + delta, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 
 const links: { to: string; label: string; Icon: typeof Home; num: number | null; adminOnly?: boolean }[] = [
   { to: '/admin/postazioni', label: 'Centro di Controllo',          Icon: SlidersHorizontal, num: null, adminOnly: true },
@@ -58,8 +59,28 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
   const [pickerAnno, setPickerAnno] = useState(anno)
   const { data: mesiPanoramica = [] } = useQuery<{ mese: string; finalizzato: boolean }[]>({ queryKey: ['mesi-panoramica', postazioneAttiva?.id], queryFn: () => store.getMesiPanoramica(postazioneAttiva!.id), enabled: !!postazioneAttiva })
   const panMap = useMemo(() => new Map(mesiPanoramica.map(x => [x.mese, x.finalizzato])), [mesiPanoramica])
+  const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneAttiva?.id], queryFn: () => store.getMesiConContenuto(postazioneAttiva!.id), enabled: !!postazioneAttiva })
+  // Intervallo mesi NAVIGABILE: mesi noti (calendari/finalizzazioni + pubblicati/desiderata aperte) ∪ mese
+  // corrente, più UN mese oltre l'ultimo (per poter preparare il mese successivo). Fuori da qui non c'è
+  // nulla da gestire: freccette e datepicker vengono bloccati.
+  const { navLo, navHi } = useMemo(() => {
+    const noti = mesiPanoramica.map(x => x.mese)
+    if (rangeContenuto?.min) noti.push(rangeContenuto.min)
+    if (rangeContenuto?.max) noti.push(rangeContenuto.max)
+    const d = new Date()
+    const meseOggi = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const minNoto = noti.length ? noti.reduce((x, y) => x < y ? x : y) : meseOggi
+    const maxNoto = noti.length ? noti.reduce((x, y) => x > y ? x : y) : meseOggi
+    return { navLo: minNoto < meseOggi ? minNoto : meseOggi, navHi: addMese(maxNoto > meseOggi ? maxNoto : meseOggi, 1) }
+  }, [mesiPanoramica, rangeContenuto])
+  const canPrev = meseKey > navLo
+  const canNext = meseKey < navHi
+  const yPrevOk = pickerAnno - 1 >= +navLo.slice(0, 4)   // anno precedente ancora nell'intervallo?
+  const yNextOk = pickerAnno + 1 <= +navHi.slice(0, 4)   // anno successivo ancora nell'intervallo?
   function apriPicker() { setPickerAnno(anno); setPickerAperto(true) }
   async function scegliMese(a: number, m: number) {
+    const mk = `${a}-${String(m).padStart(2, '0')}`
+    if (mk < navLo || mk > navHi) return   // mese fuori dall'intervallo con qualcosa da gestire
     if (hasUnsaved && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Cambiare mese senza salvarle?', confirmLabel: 'Sì, cambia', danger: true }))) return
     setMeseAnno(a, m); setPickerAperto(false)
   }
@@ -91,6 +112,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
     navigate(to)
   }
   async function cambiaMeseSidebar(delta: number) {
+    if (delta < 0 ? !canPrev : !canNext) return   // niente da gestire oltre l'intervallo
     if (hasUnsaved && !(await confirm({ title: 'Modifiche non salvate', message: 'Hai modifiche non salvate. Cambiare mese senza salvarle?', confirmLabel: 'Sì, cambia', danger: true }))) return
     let m = mese + delta, a = anno
     if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
@@ -114,24 +136,27 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(28,40,24,0.45)' }} onClick={() => setPickerAperto(false)}>
           <div className="card p-4 w-full max-w-xs" style={{ animation: 'fadeSlideIn 160ms ease-out' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <button onClick={() => setPickerAnno(a => a - 1)} className="p-1.5 rounded hover:bg-stone-100 transition-colors" style={{ color: 'var(--t-accento)' }} title="Anno precedente"><ChevronLeft size={18} /></button>
+              <button onClick={() => yPrevOk && setPickerAnno(a => a - 1)} disabled={!yPrevOk} className="p-1.5 rounded hover:bg-stone-100 transition-colors" style={{ color: 'var(--t-accento)', opacity: yPrevOk ? 1 : 0.3, cursor: yPrevOk ? 'pointer' : 'not-allowed' }} title={yPrevOk ? 'Anno precedente' : 'Niente da gestire prima'}><ChevronLeft size={18} /></button>
               <span className="text-lg font-bold" style={{ color: 'var(--t-titolo)' }}>{pickerAnno}</span>
-              <button onClick={() => setPickerAnno(a => a + 1)} className="p-1.5 rounded hover:bg-stone-100 transition-colors" style={{ color: 'var(--t-accento)' }} title="Anno successivo"><ChevronRight size={18} /></button>
+              <button onClick={() => yNextOk && setPickerAnno(a => a + 1)} disabled={!yNextOk} className="p-1.5 rounded hover:bg-stone-100 transition-colors" style={{ color: 'var(--t-accento)', opacity: yNextOk ? 1 : 0.3, cursor: yNextOk ? 'pointer' : 'not-allowed' }} title={yNextOk ? 'Anno successivo' : 'Niente da gestire dopo'}><ChevronRight size={18} /></button>
             </div>
             <div className="grid grid-cols-3 gap-1.5">
               {MESI_BREVI.map((nomeM, i) => {
                 const m = i + 1
                 const mk = `${pickerAnno}-${String(m).padStart(2, '0')}`
                 const inPan = panMap.has(mk), fin = panMap.get(mk), attivo = mk === meseKey
-                const stile = inPan
+                const fuori = mk < navLo || mk > navHi   // fuori dall'intervallo con qualcosa da gestire
+                const stile = fuori
+                  ? { background: 'var(--t-tenue)', color: '#b8bcae', border: '1px dashed var(--t-riga)' }
+                  : inPan
                   ? (fin ? { background: '#fff', color: 'var(--t-titolo)', border: '1px solid #d6d3cc' }
                          : { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' })
                   : { background: 'var(--t-tenue)', color: 'var(--t-testo)', border: '1px solid var(--t-riga)' }
                 return (
-                  <button key={m} onClick={() => scegliMese(pickerAnno, m)}
-                    title={inPan ? (fin ? 'Mese finalizzato' : 'Calendario presente (non finalizzato)') : 'Nessun calendario'}
-                    className="text-sm font-semibold py-2 rounded-lg transition-transform hover:scale-105"
-                    style={{ ...stile, boxShadow: attivo ? '0 0 0 2px var(--t-accento)' : undefined }}>{nomeM}</button>
+                  <button key={m} onClick={() => scegliMese(pickerAnno, m)} disabled={fuori}
+                    title={fuori ? 'Nessun mese da gestire qui' : inPan ? (fin ? 'Mese finalizzato' : 'Calendario presente (non finalizzato)') : 'Nessun calendario'}
+                    className={`text-sm font-semibold py-2 rounded-lg transition-transform ${fuori ? '' : 'hover:scale-105'}`}
+                    style={{ ...stile, opacity: fuori ? 0.6 : 1, cursor: fuori ? 'not-allowed' : 'pointer', boxShadow: attivo ? '0 0 0 2px var(--t-accento)' : undefined }}>{nomeM}</button>
                 )
               })}
             </div>
@@ -188,10 +213,10 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
               <CalendarDays size={15} style={{ color: 'var(--t-soft)' }} />
               <button onClick={apriPicker} title="Scegli mese e anno" className="text-[11px] font-bold leading-none rounded px-0.5 hover:bg-white/10 transition-colors" style={{ color: '#fff' }}>{String(mese).padStart(2, '0')}/{String(anno).slice(2)}</button>
               <div className="flex items-center gap-1 mt-0.5">
-                <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
+                <button onClick={() => cambiaMeseSidebar(-1)} disabled={!canPrev} title={canPrev ? 'Mese precedente' : 'Niente da gestire prima'} className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)', opacity: canPrev ? 1 : 0.3, cursor: canPrev ? 'pointer' : 'not-allowed' }}>
                   <ChevronLeft size={16} />
                 </button>
-                <button onClick={() => cambiaMeseSidebar(1)} title="Mese successivo" className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
+                <button onClick={() => cambiaMeseSidebar(1)} disabled={!canNext} title={canNext ? 'Mese successivo' : 'Niente da gestire dopo'} className="rounded p-0.5 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)', opacity: canNext ? 1 : 0.3, cursor: canNext ? 'pointer' : 'not-allowed' }}>
                   <ChevronRight size={16} />
                 </button>
               </div>
@@ -207,10 +232,10 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
                 <CalendarDays size={16} className="shrink-0" style={{ color: 'var(--t-soft)' }} />
                 <button onClick={apriPicker} title="Scegli mese e anno" className="text-base font-bold whitespace-nowrap rounded px-1 -mx-1 hover:bg-white/10 transition-colors" style={{ color: '#fff' }}>{meseLabel(meseKey)}</button>
                 <div className="flex items-center gap-0.5 ml-auto">
-                  <button onClick={() => cambiaMeseSidebar(-1)} title="Mese precedente" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
+                  <button onClick={() => cambiaMeseSidebar(-1)} disabled={!canPrev} title={canPrev ? 'Mese precedente' : 'Niente da gestire prima'} className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)', opacity: canPrev ? 1 : 0.3, cursor: canPrev ? 'pointer' : 'not-allowed' }}>
                     <ChevronLeft size={18} />
                   </button>
-                  <button onClick={() => cambiaMeseSidebar(1)} title="Mese successivo" className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)' }}>
+                  <button onClick={() => cambiaMeseSidebar(1)} disabled={!canNext} title={canNext ? 'Mese successivo' : 'Niente da gestire dopo'} className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)', opacity: canNext ? 1 : 0.3, cursor: canNext ? 'pointer' : 'not-allowed' }}>
                     <ChevronRight size={18} />
                   </button>
                 </div>

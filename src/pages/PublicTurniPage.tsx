@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search } from 'lucide-react'
+import { CalendarDays, CalendarHeart, CalendarCheck, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
@@ -14,6 +14,7 @@ import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
 import { useRealtimePostazione } from '../hooks/useRealtime'
 import { useDebug } from '../contexts/DebugContext'
 import { IconaLivello } from '../components/IconaLivello'
+import { SyncCalendarModal } from '../components/SyncCalendarModal'
 import type { AuthUser, TurnoSchema, Turno, Turnista, TurnistaMese, Livello, MiaPostazione, Postazione, ConfigVersione, DesiderataFinestra, Desiderata, TipoDesiderata, StatoCalendario, RichiestaTurno } from '../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
@@ -40,6 +41,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const godMode = adminMode && !doppleganger   // ⚠️ la god mode NON si applica mentre impersoni qualcuno (Doppleganger): vedi ESATTAMENTE come lui
   const oggiStr = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
   const [tab, setTab] = useState<'turni' | 'desiderata'>('turni')
+  const [syncOpen, setSyncOpen] = useState(false)   // modal "Sincronizza Calendario"
 
   // postazioni dell'utente
   const { data: mie = [], isLoading: loadingMie } = useQuery<MiaPostazione[]>({ queryKey: ['mie-postazioni', user?.id], queryFn: () => store.getMiePostazioni(user!.id), enabled: !!user })
@@ -308,8 +310,17 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             ))}
           </div>
 
-          {/* Selettore mese */}
-          <div className="flex justify-end">{MeseNav}</div>
+          {/* Selettore mese + Sincronizza Calendario (turnista, calendario pubblicato o in pianificazione) */}
+          <div className="flex justify-end items-center gap-2 flex-wrap">
+            {tab === 'turni' && statoCal !== 'non_pubblicato' && mia && (
+              <button onClick={() => setSyncOpen(true)}
+                className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5"
+                title="Sincronizza i tuoi turni di questo mese con il tuo Google Calendar">
+                <CalendarCheck size={15} /> Sincronizza Calendario
+              </button>
+            )}
+            {MeseNav}
+          </div>
 
           {/* ───── CALENDARIO TURNI ───── */}
           {tab === 'turni' && (
@@ -617,6 +628,19 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 <div className="flex justify-end"><button onClick={() => setAnnullaMsg(null)} className="btn-primary text-sm py-1.5 px-4">Ok</button></div>
               </div>
             </div>
+          )}
+
+          {/* Modal: Sincronizza Calendario (turni del mese del turnista → Google Calendar) */}
+          {syncOpen && mia && postazioneId && (
+            <SyncCalendarModal
+              turnistaId={mia.membershipId}
+              mese={meseKey}
+              turni={turni}
+              schema={schema}
+              postazioneNome={opzioni.find(o => o.postazioneId === postazioneId)?.nome ?? ''}
+              postazioneId={postazioneId}
+              onClose={() => setSyncOpen(false)}
+            />
           )}
         </>
       )}
