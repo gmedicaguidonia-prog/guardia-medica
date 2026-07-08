@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno, Festivita, CambioTurno, TurnoPersona } from '../types'
+import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno, Festivita, CambioTurno, TurnoPersona } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -775,6 +775,40 @@ const supaStore = {
       return
     }
     const { error } = await supabase.from('utenti').insert({ nome: nome.trim(), cognome: cognome.trim(), email: em, admin: true })
+    if (error) throw error
+  },
+
+  // ── Anagrafica Utenti (Centro di Controllo, solo admin) ──
+  //  Elenco paginato di TUTTE le identità del sistema, con ricerca su nome/cognome/email.
+  async getUtentiAnagrafica(search: string, offset: number, limit: number): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
+    let q = supabase.from('utenti').select('id, nome, cognome, email, admin, attivo', { count: 'exact' })
+    const s = search.trim().replace(/[%,]/g, ' ')
+    if (s) q = q.or(`nome.ilike.%${s}%,cognome.ilike.%${s}%,email.ilike.%${s}%`)
+    const { data, error, count } = await q.order('cognome').order('nome').range(offset, offset + limit - 1)
+    if (error) throw error
+    const rows = (data ?? []).map(x => ({ id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin: !!x.admin, attivo: (x.attivo as boolean) !== false }))
+    return { rows, total: count ?? rows.length }
+  },
+  // Appartenenze (postazione + ruolo) di un utente, per la sua scheda.
+  async getMembershipUtente(utenteId: string): Promise<MembershipUtente[]> {
+    const { data, error } = await supabase.from('turnisti').select('id, livello, postazione_id, postazioni(nome)').eq('utente_id', utenteId)
+    if (error) throw error
+    return (data ?? []).map(x => ({ membershipId: x.id as string, postazioneId: x.postazione_id as string, postazioneNome: ((x.postazioni as { nome?: string } | null)?.nome) ?? '—', livello: x.livello as Livello }))
+      .sort((a, b) => a.postazioneNome.localeCompare(b.postazioneNome, 'it'))
+  },
+  // Sospende / riattiva un utente (RPC admin: protegge se stessi e gli altri admin).
+  async setUtenteAttivo(utenteId: string, attivo: boolean): Promise<void> {
+    const { error } = await supabase.rpc('admin_set_utente_attivo', { p_utente: utenteId, p_attivo: attivo })
+    if (error) throw error
+  },
+  // Elimina definitivamente un utente (RPC admin: bloccato se ha storico).
+  async eliminaUtenteDefinitivo(utenteId: string): Promise<void> {
+    const { error } = await supabase.rpc('admin_elimina_utente', { p_utente: utenteId })
+    if (error) throw error
+  },
+  // Aggiorna l'anagrafica (nome/cognome/email) di un utente (RPC admin).
+  async aggiornaUtente(utenteId: string, patch: { nome: string; cognome: string; email: string }): Promise<void> {
+    const { error } = await supabase.rpc('admin_aggiorna_utente', { p_utente: utenteId, p_nome: patch.nome, p_cognome: patch.cognome, p_email: patch.email })
     if (error) throw error
   },
 
@@ -1568,6 +1602,44 @@ const localStore = {
     }
     extra.push({ id: uid(), nome: nome.trim(), cognome: cognome.trim(), email: em, admin: true })
     writeLs('gm_dev_extra_utenti', extra)
+  },
+
+  // ── Anagrafica Utenti (DEV) ── (sospesi in 'gm_utenti_sospesi')
+  async getUtentiAnagrafica(search: string, offset: number, limit: number): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
+    ensureSeed()
+    const adminSet = new Set(read<string[]>('gm_dev_admins', []))
+    const sosp = new Set(read<string[]>('gm_utenti_sospesi', []))
+    const map = new Map<string, UtenteAnagrafica>()
+    read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => { const uid2 = t.utente_id ?? t.id; if (!map.has(uid2)) map.set(uid2, { id: uid2, nome: t.nome, cognome: t.cognome, email: t.email, admin: t.email === ADMIN_EMAIL || adminSet.has(uid2), attivo: !sosp.has(uid2) }) })
+    read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!map.has(u.id)) map.set(u.id, { id: u.id, nome: u.nome, cognome: u.cognome, email: u.email, admin: u.admin || adminSet.has(u.id), attivo: !sosp.has(u.id) }) })
+    let rows = [...map.values()]
+    const s = search.trim().toLowerCase()
+    if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
+    rows.sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+    return { rows: rows.slice(offset, offset + limit), total: rows.length }
+  },
+  async getMembershipUtente(utenteId: string): Promise<MembershipUtente[]> {
+    const posts = read<Postazione[]>(LS_POSTAZIONI, [])
+    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.utente_id ?? t.id) === utenteId)
+      .map(t => { const pid = t.postazione_id ?? DEV_POSTAZIONE; return { membershipId: t.id, postazioneId: pid, postazioneNome: posts.find(p => p.id === pid)?.nome ?? '—', livello: t.livello } })
+      .sort((a, b) => a.postazioneNome.localeCompare(b.postazioneNome, 'it'))
+  },
+  async setUtenteAttivo(utenteId: string, attivo: boolean): Promise<void> {
+    const s = new Set(read<string[]>('gm_utenti_sospesi', []))
+    if (attivo) s.delete(utenteId); else s.add(utenteId)
+    writeLs('gm_utenti_sospesi', [...s])
+  },
+  async eliminaUtenteDefinitivo(utenteId: string): Promise<void> {
+    const memberships = read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.utente_id ?? t.id) === utenteId)
+    for (const m of memberships) if (await localStore.turnistaHaStorico(m.id)) throw new Error('Ha turni, desiderata o fa parte del personale di uno o più mesi: non è eliminabile (si creerebbero buchi nello storico). Puoi sospenderlo per togliergli l’accesso mantenendo lo storico.')
+    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.utente_id ?? t.id) !== utenteId))
+    writeLs('gm_dev_extra_utenti', read<UtenteAdmin[]>('gm_dev_extra_utenti', []).filter(u => u.id !== utenteId))
+    const sosp = new Set(read<string[]>('gm_utenti_sospesi', [])); sosp.delete(utenteId); writeLs('gm_utenti_sospesi', [...sosp])
+  },
+  async aggiornaUtente(utenteId: string, patch: { nome: string; cognome: string; email: string }): Promise<void> {
+    const nome = patch.nome.trim(), cognome = patch.cognome.trim(), email = patch.email.trim().toLowerCase()
+    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).map(t => (t.utente_id ?? t.id) === utenteId ? { ...t, nome: nome || t.nome, cognome, email: email || t.email } : t))
+    writeLs('gm_dev_extra_utenti', read<UtenteAdmin[]>('gm_dev_extra_utenti', []).map(u => u.id === utenteId ? { ...u, nome: nome || u.nome, cognome, email: email || u.email } : u))
   },
 
   // ── Supervisori (DEV) ──

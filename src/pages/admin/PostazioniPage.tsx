@@ -1,14 +1,15 @@
-import { useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { useOutletContext, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { MapPin, Plus, Trash2, Pencil, Save, X, Shield, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText } from 'lucide-react'
+import { MapPin, Plus, Trash2, Pencil, Save, X, Shield, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText, Search, UserRound, UsersRound, Ban, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react'
 import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
+import { IconaLivello } from '../../components/IconaLivello'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { ADMIN_EMAIL } from '../../lib/constants'
 import { nomeCompleto } from '../../types'
-import type { AuthUser, Postazione, UtenteAdmin, Supervisore, LogPostazione } from '../../types'
+import type { AuthUser, Postazione, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, LogPostazione } from '../../types'
 
 function fmtDT(iso: string) {
   return new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -137,6 +138,9 @@ export function PostazioniPage() {
       {/* Blocco: Supervisori (accesso all'amministrazione, per postazione) */}
       <SupervisoriBox />
 
+      {/* Blocco: Anagrafica Utenti — tutte le identità del sistema (ricerca, sospensione, ecc.) */}
+      <AnagraficaUtentiBox />
+
       {/* Blocco: Log Postazioni — storico eventi globali (non si cancella con la postazione) */}
       <div className="card p-4 space-y-3">
         <div>
@@ -249,6 +253,176 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
           <button onClick={creaNuovo} disabled={busy || !nEmail.trim() || !nNome.trim()} className="btn-secondary text-sm"><UserPlus size={14} /> Crea admin</button>
         </div>
         <p className="text-[11px] text-stone-400 mt-1">Accederà con quell'account Google. Sarà <strong>solo</strong> amministratore, senza appartenenze a postazioni (a meno che tu non lo aggiunga al personale).</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Riquadro Anagrafica Utenti — tutte le identità del sistema (solo admin) ───
+//  Ricerca + elenco paginato (20/pag). Cliccando un utente si apre la scheda con le
+//  sue postazioni (ruolo + icona, link al Personale), la modifica dei dati, la
+//  sospensione reversibile dell'accesso e l'eliminazione definitiva.
+const PAGINA_UTENTI = 20
+function AnagraficaUtentiBox() {
+  const { confirm, notify, confirmState } = useConfirm()
+  const [search, setSearch] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [page, setPage] = useState(0)
+  const [aperto, setAperto] = useState<string | null>(null)
+
+  // ricerca "debounced": aspetta che l'utente smetta di digitare (e torna a pagina 1)
+  useEffect(() => {
+    const t = setTimeout(() => { setDebounced(search.trim()); setPage(0) }, 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const { data, isFetching } = useQuery({
+    queryKey: ['anagrafica-utenti', debounced, page],
+    queryFn: () => store.getUtentiAnagrafica(debounced, page * PAGINA_UTENTI, PAGINA_UTENTI),
+    placeholderData: (prev) => prev,
+  })
+  const rows = data?.rows ?? []
+  const total = data?.total ?? 0
+  const nPagine = Math.max(1, Math.ceil(total / PAGINA_UTENTI))
+
+  const { data: supervisori = [] } = useQuery<Supervisore[]>({ queryKey: ['supervisori'], queryFn: () => store.getSupervisori() })
+  const supSet = useMemo(() => new Set(supervisori.map(s => s.id)), [supervisori])
+
+  return (
+    <div className="card p-4 space-y-3">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      <div>
+        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><UsersRound size={15} style={{ color: 'var(--t-accento)' }} /> Anagrafica Utenti</h2>
+        <p className="text-xs text-stone-500 mt-0.5">Tutte le persone registrate nel sistema. Cerca un nominativo per vederne le postazioni, <strong>sospendere l'accesso</strong> (mantenendo lo storico), correggerne i dati o eliminarlo.</p>
+      </div>
+
+      {/* ricerca */}
+      <div className="relative">
+        <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cerca per nome, cognome o email…" className="input text-sm" style={{ paddingLeft: 30 }} />
+      </div>
+
+      {/* elenco */}
+      {rows.length === 0 ? (
+        <p className="text-sm text-stone-500">{isFetching ? 'Caricamento…' : debounced ? 'Nessun utente trovato.' : 'Nessun utente.'}</p>
+      ) : (
+        <div className="space-y-1.5" style={{ opacity: isFetching ? 0.6 : 1 }}>
+          {rows.map(u => (
+            <div key={u.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
+              <button onClick={() => setAperto(aperto === u.id ? null : u.id)} className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left">
+                <UserRound size={15} className="shrink-0" style={{ color: u.attivo ? 'var(--t-accento)' : '#9ca3af' }} />
+                <span className="text-sm font-semibold" style={{ color: u.attivo ? 'var(--t-titolo)' : '#9ca3af', textDecoration: u.attivo ? 'none' : 'line-through' }}>{nomeCompleto(u)}</span>
+                {u.admin && <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#fef9c3', color: '#854d0e' }}><Crown size={9} /> ADMIN</span>}
+                {supSet.has(u.id) && !u.admin && <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#e0f2fe', color: '#075985' }}><Shield size={9} /> SUPERV.</span>}
+                {!u.attivo && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#fee2e2', color: '#b91c1c' }}>SOSPESO</span>}
+                <span className="text-xs text-stone-400 hidden sm:inline truncate">{u.email}</span>
+                <div className="flex-1" />
+                <ChevronRight size={14} className="shrink-0 text-stone-400 transition-transform" style={{ transform: aperto === u.id ? 'rotate(90deg)' : 'none' }} />
+              </button>
+              {aperto === u.id && <SchedaUtente u={u} confirm={confirm} notify={notify} onChiudi={() => setAperto(null)} />}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* paginazione */}
+      {total > PAGINA_UTENTI && (
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-xs text-stone-500">{total} utenti · pagina {page + 1} di {nPagine}</span>
+          <div className="flex gap-1">
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="p-1.5 rounded border disabled:opacity-40" style={{ borderColor: '#d6d3cc', color: 'var(--t-accento)' }}><ChevronLeft size={14} /></button>
+            <button onClick={() => setPage(p => Math.min(nPagine - 1, p + 1))} disabled={page >= nPagine - 1} className="p-1.5 rounded border disabled:opacity-40" style={{ borderColor: '#d6d3cc', color: 'var(--t-accento)' }}><ChevronRight size={14} /></button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Scheda del singolo utente: dati modificabili, postazioni (link al Personale),
+// sospensione reversibile ed eliminazione definitiva.
+function SchedaUtente({ u, confirm, notify, onChiudi }: {
+  u: UtenteAnagrafica
+  confirm: ReturnType<typeof useConfirm>['confirm']
+  notify: ReturnType<typeof useConfirm>['notify']
+  onChiudi: () => void
+}) {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const { setPostazioneId } = usePostazione()
+  const [nome, setNome] = useState(u.nome)
+  const [cognome, setCognome] = useState(u.cognome)
+  const [email, setEmail] = useState(u.email)
+  const [busy, setBusy] = useState(false)
+
+  const { data: membership = [], isLoading } = useQuery<MembershipUtente[]>({ queryKey: ['membership', u.id], queryFn: () => store.getMembershipUtente(u.id) })
+
+  const modificato = nome.trim() !== u.nome || cognome.trim() !== u.cognome || email.trim().toLowerCase() !== u.email.toLowerCase()
+  function refresh() { qc.invalidateQueries({ queryKey: ['anagrafica-utenti'] }); qc.invalidateQueries({ queryKey: ['utenti'] }); qc.invalidateQueries({ queryKey: ['membership', u.id] }) }
+
+  async function salva() {
+    if (!nome.trim() || !email.trim()) return
+    setBusy(true)
+    try { await store.aggiornaUtente(u.id, { nome, cognome, email }); refresh() }
+    catch (e) { void notify({ title: 'Modifica non riuscita', message: (e as Error).message }) }
+    finally { setBusy(false) }
+  }
+  async function toggleAttivo() {
+    if (u.attivo) {
+      const ok = await confirm({ title: 'Sospendi accesso', message: `${nomeCompleto(u)} non potrà più accedere all'app, da nessuna postazione. Tutto il suo storico (turni passati, ecc.) resta intatto e potrai riattivarlo quando vuoi.`, confirmLabel: 'Sospendi', danger: true })
+      if (!ok) return
+    }
+    setBusy(true)
+    try { await store.setUtenteAttivo(u.id, !u.attivo); refresh() }
+    catch (e) { void notify({ title: 'Operazione non riuscita', message: (e as Error).message }) }
+    finally { setBusy(false) }
+  }
+  async function elimina() {
+    const ok = await confirm({ title: 'Elimina definitivamente', message: `Eliminare ${nomeCompleto(u)} dal sistema, in modo irreversibile? È consentito solo se non ha alcuno storico; se lavora o ha lavorato, usa invece la sospensione.`, confirmLabel: 'Elimina', danger: true })
+    if (!ok) return
+    setBusy(true)
+    try { await store.eliminaUtenteDefinitivo(u.id); onChiudi(); refresh() }
+    catch (e) { void notify({ title: 'Non eliminabile', message: (e as Error).message }) }
+    finally { setBusy(false) }
+  }
+  function vai(m: MembershipUtente) { setPostazioneId(m.postazioneId); navigate('/admin/turnisti') }
+
+  return (
+    <div className="px-3 py-3 space-y-3" style={{ borderTop: '1px solid var(--t-riga)', background: '#fff' }}>
+      {/* dati anagrafici */}
+      <div className="flex flex-wrap items-end gap-2">
+        <div><label className="label text-[11px]">Nome</label><input value={nome} onChange={e => setNome(e.target.value)} className="input text-sm" style={{ maxWidth: 130 }} /></div>
+        <div><label className="label text-[11px]">Cognome</label><input value={cognome} onChange={e => setCognome(e.target.value)} className="input text-sm" style={{ maxWidth: 140 }} /></div>
+        <div className="flex-1" style={{ minWidth: 160 }}><label className="label text-[11px]">Email (login)</label><input value={email} onChange={e => setEmail(e.target.value)} type="email" className="input text-sm w-full" /></div>
+        <button onClick={salva} disabled={busy || !modificato || !nome.trim() || !email.trim()} className="btn-primary text-xs py-1.5 px-3"><Save size={13} /> Salva</button>
+      </div>
+
+      {/* postazioni */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1">Postazioni</p>
+        {isLoading ? <p className="text-xs text-stone-400">Caricamento…</p> : membership.length === 0 ? (
+          <p className="text-xs text-stone-400 italic">Non è inserito in nessuna postazione.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {membership.map(m => (
+              <button key={m.membershipId} onClick={() => vai(m)} title="Vai al Personale di questa postazione" className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-transform hover:scale-105" style={{ background: '#f4f6f1', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }}>
+                <IconaLivello livello={m.livello} size={12} />
+                {m.postazioneNome}
+                <span className="text-[10px] text-stone-400">· {m.livello}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* azioni */}
+      <div className="flex flex-wrap gap-2 pt-2" style={{ borderTop: '1px dashed var(--t-riga)' }}>
+        <button onClick={toggleAttivo} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3 rounded-lg disabled:opacity-50" style={u.attivo ? { background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' } : { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>
+          {u.attivo ? <><Ban size={13} /> Sospendi accesso</> : <><RotateCcw size={13} /> Riattiva accesso</>}
+        </button>
+        <button onClick={elimina} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3 rounded-lg disabled:opacity-50" style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}>
+          <Trash2 size={13} /> Elimina definitivamente
+        </button>
       </div>
     </div>
   )

@@ -46,6 +46,25 @@ export interface UtenteAdmin {
   admin: boolean
 }
 
+/** Riga dell'Anagrafica Utenti (Centro di Controllo). `attivo=false` ⇒ sospeso: non
+ *  accede più all'app ma resta tutto il suo storico, riattivabile in qualsiasi momento. */
+export interface UtenteAnagrafica {
+  id: string
+  nome: string
+  cognome: string
+  email: string
+  admin: boolean
+  attivo: boolean
+}
+
+/** Un'appartenenza di un utente a una postazione (per la scheda Anagrafica Utenti). */
+export interface MembershipUtente {
+  membershipId: string
+  postazioneId: string
+  postazioneNome: string
+  livello: Livello
+}
+
 /** Supervisore = chi ha accesso all'amministrazione (indipendente dal ruolo del mese). */
 export interface Supervisore {
   id: string          // = utente_id
