@@ -433,3 +433,10 @@ export interface AuthUser {
   tuttePostazioni: boolean      // supervisore di TUTTE le postazioni (presenti e future)
   tema?: string | null          // tema interfaccia scelto dall'utente (vedi lib/temi.ts)
 }
+
+// ─── Backup postazioni ──────────────────────────────────────────────
+export interface BackupGiorno { giorno: string; nPostazioni: number }
+export interface BackupInfo { id: string; postazioneId: string; postazioneNome: string; tipo: string; createdAt: string; esiste: boolean }
+export interface BackupMese { mese: string; nTurni: number }
+export interface BackupPostazioneItem { id: string; giorno: string; tipo: string; createdAt: string }
+export interface UtenteOrfano { id: string; nome: string; cognome: string; email: string; nTurni: number; livello: Livello }

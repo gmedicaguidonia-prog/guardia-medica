@@ -1,14 +1,16 @@
 import { useMemo, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, ArrowRightLeft, Bell, ChevronLeft, ChevronRight } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ArrowRightLeft, Bell, ChevronLeft, ChevronRight, History, RotateCcw, CalendarDays, Loader2 } from 'lucide-react'
 import { store } from '../../lib/store'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
 import { usePassiCompleti } from '../../hooks/usePassiCompleti'
+import { useConfirm } from '../../hooks/useConfirm'
+import { ConfirmModal } from '../../components/ConfirmModal'
 import { NOTIFICA_CATEGORIE, categoriaNotifica } from '../../types'
-import type { ConfigVersione, DesiderataFinestra, Notifica, CambioTurno, StatoCalendario } from '../../types'
+import type { ConfigVersione, DesiderataFinestra, Notifica, CambioTurno, StatoCalendario, BackupPostazioneItem, BackupMese } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 function meseKeyOffset(off: number): string {
@@ -21,6 +23,16 @@ function itDate(iso: string): string { const [a, m, d] = iso.split('-'); return 
 function meseSucc(mese: string): string { const [a, m] = mese.split('-').map(Number); const d = new Date(a, m, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 function copre(v: ConfigVersione, mese: string): boolean {
   return v.valido_da <= mese && (v.valido_fino == null || mese <= v.valido_fino)
+}
+// Primo passo BLOCCANTE mancante (gerarchia ①→⑤): finché c'è, non si passa alle desiderata (⑥).
+type StatoPassi = { pers: boolean; conf: boolean; reg: boolean; imp: boolean; fest: boolean }
+function primoBloccante(p: StatoPassi): { label: string; rotta: string } | null {
+  if (!p.pers) return { label: 'il Personale (passo ①)', rotta: '/admin/turnisti' }
+  if (!p.conf) return { label: 'la Configurazione Turni (passo ②)', rotta: '/admin/schema' }
+  if (!p.reg)  return { label: 'le Regole Turni (passo ③)', rotta: '/admin/regole' }
+  if (!p.imp)  return { label: "l'Impaginazione (passo ④)", rotta: '/admin/impaginazione' }
+  if (!p.fest) return { label: 'le Festività (passo ⑤)', rotta: '/admin/festivita' }
+  return null
 }
 
 interface Avviso { testo: string; cta?: string; azione?: () => void }
@@ -47,7 +59,9 @@ export function AdminHomePage() {
   const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseProssimo], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseProssimo), enabled: !!postazioneId })
   // Stato del calendario del mese prossimo: se è già pubblicato non ha senso chiedere le desiderata
   const { data: statoProssimo } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseProssimo], queryFn: () => store.getStatoCalendario(postazioneId!, meseProssimo), enabled: !!postazioneId })
-  // Passi di completamento del mese prossimo (gerarchia ①→⑤): capire cosa manca PRIMA delle desiderata (⑥)
+  // Passi di completamento del mese CORRENTE e del PROSSIMO (gerarchia ①→⑤)
+  const meseCorrente = meseKeyOffset(0)
+  const { passoPersonale: ccPers, passo1: ccConf, passo2: ccReg, passo3: ccImp, passoFestivita: ccFest } = usePassiCompleti(postazioneId, meseCorrente)
   const { passoPersonale: ppPers, passo1: ppConf, passo2: ppReg, passo3: ppImp, passoFestivita: ppFest } = usePassiCompleti(postazioneId, meseProssimo)
   // Panoramica dei mesi con calendario + finalizzati: per ricordare di finalizzare i mesi passati
   const { data: mesiPanoramica = [] } = useQuery<{ mese: string; finalizzato: boolean }[]>({ queryKey: ['mesi-panoramica', postazioneId], queryFn: () => store.getMesiPanoramica(postazioneId!), enabled: !!postazioneId })
@@ -85,10 +99,7 @@ export function AdminHomePage() {
 
   const avvisi = useMemo<Avviso[]>(() => {
     const out: Avviso[] = []
-    const mesi = [0, 1, 2].map(meseKeyOffset)   // corrente + 2
-
-    // Tutti i mesi PASSATI che hanno un calendario ma NON sono ancora finalizzati (dal più recente)
-    const meseCorrente = meseKeyOffset(0)
+    // 1) Mesi PASSATI con calendario ma NON finalizzati → ricorda di finalizzare (dal più recente)
     mesiPanoramica
       .filter(x => x.mese < meseCorrente && !x.finalizzato)
       .sort((a, b) => b.mese.localeCompare(a.mese))
@@ -97,46 +108,32 @@ export function AdminHomePage() {
         cta: 'Finalizza',
         azione: () => { const [a, m] = x.mese.split('-').map(Number); setMeseAnno(a, m); navigate('/admin/finalizza') },
       }))
-    // Mesi imminenti senza configurazione (il mese PROSSIMO è gestito a parte sotto)
-    mesi.forEach(mk => {
-      if (mk === meseProssimo) return
-      if (!versioni.some(v => copre(v, mk))) {
-        out.push({ testo: `Nessuna configurazione turni per ${meseLabel(mk)}.`, cta: 'Configura', azione: () => { const [a, m] = mk.split('-').map(Number); setMeseAnno(a, m); navigate('/admin/schema') } })
-      }
-    })
-    // Configurazione in scadenza ma SENZA una nuova config che copra il mese dopo (altrimenti nessun buco → nessun avviso)
-    const corrente = versioni.filter(v => copre(v, mesi[0])).sort((a, b) => b.valido_da.localeCompare(a.valido_da))[0]
-    const scad = corrente?.valido_fino
-    if (scad && scad <= mesi[1] && !versioni.some(v => copre(v, meseSucc(scad)))) {
+
+    // 2) MESE CORRENTE non ancora impostato (gerarchia ①→⑤): sempre, è il mese in corso.
+    const blCorr = primoBloccante({ pers: ccPers, conf: ccConf, reg: ccReg, imp: ccImp, fest: ccFest })
+    if (blCorr) out.push({ testo: `${meseLabel(meseCorrente)} (mese in corso) non è ancora impostato: completa ${blCorr.label}.`, cta: 'Imposta', azione: () => { const [a, m] = meseCorrente.split('-').map(Number); setMeseAnno(a, m); navigate(blCorr.rotta) } })
+
+    // 3) Configurazione in scadenza senza una nuova che copra il mese dopo (altrimenti nessun buco → nessun avviso)
+    const cfgCorr = versioni.filter(v => copre(v, meseCorrente)).sort((a, b) => b.valido_da.localeCompare(a.valido_da))[0]
+    const scad = cfgCorr?.valido_fino
+    if (scad && scad <= meseProssimo && !versioni.some(v => copre(v, meseSucc(scad))))
       out.push({ testo: `La configurazione turni scade a ${meseLabel(scad)} e non c'è una nuova configurazione dopo: ricordati di riconfigurare i turni.`, cta: 'Configura', azione: () => navigate('/admin/schema') })
-    }
-    // ── Mese PROSSIMO: rispetta la GERARCHIA dei passi. Da 15 giorni prima dell'inizio ricorda il
-    //    PRIMO passo bloccante mancante (①→⑤); solo quando sono TUTTI fatti (e il calendario NON è
-    //    pubblicato/pianificazione) ricorda di aprire le desiderata (⑥). Tutto porta al mese prossimo. ──
+
+    // 4) MESE PROSSIMO (gerarchia ①→⑤): da 15 giorni prima ricorda il PRIMO passo bloccante; quando è
+    //    tutto pronto E il calendario non è pubblicato/pianificazione → apri le desiderata (⑥). Tutto → mese prossimo.
     const [pa, pm] = meseProssimo.split('-').map(Number)
     const vaiProssimo = (rotta: string) => { setMeseAnno(pa, pm); navigate(rotta) }
     const giorniAllInizio = Math.ceil((new Date(pa, pm - 1, 1).getTime() - Date.now()) / 86400000)
-    const bloccante =
-      !ppPers ? { label: 'il Personale (passo ①)', rotta: '/admin/turnisti' } :
-      !ppConf ? { label: 'la Configurazione Turni (passo ②)', rotta: '/admin/schema' } :
-      !ppReg  ? { label: 'le Regole Turni (passo ③)', rotta: '/admin/regole' } :
-      !ppImp  ? { label: "l'Impaginazione (passo ④)", rotta: '/admin/impaginazione' } :
-      !ppFest ? { label: 'le Festività (passo ⑤)', rotta: '/admin/festivita' } : null
-    if (bloccante) {
-      if (giorniAllInizio <= 15) {
-        out.push({ testo: `Non hai ancora impostato ${meseLabel(meseProssimo)}: prima di tutto completa ${bloccante.label}.`, cta: 'Imposta', azione: () => vaiProssimo(bloccante.rotta) })
-      }
+    const blProx = primoBloccante({ pers: ppPers, conf: ppConf, reg: ppReg, imp: ppImp, fest: ppFest })
+    if (blProx) {
+      if (giorniAllInizio <= 15) out.push({ testo: `Non hai ancora impostato ${meseLabel(meseProssimo)}: prima di tutto completa ${blProx.label}.`, cta: 'Imposta', azione: () => vaiProssimo(blProx.rotta) })
     } else if ((statoProssimo ?? 'non_pubblicato') === 'non_pubblicato') {
-      // tutti i passi ①→⑤ completati e calendario NON pubblicato/pianificazione → si raccolgono le desiderata
       const oggiStr = new Date().toISOString().slice(0, 10)
-      if (!finestraProssimo?.aperta_a) {
-        out.push({ testo: `Non hai ancora impostato il periodo di raccolta desiderata per ${meseLabel(meseProssimo)}.`, cta: 'Imposta', azione: () => vaiProssimo('/admin/desiderata') })
-      } else if (finestraProssimo.aperta_a < oggiStr) {
-        out.push({ testo: `La raccolta desiderata per ${meseLabel(meseProssimo)} si è chiusa il ${itDate(finestraProssimo.aperta_a)}.`, cta: 'Apri', azione: () => vaiProssimo('/admin/desiderata') })
-      }
+      if (!finestraProssimo?.aperta_a) out.push({ testo: `Non hai ancora impostato il periodo di raccolta desiderata per ${meseLabel(meseProssimo)}.`, cta: 'Imposta', azione: () => vaiProssimo('/admin/desiderata') })
+      else if (finestraProssimo.aperta_a < oggiStr) out.push({ testo: `La raccolta desiderata per ${meseLabel(meseProssimo)} si è chiusa il ${itDate(finestraProssimo.aperta_a)}.`, cta: 'Apri', azione: () => vaiProssimo('/admin/desiderata') })
     }
     return out
-  }, [versioni, finestraProssimo, meseProssimo, statoProssimo, ppPers, ppConf, ppReg, ppImp, ppFest, mesiPanoramica, navigate, setMeseAnno])
+  }, [versioni, finestraProssimo, meseProssimo, meseCorrente, statoProssimo, ccPers, ccConf, ccReg, ccImp, ccFest, ppPers, ppConf, ppReg, ppImp, ppFest, mesiPanoramica, navigate, setMeseAnno])
 
   return (
     <div className="relative min-h-full">
@@ -254,7 +251,95 @@ export function AdminHomePage() {
             </div>
           </section>
         )}
+
+        {/* Ripristino da backup — solo il MESE, limitato a questa postazione (admin + gestori) */}
+        {postazioneId && <RipristinoBox postazioneId={postazioneId} />}
       </div>
     </div>
+  )
+}
+
+// Riquadro (in fondo alla Home) per ripristinare un singolo mese di QUESTA postazione da un backup.
+// Accessibile ai gestori della postazione oltre che agli admin; il ripristino intero resta nel Centro di Controllo.
+function RipristinoBox({ postazioneId }: { postazioneId: string }) {
+  const qc = useQueryClient()
+  const { confirm, notify, confirmState } = useConfirm()
+  const [aperto, setAperto] = useState(false)
+  const [backups, setBackups] = useState<BackupPostazioneItem[] | null>(null)
+  const [sel, setSel] = useState<string | null>(null)
+  const [mesi, setMesi] = useState<BackupMese[] | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function toggle() {
+    const nuovo = !aperto; setAperto(nuovo)
+    if (nuovo && backups === null) { try { setBackups(await store.getBackupPostazione(postazioneId)) } catch { setBackups([]) } }
+  }
+  async function scegliBackup(id: string) {
+    if (sel === id) { setSel(null); setMesi(null); return }
+    setSel(id); setMesi(null); setMesi(await store.getBackupMesi(id))
+  }
+  async function ripristina(mese: string) {
+    const b = backups?.find(x => x.id === sel)
+    const ok = await confirm({ title: `Ripristina ${meseLabel(mese)}`, message: `Verranno reintegrati i dati di ${meseLabel(mese)} dal backup del ${b ? itDate(b.giorno) : ''}. I dati non finalizzati di quel mese verranno reintegrati. Procedere?`, confirmLabel: 'Ripristina' })
+    if (!ok || !sel) return
+    setBusy(true)
+    try {
+      await store.ripristinaPostazioneMese(sel, mese)
+      void notify({ title: 'Ripristino completato', message: `${meseLabel(mese)} ripristinato dal backup.` })
+      await qc.invalidateQueries()
+      setAperto(false); setSel(null); setMesi(null)
+    } catch (e) { void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }) }
+    finally { setBusy(false) }
+  }
+
+  const tipoBadge = (t: string) => t === 'pre-eliminazione' ? { txt: 'pre-eliminazione', bg: '#fee2e2', fg: '#b91c1c' } : t === 'manuale' ? { txt: 'manuale', bg: '#e0e7ff', fg: '#3730a3' } : { txt: 'notturno', bg: '#dcfce7', fg: '#166534' }
+
+  return (
+    <section className="space-y-2">
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5"><History size={13} /> Ripristino da backup</h2>
+      <div className="card p-4">
+        <button onClick={toggle} className="w-full flex items-center gap-2 text-left">
+          <History size={16} style={{ color: 'var(--t-accento)' }} />
+          <span className="font-semibold text-sm text-stone-700">Ripristina un mese di questa postazione</span>
+          <ChevronRight size={15} className="ml-auto shrink-0 text-stone-400 transition-transform" style={{ transform: aperto ? 'rotate(90deg)' : 'none' }} />
+        </button>
+        {aperto && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-stone-500">Scegli un backup, poi il mese da reintegrare. I dati attualmente presenti in quel mese vengono conservati; il backup ne reintegra i pezzi mancanti (turni, desiderata, ecc.).</p>
+            {backups === null ? <p className="text-sm text-stone-500 flex items-center gap-1"><Loader2 size={13} className="animate-spin" /> Caricamento…</p> :
+             backups.length === 0 ? <p className="text-sm text-stone-500">Nessun backup disponibile per questa postazione.</p> : (
+              <div className="space-y-1.5">
+                {backups.map(b => {
+                  const tb = tipoBadge(b.tipo)
+                  return (
+                  <div key={b.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
+                    <button onClick={() => scegliBackup(b.id)} className="w-full flex items-center gap-2 px-3 py-2 text-left">
+                      <CalendarDays size={15} style={{ color: 'var(--t-accento)' }} />
+                      <span className="text-sm font-semibold capitalize" style={{ color: 'var(--t-titolo)' }}>{itDate(b.giorno)}</span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: tb.bg, color: tb.fg }}>{tb.txt}</span>
+                      <ChevronRight size={14} className="ml-auto shrink-0 text-stone-400 transition-transform" style={{ transform: sel === b.id ? 'rotate(90deg)' : 'none' }} />
+                    </button>
+                    {sel === b.id && (
+                      <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+                        {mesi === null ? <span className="text-xs text-stone-400 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Caricamento mesi…</span> :
+                         mesi.length === 0 ? <span className="text-xs text-stone-400 italic">Nessun mese con turni nel backup.</span> :
+                         mesi.map(m => (
+                           <button key={m.mese} onClick={() => ripristina(m.mese)} disabled={busy} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium disabled:opacity-50" style={{ background: '#fff', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }} title={`${m.nTurni} turni`}>
+                             <RotateCcw size={11} /> {meseLabel(m.mese)} <span className="text-[10px] text-stone-400">· {m.nTurni}t</span>
+                           </button>
+                         ))}
+                      </div>
+                    )}
+                  </div>
+                  )
+                })}
+              </div>
+             )}
+            {busy && <p className="text-xs text-stone-500 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Ripristino in corso…</p>}
+          </div>
+        )}
+      </div>
+    </section>
   )
 }

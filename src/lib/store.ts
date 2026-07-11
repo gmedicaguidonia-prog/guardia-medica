@@ -6,7 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
-import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno, Festivita, CambioTurno, TurnoPersona } from '../types'
+import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno, Festivita, CambioTurno, TurnoPersona, BackupGiorno, BackupInfo, BackupMese, BackupPostazioneItem, UtenteOrfano } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
 export interface AddNotifica { postazioneId: string; mese: string; tipo: string; messaggio: string; target?: string | null; perAdmin?: boolean; turnistaId?: string | null; autore?: string | null }
@@ -117,6 +117,45 @@ const supaStore = {
   async deletePostazione(id: string): Promise<void> {
     const { error } = await supabase.from('postazioni').delete().eq('id', id)
     if (error) throw error
+  },
+  // ─── Backup ──────────────────────────────────────────────────────
+  async getBackupRetention(): Promise<number> {
+    const { data, error } = await supabase.rpc('get_backup_config'); if (error) throw error; return Number(data ?? 60)
+  },
+  async setBackupRetention(giorni: number): Promise<void> {
+    const { error } = await supabase.rpc('set_backup_retention', { p_giorni: giorni }); if (error) throw error
+  },
+  async backupOraTutte(): Promise<number> {
+    const { data, error } = await supabase.rpc('backup_esegui_tutte', { p_tipo: 'manuale' }); if (error) throw error; return Number(data ?? 0)
+  },
+  async getBackupGiorni(): Promise<BackupGiorno[]> {
+    const { data, error } = await supabase.rpc('backup_lista_giorni'); if (error) throw error
+    return ((data ?? []) as { giorno: string; n_postazioni: number }[]).map(r => ({ giorno: r.giorno, nPostazioni: Number(r.n_postazioni) }))
+  },
+  async getBackupDelGiorno(giorno: string): Promise<BackupInfo[]> {
+    const { data, error } = await supabase.rpc('backup_lista_del_giorno', { p_giorno: giorno }); if (error) throw error
+    return ((data ?? []) as Record<string, unknown>[]).map(r => ({ id: r.id as string, postazioneId: r.postazione_id as string, postazioneNome: r.postazione_nome as string, tipo: r.tipo as string, createdAt: r.created_at as string, esiste: !!r.esiste }))
+  },
+  async getBackupMesi(backupId: string): Promise<BackupMese[]> {
+    const { data, error } = await supabase.rpc('backup_mesi', { p_backup: backupId }); if (error) throw error
+    return ((data ?? []) as { mese: string; n_turni: number }[]).map(r => ({ mese: r.mese, nTurni: Number(r.n_turni) }))
+  },
+  async getBackupPostazione(postazioneId: string): Promise<BackupPostazioneItem[]> {
+    const { data, error } = await supabase.rpc('backup_lista_postazione', { p_postazione: postazioneId }); if (error) throw error
+    return ((data ?? []) as Record<string, unknown>[]).map(r => ({ id: r.id as string, giorno: r.giorno as string, tipo: r.tipo as string, createdAt: r.created_at as string }))
+  },
+  async ripristinaPostazioneIntera(backupId: string): Promise<void> {
+    const { error } = await supabase.rpc('ripristina_postazione_intera', { p_backup: backupId }); if (error) throw error
+  },
+  async ripristinaPostazioneMese(backupId: string, mese: string): Promise<void> {
+    const { error } = await supabase.rpc('ripristina_postazione_mese', { p_backup: backupId, p_mese: mese }); if (error) throw error
+  },
+  async getUtentiOrfaniPostazione(postazioneId: string): Promise<UtenteOrfano[]> {
+    const { data, error } = await supabase.rpc('utenti_orfani_postazione', { p_postazione: postazioneId }); if (error) throw error
+    return ((data ?? []) as Record<string, unknown>[]).map(r => ({ id: r.id as string, nome: r.nome as string, cognome: r.cognome as string, email: r.email as string, nTurni: Number(r.n_turni), livello: r.livello as Livello }))
+  },
+  async eliminaPostazione(postazioneId: string, utentiDaCancellare: string[]): Promise<void> {
+    const { error } = await supabase.rpc('elimina_postazione', { p_postazione: postazioneId, p_utenti: utentiDaCancellare }); if (error) throw error
   },
   async getPostazioniSupervisione(utenteId: string): Promise<string[]> {
     const { data, error } = await supabase.from('supervisore_postazioni').select('postazione_id').eq('utente_id', utenteId)
@@ -1108,6 +1147,20 @@ const localStore = {
   },
   async deletePostazione(id: string): Promise<void> {
     writeLs(LS_POSTAZIONI, read<Postazione[]>(LS_POSTAZIONI, []).filter(p => p.id !== id))
+  },
+  // ─── Backup (stub DEV: in locale non c'è motore backup) ──────────
+  async getBackupRetention(): Promise<number> { return Number(localStorage.getItem('gm_backup_keep') ?? 60) },
+  async setBackupRetention(giorni: number): Promise<void> { localStorage.setItem('gm_backup_keep', String(giorni)) },
+  async backupOraTutte(): Promise<number> { return 0 },
+  async getBackupGiorni(): Promise<BackupGiorno[]> { return [] },
+  async getBackupDelGiorno(_giorno: string): Promise<BackupInfo[]> { return [] },
+  async getBackupMesi(_backupId: string): Promise<BackupMese[]> { return [] },
+  async getBackupPostazione(_postazioneId: string): Promise<BackupPostazioneItem[]> { return [] },
+  async ripristinaPostazioneIntera(_backupId: string): Promise<void> {},
+  async ripristinaPostazioneMese(_backupId: string, _mese: string): Promise<void> {},
+  async getUtentiOrfaniPostazione(_postazioneId: string): Promise<UtenteOrfano[]> { return [] },
+  async eliminaPostazione(postazioneId: string, _utentiDaCancellare: string[]): Promise<void> {
+    writeLs(LS_POSTAZIONI, read<Postazione[]>(LS_POSTAZIONI, []).filter(p => p.id !== postazioneId))
   },
   async getPostazioniSupervisione(_utenteId: string): Promise<string[]> {
     ensureSeed()

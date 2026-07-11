@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { MapPin, Plus, Trash2, Pencil, Save, X, Shield, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText, Search, UserRound, UsersRound, Ban, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MapPin, Plus, Trash2, Pencil, Save, X, Shield, ShieldCheck, UserPlus, Lock, Crown, SlidersHorizontal, ScrollText, Search, UserRound, UsersRound, Ban, RotateCcw, ChevronLeft, ChevronRight, DatabaseBackup, History, CalendarDays, Loader2, AlertTriangle } from 'lucide-react'
 import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
@@ -9,10 +9,18 @@ import { IconaLivello } from '../../components/IconaLivello'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { ADMIN_EMAIL } from '../../lib/constants'
 import { nomeCompleto } from '../../types'
-import type { AuthUser, Postazione, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, LogPostazione, Livello } from '../../types'
+import type { AuthUser, Postazione, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, LogPostazione, Livello, BackupGiorno, BackupInfo, BackupMese, UtenteOrfano } from '../../types'
 
 function fmtDT(iso: string) {
   return new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+function meseLabel(mese: string) {
+  const [a, m] = mese.split('-').map(Number)
+  return new Date(a, m - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })
+}
+function giornoLabel(g: string) {
+  const [a, m, d] = g.split('-').map(Number)
+  return new Date(a, m - 1, d).toLocaleDateString('it-IT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
 }
 
 export function PostazioniPage() {
@@ -29,6 +37,7 @@ export function PostazioniPage() {
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [editNome, setEditNome] = useState('')
+  const [eliminaTarget, setEliminaTarget] = useState<Postazione | null>(null)
 
   async function crea() {
     if (!nuovoNome.trim()) return
@@ -55,17 +64,14 @@ export function PostazioniPage() {
     }
     await qc.invalidateQueries({ queryKey: ['postazioni'] })
   }
-  async function elimina(p: Postazione) {
-    const ok = await confirm({
-      title: `Elimina «${p.nome}»`,
-      message: `Verranno eliminati TUTTI i dati di questa postazione: personale (appartenenze), configurazioni, regole, desiderata e turni assegnati. L'operazione NON è reversibile.`,
-      confirmLabel: 'Elimina tutto', danger: true,
-    })
-    if (!ok) return
-    await store.deletePostazione(p.id)
-    await store.addLogPostazione(`Postazione «${p.nome}» eliminata.`, nomeAutore)
+  async function eliminaConfermata(p: Postazione, utentiDaCancellare: string[]) {
+    await store.eliminaPostazione(p.id, utentiDaCancellare)
+    const suffix = utentiDaCancellare.length ? ` (con ${utentiDaCancellare.length} utente/i)` : ''
+    await store.addLogPostazione(`Postazione «${p.nome}» eliminata${suffix}. Backup pre-eliminazione creato.`, nomeAutore)
+    if (p.id === postazioneId) setPostazioneId(postazioni.find(x => x.id !== p.id)?.id ?? '')
     await qc.invalidateQueries({ queryKey: ['postazioni'] })
     await qc.invalidateQueries({ queryKey: ['log-postazioni'] })
+    await qc.invalidateQueries({ queryKey: ['anagrafica-utenti'] })
   }
 
   if (user?.livello !== 'admin') {
@@ -79,6 +85,7 @@ export function PostazioniPage() {
   return (
     <div className="py-6 space-y-4" style={{ paddingLeft: '5%', paddingRight: '5%' }}>
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      {eliminaTarget && <EliminaPostazioneModal postazione={eliminaTarget} onChiudi={() => setEliminaTarget(null)} onConferma={eliminaConfermata} />}
 
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--t-titolo)' }}>
@@ -126,7 +133,7 @@ export function PostazioniPage() {
                       ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#dcfce7', color: '#166534' }}>attiva</span>
                       : <button onClick={() => setPostazioneId(p.id)} className="text-xs px-2 py-0.5 rounded border" style={{ borderColor: '#d6d3cc', color: 'var(--t-accento)' }}>Attiva</button>}
                     <button onClick={() => { setEditId(p.id); setEditNome(p.nome) }} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Rinomina"><Pencil size={13} /></button>
-                    <button onClick={() => elimina(p)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Elimina postazione"><Trash2 size={13} /></button>
+                    <button onClick={() => setEliminaTarget(p)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Elimina postazione"><Trash2 size={13} /></button>
                   </>
                 )}
               </div>
@@ -135,6 +142,9 @@ export function PostazioniPage() {
           </div>
         )}
       </div>
+
+      {/* Blocco: Backup & Ripristino (solo admin) */}
+      <BackupBox />
 
       {/* Blocco: Amministratori */}
       <AmministratoriBox user={user} />
@@ -605,6 +615,232 @@ function SupervisoriBox() {
           <button onClick={creaNuovo} disabled={busy || !nEmail.trim() || !nNome.trim()} className="btn-secondary text-sm"><UserPlus size={14} /> Crea supervisore</button>
         </div>
         <p className="text-[11px] text-stone-400 mt-1">Accederà con quell'account Google. Poi apri la <strong>matita</strong> accanto al suo nome per scegliere le postazioni (o spunta «Tutte»).</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Riquadro Backup & Ripristino (solo admin) ──────────────────────
+//  Backup notturno automatico (un JSON completo per postazione, per giorno).
+//  Qui: retention configurabile, backup manuale immediato e ripristino guidato.
+function BackupBox() {
+  const { notify, confirmState } = useConfirm()
+  const [retention, setRetention] = useState<number | null>(null)
+  const [retInput, setRetInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [restoreOpen, setRestoreOpen] = useState(false)
+
+  useEffect(() => { store.getBackupRetention().then(g => { setRetention(g); setRetInput(String(g)) }).catch(() => {}) }, [])
+
+  async function salvaRetention() {
+    const g = Math.max(1, Math.min(3650, parseInt(retInput, 10) || 0))
+    setBusy(true)
+    try { await store.setBackupRetention(g); setRetention(g); setRetInput(String(g)); void notify({ title: 'Salvato', message: `I backup giornalieri saranno conservati per ${g} giorni.` }) }
+    catch (e) { void notify({ title: 'Errore', message: (e as Error).message }) }
+    finally { setBusy(false) }
+  }
+  async function backupOra() {
+    setBusy(true)
+    try { const n = await store.backupOraTutte(); void notify({ title: 'Backup eseguito', message: `Salvato il backup di ${n} postazione/i.` }) }
+    catch (e) { void notify({ title: 'Errore', message: (e as Error).message }) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="card p-4 space-y-3" style={{ background: '#f472b61f', breakInside: 'avoid', marginBottom: 18 }}>
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      {restoreOpen && <RestoreModal onChiudi={() => setRestoreOpen(false)} />}
+      <div>
+        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><DatabaseBackup size={15} style={{ color: 'var(--t-accento)' }} /> Backup &amp; Ripristino</h2>
+        <p className="text-xs text-stone-500 mt-0.5">Ogni notte viene salvato un backup <strong>completo</strong> di ogni postazione (un file per postazione, per giorno): personale, configurazioni, regole, impaginazione, desiderata, turni, cambi e finalizzazioni. Alla cancellazione di una postazione ne viene fatto uno automatico.</p>
+      </div>
+
+      {/* retention */}
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="label text-xs">Conserva i backup per (giorni)</label>
+          <input type="number" min={1} max={3650} value={retInput} onChange={e => setRetInput(e.target.value)} className="input text-sm" onKeyDown={e => e.key === 'Enter' && salvaRetention()} />
+        </div>
+        <button onClick={salvaRetention} disabled={busy || retInput === '' || Number(retInput) === retention} className="btn-secondary text-sm"><Save size={14} /> Salva</button>
+      </div>
+      <p className="text-[11px] text-stone-400">I backup più vecchi di questo limite vengono eliminati automaticamente ad ogni backup notturno.</p>
+
+      {/* azioni */}
+      <div className="flex flex-wrap gap-2 pt-2" style={{ borderTop: '1px solid var(--t-riga)' }}>
+        <button onClick={backupOra} disabled={busy} className="btn-primary text-sm">{busy ? <Loader2 size={15} className="animate-spin" /> : <DatabaseBackup size={15} />} Esegui backup ora</button>
+        <button onClick={() => setRestoreOpen(true)} disabled={busy} className="btn-secondary text-sm"><History size={15} /> Ripristina da backup…</button>
+      </div>
+    </div>
+  )
+}
+
+// Modal di ripristino: giorno → postazione → «intera» (solo se eliminata) oppure un singolo mese.
+function RestoreModal({ onChiudi }: { onChiudi: () => void }) {
+  const qc = useQueryClient()
+  const { confirm, notify, confirmState } = useConfirm()
+  const [giorni, setGiorni] = useState<BackupGiorno[] | null>(null)
+  const [giorno, setGiorno] = useState<string | null>(null)
+  const [items, setItems] = useState<BackupInfo[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [mesiOpen, setMesiOpen] = useState<string | null>(null)
+  const [mesi, setMesi] = useState<Record<string, BackupMese[]>>({})
+
+  useEffect(() => { store.getBackupGiorni().then(setGiorni).catch(() => setGiorni([])) }, [])
+  async function apriGiorno(g: string) { setGiorno(g); setItems(null); setMesiOpen(null); setItems(await store.getBackupDelGiorno(g)) }
+  async function apriMesi(b: BackupInfo) {
+    if (mesiOpen === b.id) { setMesiOpen(null); return }
+    setMesiOpen(b.id)
+    if (!mesi[b.id]) { const m = await store.getBackupMesi(b.id); setMesi(prev => ({ ...prev, [b.id]: m })) }
+  }
+  function refresh() { qc.invalidateQueries({ queryKey: ['postazioni'] }); qc.invalidateQueries({ queryKey: ['log-postazioni'] }) }
+
+  async function ripristinaIntera(b: BackupInfo) {
+    const ok = await confirm({ title: `Ripristina «${b.postazioneNome}»`, message: `Verrà ricreata l'intera postazione «${b.postazioneNome}» com'era nel backup del ${giornoLabel(giorno!)}: personale, turni, configurazioni, tutto. Procedere?`, confirmLabel: 'Ripristina tutto' })
+    if (!ok) return
+    setBusy(true)
+    try { await store.ripristinaPostazioneIntera(b.id); refresh(); void notify({ title: 'Ripristino completato', message: `«${b.postazioneNome}» è stata ripristinata.` }); onChiudi() }
+    catch (e) { void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }); setBusy(false) }
+  }
+  async function ripristinaMese(b: BackupInfo, mese: string) {
+    const ok = await confirm({ title: `Ripristina ${meseLabel(mese)}`, message: `Verranno ripristinati i dati di ${meseLabel(mese)} per «${b.postazioneNome}» dal backup del ${giornoLabel(giorno!)}. I dati non finalizzati di quel mese verranno reintegrati. Procedere?`, confirmLabel: 'Ripristina il mese' })
+    if (!ok) return
+    setBusy(true)
+    try { await store.ripristinaPostazioneMese(b.id, mese); refresh(); void notify({ title: 'Ripristino completato', message: `${meseLabel(mese)} di «${b.postazioneNome}» ripristinato.` }); onChiudi() }
+    catch (e) { void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={onChiudi}>
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      <div className="card w-full max-w-lg max-h-[85vh] overflow-y-auto p-5 space-y-3" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--t-titolo)' }}><History size={18} style={{ color: 'var(--t-accento)' }} /> Ripristina da backup</h3>
+          <button onClick={onChiudi} className="p-1.5 rounded hover:bg-stone-100 text-stone-500"><X size={18} /></button>
+        </div>
+
+        {/* step 1: giorni */}
+        {!giorno && (
+          giorni === null ? <p className="text-sm text-stone-500">Caricamento…</p> :
+          giorni.length === 0 ? <p className="text-sm text-stone-500">Nessun backup disponibile. Esegui un backup manuale o attendi quello notturno.</p> : (
+            <div className="space-y-1.5">
+              <p className="text-xs text-stone-500">Scegli il giorno del backup:</p>
+              {giorni.map(g => (
+                <button key={g.giorno} onClick={() => apriGiorno(g.giorno)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:brightness-95" style={{ background: '#f4f6f1' }}>
+                  <CalendarDays size={15} style={{ color: 'var(--t-accento)' }} />
+                  <span className="text-sm font-semibold capitalize" style={{ color: 'var(--t-titolo)' }}>{giornoLabel(g.giorno)}</span>
+                  <div className="flex-1" />
+                  <span className="text-xs text-stone-500">{g.nPostazioni} post.</span>
+                  <ChevronRight size={14} className="text-stone-400" />
+                </button>
+              ))}
+            </div>
+          )
+        )}
+
+        {/* step 2: postazioni del giorno */}
+        {giorno && (
+          <div className="space-y-2">
+            <button onClick={() => { setGiorno(null); setItems(null) }} className="text-xs inline-flex items-center gap-1 text-stone-500 hover:text-stone-700"><ChevronLeft size={13} /> altri giorni</button>
+            <p className="text-xs text-stone-500 capitalize">Backup del <strong>{giornoLabel(giorno)}</strong>:</p>
+            {items === null ? <p className="text-sm text-stone-500">Caricamento…</p> : items.map(b => (
+              <div key={b.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <MapPin size={15} style={{ color: 'var(--t-accento)' }} />
+                  <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>{b.postazioneNome}</span>
+                  {b.esiste
+                    ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#dcfce7', color: '#166534' }}>esiste</span>
+                    : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#fee2e2', color: '#b91c1c' }}>eliminata</span>}
+                </div>
+                <div className="px-3 pb-2.5 flex flex-wrap gap-2 items-center">
+                  {b.esiste
+                    ? <span className="text-[11px] text-stone-400 italic">La postazione esiste ancora: puoi ripristinare un singolo mese.</span>
+                    : <button onClick={() => ripristinaIntera(b)} disabled={busy} className="btn-primary text-xs py-1 px-2.5"><RotateCcw size={12} /> Ripristina intera</button>}
+                  <button onClick={() => apriMesi(b)} disabled={busy} className="btn-secondary text-xs py-1 px-2.5"><CalendarDays size={12} /> {mesiOpen === b.id ? 'Nascondi mesi' : 'Ripristina un mese'}</button>
+                </div>
+                {mesiOpen === b.id && (
+                  <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+                    {!mesi[b.id] ? <span className="text-xs text-stone-400">Caricamento…</span> :
+                     mesi[b.id].length === 0 ? <span className="text-xs text-stone-400 italic">Nessun mese con turni nel backup.</span> :
+                     mesi[b.id].map(m => (
+                       <button key={m.mese} onClick={() => ripristinaMese(b, m.mese)} disabled={busy} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium capitalize" style={{ background: '#fff', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }} title={`${m.nTurni} turni`}>
+                         <RotateCcw size={11} /> {meseLabel(m.mese)} <span className="text-[10px] text-stone-400">· {m.nTurni}t</span>
+                       </button>
+                     ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {busy && <p className="text-xs text-stone-500 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Operazione in corso…</p>}
+      </div>
+    </div>
+  )
+}
+
+// Modal di eliminazione postazione: avviso + backup automatico + scelta degli utenti
+// che appartengono SOLO a questa postazione (cancellabili insieme ad essa).
+function EliminaPostazioneModal({ postazione, onChiudi, onConferma }: {
+  postazione: Postazione
+  onChiudi: () => void
+  onConferma: (p: Postazione, utenti: string[]) => Promise<void>
+}) {
+  const { notify, confirmState } = useConfirm()
+  const [orfani, setOrfani] = useState<UtenteOrfano[] | null>(null)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => { store.getUtentiOrfaniPostazione(postazione.id).then(setOrfani).catch(() => setOrfani([])) }, [postazione.id])
+
+  function toggle(id: string) { setSel(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n }) }
+
+  async function esegui() {
+    setBusy(true)
+    try { await onConferma(postazione, [...sel]) }
+    catch (e) { void notify({ title: 'Eliminazione non riuscita', message: (e as Error).message }); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={busy ? undefined : onChiudi}>
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      <div className="card w-full max-w-md max-h-[85vh] overflow-y-auto p-5 space-y-3" onClick={e => e.stopPropagation()}>
+        <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: '#b91c1c' }}><AlertTriangle size={18} /> Elimina «{postazione.nome}»</h3>
+        <div className="text-sm space-y-2" style={{ color: '#5a5a4a' }}>
+          <p>Verranno eliminati <strong>tutti</strong> i dati di questa postazione: personale, configurazioni, regole, impaginazione, desiderata, turni, cambi e finalizzazioni.</p>
+          <p className="flex items-start gap-1.5 rounded-lg p-2" style={{ background: '#ecfdf5', color: '#065f46' }}><DatabaseBackup size={15} className="shrink-0 mt-0.5" /> Prima dell'eliminazione viene creato automaticamente un <strong>backup</strong>, così potrai ripristinarla per intero.</p>
+        </div>
+
+        {/* utenti orfani (solo qui) */}
+        <div className="pt-1">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1">Utenti presenti solo qui</p>
+          {orfani === null ? <p className="text-xs text-stone-400">Caricamento…</p> :
+           orfani.length === 0 ? <p className="text-xs text-stone-400 italic">Nessun utente appartiene esclusivamente a questa postazione: tutte le identità restano nel sistema.</p> : (
+            <>
+              <p className="text-xs text-stone-500 mb-1.5">Questi utenti non appartengono a nessun'altra postazione. Spunta quelli che vuoi <strong>eliminare</strong> dal sistema insieme alla postazione; gli altri restano come identità (senza appartenenze).</p>
+              <div className="space-y-1">
+                {orfani.map(u => (
+                  <label key={u.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer" style={{ background: sel.has(u.id) ? '#fee2e2' : '#f4f6f1' }}>
+                    <input type="checkbox" checked={sel.has(u.id)} onChange={() => toggle(u.id)} />
+                    {u.livello && <IconaLivello livello={u.livello} size={14} />}
+                    <span className="text-sm font-medium" style={{ color: 'var(--t-titolo)' }}>{u.nome} {u.cognome}</span>
+                    <span className="text-xs text-stone-400 hidden sm:inline truncate">{u.email}</span>
+                    <div className="flex-1" />
+                    <span className="text-[10px] text-stone-400 shrink-0">{u.nTurni} turni</span>
+                  </label>
+                ))}
+              </div>
+            </>
+           )}
+        </div>
+
+        <div className="flex justify-between items-center gap-2 pt-2" style={{ borderTop: '1px solid var(--t-riga)' }}>
+          <span className="text-xs text-stone-400">{sel.size > 0 ? `${sel.size} utente/i da eliminare` : 'Nessun utente da eliminare'}</span>
+          <div className="flex gap-2">
+            <button onClick={onChiudi} disabled={busy} className="btn-secondary text-sm">Annulla</button>
+            <button onClick={esegui} disabled={busy || orfani === null} className="btn-danger text-sm inline-flex items-center gap-1.5">{busy ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} Elimina postazione</button>
+          </div>
+        </div>
       </div>
     </div>
   )
