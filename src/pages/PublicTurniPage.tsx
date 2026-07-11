@@ -343,20 +343,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   </div>
                 )}
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-x-auto">
+                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
                     <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
-                  {/* layout AUTO: le colonne si adattano al contenuto — nome turno, turnisti e reperibili
-                      mai troncati né a capo; la colonna Turnisti assorbe lo spazio extra (calendario a tutta larghezza) */}
-                  <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
-                    <colgroup>
-                      <col />
-                      <col />
-                      <col style={{ width: '100%' }} />
-                      {hasRep && <col />}
-                    </colgroup>
+                  {/* STESSA impaginazione delle Desiderata: card centrata a larghezza-contenuto (w-fit),
+                      così passando tra le due schede la pagina non si ridimensiona. Layout AUTO + celle
+                      nowrap → nomi turno/turnisti/reperibili interi, mai troncati. */}
+                  <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead><tr><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Giorno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turnisti</th>{hasRep && <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Reperibile</th>}</tr></thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
