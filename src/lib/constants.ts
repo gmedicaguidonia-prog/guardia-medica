@@ -5,7 +5,11 @@ export const ADMIN_EMAIL = 'marabelli.s@gmail.com'
 // Da questo mese ('YYYY-MM') in poi vale la NUOVA procedura sequenziale: ogni
 // mese va "attivato" passo per passo (config → regole → impaginazione →
 // desiderata → turni). I mesi precedenti restano col vecchio comportamento.
-export const ATTIVAZIONE_DA = '2026-08'
+// NB: abbassato a 2026-07 (08/07/2026) così anche luglio, se svuotato con
+// "Cancella impostazioni", ripropone il gate "Copia/Conferma/Attiva nuova"
+// come un mese vergine. I mesi di luglio già costruiti (Guidonia, Tivoli) sono
+// stati marcati come attivati (backfill attivazioni_mese) per restare completi.
+export const ATTIVAZIONE_DA = '2026-07'
 
 // Giorni della settimana. Convenzione: 1 = Lunedì … 7 = Domenica
 // (coerente con getDay() rimappato e con lo schema DB).
