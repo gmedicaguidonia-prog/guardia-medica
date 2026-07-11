@@ -20,7 +20,7 @@ import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useNavigate, useOutletContext } from 'react-router-dom'
-import type { TurnoSchema, Turnista, TurnistaMese, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata, AuthUser } from '../../types'
+import type { TurnoSchema, Turnista, TurnistaMese, Livello, ConfigVersione, Desiderata, DesiderataFinestra, TipoDesiderata, StatoCalendario, AuthUser } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const WD = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab']
@@ -59,6 +59,9 @@ export function DesiderataPage() {
   const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
+  // Stato del calendario del mese: se è già pubblicato o in pianificazione, le desiderata (che si
+  // raccolgono PRIMA di generare il calendario) non si attivano né si mostrano più.
+  const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
   const navigate = useNavigate()
   const { impaginazioneOk, fogliConTurni, loadingImpag } = useImpaginazione(postazioneId, meseKey, schema)
   const passi = usePassiCompleti(postazioneId, meseKey)   // gating passi 1-2-3
@@ -301,6 +304,21 @@ export function DesiderataPage() {
     </div>
   )
 
+  // Calendario del mese GIÀ avviato (pubblicato o in pianificazione): le desiderata si raccolgono
+  // PRIMA di generare il calendario ⇒ non si attivano né si mostrano più. Messaggio dedicato.
+  const calendarioAvviato = statoCal === 'pubblicato' || statoCal === 'pianificazione'
+  if (calendarioAvviato) return (
+    <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
+      <div className="card p-6 flex items-start gap-3 mt-2" style={{ maxWidth: 620, margin: '0 auto' }}>
+        <AlertCircle className="shrink-0 mt-0.5" size={20} style={{ color: '#b45309' }} />
+        <div>
+          <h2 className="text-base font-bold mb-1" style={{ color: 'var(--t-titolo)' }}>Calendario già avviato</h2>
+          <p className="text-sm text-stone-600">Il calendario di <strong>{MESI[mese - 1]} {anno}</strong> è in stato <strong>{statoCal === 'pubblicato' ? 'Pubblicato' : 'Pianificazione'}</strong>: la raccolta delle desiderata si effettua <strong>prima</strong> di generare il calendario, quindi per questo mese non è più possibile attivarla né raccogliere desiderata.</p>
+        </div>
+      </div>
+    </div>
+  )
+
   // Raccolta non attiva → schermata di attivazione (o mese passato non attivabile)
   if (!attiva) {
     return (
@@ -410,7 +428,7 @@ export function DesiderataPage() {
             style={{ background: pubbliche ? '#16a34a' : '#cbd5e1' }} title="Desiderata pubbliche">
             <span className="inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform" style={{ transform: pubbliche ? 'translateX(18px)' : 'translateX(2px)' }} />
           </button>
-          <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>Desiderata pubbliche</span>
+          <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>{pubbliche ? 'Desiderata Pubbliche' : 'Desiderata Singole'}</span>
           <span className="text-xs text-stone-500 flex-1" style={{ minWidth: 200 }}>{pubbliche ? 'I turnisti vedono le scelte di tutti (vista a colonne) e modificano la propria. Adatta a postazioni con pochi turnisti.' : 'Ogni turnista vede e modifica solo le proprie scelte (default).'}</span>
         </div>
         )}

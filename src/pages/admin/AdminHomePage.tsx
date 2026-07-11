@@ -6,6 +6,7 @@ import { store } from '../../lib/store'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useRealtimePostazione } from '../../hooks/useRealtime'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
+import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { NOTIFICA_CATEGORIE, categoriaNotifica } from '../../types'
 import type { ConfigVersione, DesiderataFinestra, Notifica, CambioTurno, StatoCalendario } from '../../types'
 
@@ -46,6 +47,8 @@ export function AdminHomePage() {
   const { data: finestraProssimo } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseProssimo], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseProssimo), enabled: !!postazioneId })
   // Stato del calendario del mese prossimo: se è già pubblicato non ha senso chiedere le desiderata
   const { data: statoProssimo } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseProssimo], queryFn: () => store.getStatoCalendario(postazioneId!, meseProssimo), enabled: !!postazioneId })
+  // Passi di completamento del mese prossimo (gerarchia ①→⑤): capire cosa manca PRIMA delle desiderata (⑥)
+  const { passoPersonale: ppPers, passo1: ppConf, passo2: ppReg, passo3: ppImp, passoFestivita: ppFest } = usePassiCompleti(postazioneId, meseProssimo)
   // Panoramica dei mesi con calendario + finalizzati: per ricordare di finalizzare i mesi passati
   const { data: mesiPanoramica = [] } = useQuery<{ mese: string; finalizzato: boolean }[]>({ queryKey: ['mesi-panoramica', postazioneId], queryFn: () => store.getMesiPanoramica(postazioneId!), enabled: !!postazioneId })
 
@@ -94,10 +97,11 @@ export function AdminHomePage() {
         cta: 'Finalizza',
         azione: () => { const [a, m] = x.mese.split('-').map(Number); setMeseAnno(a, m); navigate('/admin/finalizza') },
       }))
-    // Mesi imminenti senza configurazione
+    // Mesi imminenti senza configurazione (il mese PROSSIMO è gestito a parte sotto)
     mesi.forEach(mk => {
+      if (mk === meseProssimo) return
       if (!versioni.some(v => copre(v, mk))) {
-        out.push({ testo: `Nessuna configurazione turni per ${meseLabel(mk)}.`, cta: 'Configura', azione: () => navigate('/admin/schema') })
+        out.push({ testo: `Nessuna configurazione turni per ${meseLabel(mk)}.`, cta: 'Configura', azione: () => { const [a, m] = mk.split('-').map(Number); setMeseAnno(a, m); navigate('/admin/schema') } })
       }
     })
     // Configurazione in scadenza ma SENZA una nuova config che copra il mese dopo (altrimenti nessun buco → nessun avviso)
@@ -106,17 +110,33 @@ export function AdminHomePage() {
     if (scad && scad <= mesi[1] && !versioni.some(v => copre(v, meseSucc(scad)))) {
       out.push({ testo: `La configurazione turni scade a ${meseLabel(scad)} e non c'è una nuova configurazione dopo: ricordati di riconfigurare i turni.`, cta: 'Configura', azione: () => navigate('/admin/schema') })
     }
-    // Raccolta desiderata per il mese prossimo: solo se i turni sono configurati E il calendario NON è già stato pubblicato
-    if (versioni.some(v => copre(v, meseProssimo)) && (statoProssimo ?? 'non_pubblicato') === 'non_pubblicato') {
+    // ── Mese PROSSIMO: rispetta la GERARCHIA dei passi. Da 15 giorni prima dell'inizio ricorda il
+    //    PRIMO passo bloccante mancante (①→⑤); solo quando sono TUTTI fatti (e il calendario NON è
+    //    pubblicato/pianificazione) ricorda di aprire le desiderata (⑥). Tutto porta al mese prossimo. ──
+    const [pa, pm] = meseProssimo.split('-').map(Number)
+    const vaiProssimo = (rotta: string) => { setMeseAnno(pa, pm); navigate(rotta) }
+    const giorniAllInizio = Math.ceil((new Date(pa, pm - 1, 1).getTime() - Date.now()) / 86400000)
+    const bloccante =
+      !ppPers ? { label: 'il Personale (passo ①)', rotta: '/admin/turnisti' } :
+      !ppConf ? { label: 'la Configurazione Turni (passo ②)', rotta: '/admin/schema' } :
+      !ppReg  ? { label: 'le Regole Turni (passo ③)', rotta: '/admin/regole' } :
+      !ppImp  ? { label: "l'Impaginazione (passo ④)", rotta: '/admin/impaginazione' } :
+      !ppFest ? { label: 'le Festività (passo ⑤)', rotta: '/admin/festivita' } : null
+    if (bloccante) {
+      if (giorniAllInizio <= 15) {
+        out.push({ testo: `Non hai ancora impostato ${meseLabel(meseProssimo)}: prima di tutto completa ${bloccante.label}.`, cta: 'Imposta', azione: () => vaiProssimo(bloccante.rotta) })
+      }
+    } else if ((statoProssimo ?? 'non_pubblicato') === 'non_pubblicato') {
+      // tutti i passi ①→⑤ completati e calendario NON pubblicato/pianificazione → si raccolgono le desiderata
       const oggiStr = new Date().toISOString().slice(0, 10)
       if (!finestraProssimo?.aperta_a) {
-        out.push({ testo: `Non hai ancora impostato il periodo di raccolta desiderata per ${meseLabel(meseProssimo)}.`, cta: 'Imposta', azione: () => navigate('/admin/desiderata') })
+        out.push({ testo: `Non hai ancora impostato il periodo di raccolta desiderata per ${meseLabel(meseProssimo)}.`, cta: 'Imposta', azione: () => vaiProssimo('/admin/desiderata') })
       } else if (finestraProssimo.aperta_a < oggiStr) {
-        out.push({ testo: `La raccolta desiderata per ${meseLabel(meseProssimo)} si è chiusa il ${itDate(finestraProssimo.aperta_a)}.`, cta: 'Apri', azione: () => navigate('/admin/desiderata') })
+        out.push({ testo: `La raccolta desiderata per ${meseLabel(meseProssimo)} si è chiusa il ${itDate(finestraProssimo.aperta_a)}.`, cta: 'Apri', azione: () => vaiProssimo('/admin/desiderata') })
       }
     }
     return out
-  }, [versioni, finestraProssimo, meseProssimo, statoProssimo, mesiPanoramica, navigate, setMeseAnno])
+  }, [versioni, finestraProssimo, meseProssimo, statoProssimo, ppPers, ppConf, ppReg, ppImp, ppFest, mesiPanoramica, navigate, setMeseAnno])
 
   return (
     <div className="relative min-h-full">
