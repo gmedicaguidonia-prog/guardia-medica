@@ -72,7 +72,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) })
   const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'desiderata' })
-  const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
+  const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })   // serve anche al tab Turni (cambio turno: personale autorizzato del mese)
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
   const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneId], queryFn: () => store.getMesiConContenuto(postazioneId!), enabled: !!postazioneId })
 
@@ -625,7 +625,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               postazioneId={postazioneId}
               postazioneNome={opzioni.find(o => o.postazioneId === postazioneId)?.nome ?? ''}
               ds={wizCambio.ds} turno={wizCambio.turno} slot={wizCambio.slot} da={wizCambio.da}
-              personale={personale} livMese={livMese} nomeById={nomeById}
+              personale={personale} autorizzatiMese={importatiMese} livMese={livMese} nomeById={nomeById}
               onChiudi={() => setWizCambio(null)} onFatto={cambioFatto}
             />
           )}
@@ -674,9 +674,9 @@ function sovrapposti(turniPersona: TurnoPersona[], ds: string, turno: TurnoSchem
  *  Controlla le sovrapposizioni d'orario del destinatario (forzabili); con il flag
  *  «cambio automaticamente approvato» delle Regole il cambio è immediato, altrimenti
  *  resta in attesa dell'approvazione del responsabile (pagina Turni del Mese). */
-function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, personale, livMese, nomeById, onChiudi, onFatto }: {
+function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, personale, autorizzatiMese, livMese, nomeById, onChiudi, onFatto }: {
   postazioneId: string; postazioneNome: string; ds: string; turno: TurnoSchema; slot: number; da: string
-  personale: Turnista[]; livMese: (id: string) => Livello; nomeById: Map<string, string>
+  personale: Turnista[]; autorizzatiMese: Set<string>; livMese: (id: string) => Livello; nomeById: Map<string, string>
   onChiudi: () => void; onFatto: () => void
 }) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
@@ -691,7 +691,9 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
   const [esito, setEsito] = useState<'auto' | 'attesa' | null>(null)
 
   const tutti = useMemo(() => { const m = new Map(personale.map(p => [p.id, p])); extra.forEach(p => m.set(p.id, p)); return [...m.values()] }, [personale, extra])
-  const candidati = useMemo(() => tutti.filter(p => p.id !== da), [tutti, da])
+  // Candidati = SOLO il personale AUTORIZZATO per questo mese (turnisti_mese) + eventuali
+  // aggiunti al volo. Chi non è autorizzato non compare: lo si aggiunge con «Aggiungilo».
+  const candidati = useMemo(() => { const ex = new Set(extra.map(e => e.id)); return tutti.filter(p => p.id !== da && (autorizzatiMese.has(p.id) || ex.has(p.id))) }, [tutti, da, autorizzatiMese, extra])
   const gTurnisti = useMemo(() => candidati.filter(p => livMese(p.id) !== 'esterno').sort(cmpTurnisti), [candidati, livMese])
   const gEsterni = useMemo(() => candidati.filter(p => livMese(p.id) === 'esterno').sort(cmpTurnisti), [candidati, livMese])
   const dest = tutti.find(p => p.id === destId) ?? null
@@ -715,7 +717,7 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
   // questa postazione lo seleziona; altrimenti lo aggiunge come esterno riusando l'identità.
   async function pickEsistente(s: Utente) {
     const giaMembro = tutti.find(t => t.utente_id === s.id)
-    if (giaMembro) { setDestId(giaMembro.id); setNuovo(false); setCerca(''); setSugg([]); return }
+    if (giaMembro) { setExtra(x => [...x.filter(e => e.id !== giaMembro.id), giaMembro]); setDestId(giaMembro.id); setNuovo(false); setCerca(''); setSugg([]); return }
     setBusy(true); setErr(null)
     try {
       await store.addMembro(postazioneId, { nome: s.nome, cognome: s.cognome, email: s.email, livello: 'esterno', utenteId: s.id })
@@ -747,11 +749,12 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
         const conf = sovrapposti(turniDest, ds, turno)
         if (conf.length) { setConflitti(conf); setStep(3); setBusy(false); return }
       }
-      // destinatario appena creato dal wizard ⇒ il cambio richiede SEMPRE l'approvazione
-      // del responsabile (anche col cambio automatico attivo): approvandolo "abilita" il nuovo esterno
-      const nuovoEsterno = extra.some(e => e.id === dest.id)
-      const descr = `${nomeById.get(da) ?? '—'} → ${nomeCompleto(dest)}${nuovoEsterno ? ' (nuovo esterno)' : ''} — ${nomeTurno} di ${itDs(ds)} (${postazioneNome})`
-      const { auto } = await store.richiediCambio(postazioneId, ds, turno.id, slot, da, dest.id, forza, descr, undefined, nuovoEsterno)
+      // destinatario NON nel personale autorizzato del mese ⇒ il cambio richiede SEMPRE
+      // l'approvazione del responsabile (anche col cambio automatico attivo). Approvandolo,
+      // quel nominativo viene inserito nel personale autorizzato del mese (lato RPC).
+      const fuoriMese = !autorizzatiMese.has(dest.id)
+      const descr = `${nomeById.get(da) ?? '—'} → ${nomeCompleto(dest)}${fuoriMese ? ' (da autorizzare per il mese)' : ''} — ${nomeTurno} di ${itDs(ds)} (${postazioneNome})`
+      const { auto } = await store.richiediCambio(postazioneId, ds, turno.id, slot, da, dest.id, forza, descr, undefined, fuoriMese)
       store.addNotifica({ postazioneId, mese: ds.slice(0, 7), tipo: 'cambio_turno', messaggio: auto ? `Cambio turno effettuato automaticamente: ${descr}.` : `Richiesta di cambio turno da approvare: ${descr}.`, target: '/admin/turni', perAdmin: true }).catch(() => {})
       setEsito(auto ? 'auto' : 'attesa'); setStep(4); onFatto()
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
@@ -803,7 +806,7 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
                       ))}
                     </div>
                   ))}
-                  {gTurnisti.length + gEsterni.length === 0 && <p className="text-sm text-stone-400 italic p-3">Nessuno in lista.</p>}
+                  {gTurnisti.length + gEsterni.length === 0 && <p className="text-sm text-stone-400 italic p-3">Nessun altro nel personale autorizzato di questo mese: usa «Aggiungilo».</p>}
                 </div>
                 <button onClick={() => { setNuovo(true); setErr(null) }} className="text-xs font-semibold inline-flex items-center gap-1 mb-3" style={{ color: 'var(--t-accento)' }}>
                   <UserPlus2 size={13} /> Non è in lista? Aggiungilo
