@@ -115,7 +115,7 @@
   .pub-cal-table td.pt-turno span,
   .pub-cal-table td.pt-turnisti span, .pub-cal-table td.pt-turnisti button,
   .pub-cal-table td.pt-rep span, .pub-cal-table td.pt-rep button {
-    white-space: normal !important; overflow-wrap: anywhere; word-break: break-word;
+    white-space: normal !important;   /* a capo SOLO tra le parole, mai spezzare una parola (niente "Nott-e") */
   }
   /* Matrice desiderata pubbliche (una colonna per turnista): colonne più strette e
      compatte così serve meno scorrimento; la prima colonna resta bloccata a sinistra. */

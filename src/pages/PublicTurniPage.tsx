@@ -354,7 +354,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                       Mobile (≤640px, classi pub-cal-*): card a piena larghezza e nomi lunghi a capo, così
                       tutte le info stanno nello schermo del cellulare SENZA scroll orizzontale, mai troncate. */}
                   <table className="pub-cal-table" style={{ borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead><tr><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Giorno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turnisti</th>{hasRep && <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Reperibile</th>}</tr></thead>
+                    <thead><tr><th style={{ ...thStyle, whiteSpace: 'nowrap', textAlign: 'center' }} title="Giorno"><CalendarDays size={14} style={{ display: 'inline', verticalAlign: '-2px' }} /></th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turnisti</th>{hasRep && <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Reperibile</th>}</tr></thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
@@ -369,7 +369,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         const hoChiesto = mieRichieste.has(k)
                         return (
                           <tr key={k} style={{ background: rowBg }}>
-                            <td className="pt-giorno" style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
+                            <td className="pt-giorno" style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'center' }}><div style={{ fontWeight: 700, color: dayColor, lineHeight: 1.1 }}><span style={{ fontSize: 15, display: 'block' }}>{d.getDate()}</span><span style={{ fontSize: 10, display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{WD[d.getDay()]}</span></div>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'block', margin: '2px auto 0' }} />}</td>
                             <td className="pt-turno" style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                               <span className="inline-flex items-center gap-1" style={{ color: '#475569', fontSize: 14 }}>{overnight ? <Moon size={13} style={{ color: '#64748b' }} /> : <Sun size={13} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
@@ -533,7 +533,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
                   <table className="pub-cal-table" style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
-                    <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={{ ...thStyle, textAlign: 'center' }}>La tua scelta</th></tr></thead>
+                    <thead><tr><th style={{ ...thStyle, textAlign: 'center' }} title="Giorno"><CalendarDays size={14} style={{ display: 'inline', verticalAlign: '-2px' }} /></th><th style={thStyle}>Turno</th><th style={{ ...thStyle, textAlign: 'center' }}>La tua scelta</th></tr></thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
@@ -544,7 +544,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         const cur = miaPref.get(`${ds}|${turno.id}`)
                         return (
                           <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
-                            <td className="pt-giorno" style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
+                            <td className="pt-giorno" style={{ ...tdBase, whiteSpace: 'nowrap', textAlign: 'center' }}><div style={{ fontWeight: 700, color: dayColor, lineHeight: 1.1 }}><span style={{ fontSize: 15, display: 'block' }}>{d.getDate()}</span><span style={{ fontSize: 10, display: 'block', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{WD[d.getDay()]}</span></div>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'block', margin: '2px auto 0' }} />}</td>
                             <td className="pt-turno" style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                               <span className="inline-flex items-center gap-1">{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
