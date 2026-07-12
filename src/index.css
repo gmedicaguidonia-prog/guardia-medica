@@ -121,4 +121,8 @@
      compatte così serve meno scorrimento; la prima colonna resta bloccata a sinistra. */
   .pub-cal-matrix th.pt-matrix-col { min-width: 46px !important; font-size: 10px; padding: 4px 3px !important; }
   .pub-cal-matrix td.pt-matrix-col { padding: 4px 3px !important; }
+  /* ≤3 turnisti: la matrice entra TUTTA in larghezza (nessuno scroll); la 1ª colonna (Giorno·Turno)
+     può andare a capo così non allarga la tabella. Con >3 questa classe non c'è → resta lo scroll. */
+  .pub-matrix-fit { width: 100%; }
+  .pub-matrix-fit td.pt-gt, .pub-matrix-fit th.pt-gt { white-space: normal !important; }
 }

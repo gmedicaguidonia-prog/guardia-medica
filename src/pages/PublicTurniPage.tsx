@@ -445,15 +445,16 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     : <>Raccolta chiusa{fin?.aperta_a ? ` il ${itDate(fin.aperta_a)}` : ''} — sola lettura.</>}
                 </p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
+                <div key={foglio.id} className={`card overflow-auto max-w-full mx-auto ${colonne.length <= 3 ? 'w-full sm:w-fit' : 'w-fit'}`}>
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
                     <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
-                  <table className="pub-cal-matrix" style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+                  {/* Cellulare: ≤3 turnisti → matrice a piena larghezza (niente scroll); >3 → scroll SOLO qui dentro (card overflow-auto). */}
+                  <table className={`pub-cal-matrix ${colonne.length <= 3 ? 'pub-matrix-fit' : ''}`} style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr>
-                        <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 3, whiteSpace: 'nowrap' }}>Giorno · Turno</th>
+                        <th className="pt-gt" style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 3, whiteSpace: 'nowrap' }}>Giorno · Turno</th>
                         {colonne.map(t => {
                           const io = t.id === mia?.membershipId
                           return <th key={t.id} className="pt-matrix-col" style={{ ...thStyle, textAlign: 'center', minWidth: 92, background: io ? '#15803d' : 'var(--t-titolo)' }}>{nomeCompleto(t)}{io ? ' (tu)' : ''}</th>
@@ -469,7 +470,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         const overnight = turno.ora_fine <= turno.ora_inizio
                         return (
                           <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
+                            <td className="pt-gt" style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
                               <div className="flex items-center gap-1.5">
                                 <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04' }} />}
                                 <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
@@ -504,7 +505,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     </tbody>
                     <tfoot>
                       <tr style={{ background: 'var(--t-tenue)', borderTop: '2px solid #cdd8c4' }}>
-                        <td style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--t-tenue)', zIndex: 1, fontWeight: 700, color: 'var(--t-titolo)' }}>
+                        <td className="pt-gt" style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'var(--t-tenue)', zIndex: 1, fontWeight: 700, color: 'var(--t-titolo)' }}>
                           <span className="inline-flex items-center gap-1"><Check size={12} style={{ color: '#16a34a' }} /> Disponibilità</span>
                         </td>
                         {colonne.map(t => {
