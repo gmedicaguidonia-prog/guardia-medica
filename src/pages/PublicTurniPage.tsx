@@ -445,13 +445,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     : <>Raccolta chiusa{fin?.aperta_a ? ` il ${itDate(fin.aperta_a)}` : ''} — sola lettura.</>}
                 </p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-auto w-full sm:w-fit max-w-full mx-auto">
+                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
                     <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
-                  {/* Desktop: matrice a tabella (una colonna per turnista). Mobile: SCHEDE qui sotto (sm:hidden). */}
-                  <table className="pub-cal-matrix hidden sm:table" style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+                  <table className="pub-cal-matrix" style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr>
                         <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 3, whiteSpace: 'nowrap' }}>Giorno · Turno</th>
@@ -518,79 +517,6 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                       </tr>
                     </tfoot>
                   </table>
-
-                  {/* ── MOBILE: la stessa matrice come SCHEDE (una per giorno·turno) — niente scroll orizzontale ── */}
-                  <div className="sm:hidden">
-                    {righeF.map(({ ds, d, turno }, idx) => {
-                      const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
-                      const superF = isSuperfestivo(d, superSet) && !!superTurniByData.get(ds)?.includes(turno.id)
-                      const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
-                      const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
-                      const overnight = turno.ora_fine <= turno.ora_inizio
-                      const escludiMe = desEditabile ? mia?.membershipId : undefined
-                      const mieScelta = mia ? desByKey.get(`${ds}|${turno.id}|${mia.membershipId}`) : undefined
-                      const vogliono = colonne.filter(t => t.id !== escludiMe && desByKey.get(`${ds}|${turno.id}|${t.id}`) === 'desiderata')
-                      const nonPossono = colonne.filter(t => t.id !== escludiMe && desByKey.get(`${ds}|${turno.id}|${t.id}`) === 'indisponibilita')
-                      return (
-                        <div key={`${ds}|${turno.id}`} className="p-3 space-y-2" style={{ background: rowBg, borderTop: idx === 0 ? 'none' : '1px solid var(--t-riga)' }}>
-                          {/* intestazione giorno + turno */}
-                          <div className="flex items-center gap-2">
-                            <div className="text-center leading-none shrink-0" style={{ color: dayColor, minWidth: 28 }}>
-                              <div style={{ fontWeight: 700, fontSize: 15 }}>{d.getDate()}</div>
-                              <div style={{ fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{WD[d.getDay()]}</div>
-                            </div>
-                            {superF && <Star size={12} fill="#facc15" style={{ color: '#ca8a04' }} className="shrink-0" />}
-                            <div className="flex-1 min-w-0">
-                              <span className="inline-flex items-center gap-1 font-semibold text-sm" style={{ color: '#334155' }}>{overnight ? <Moon size={13} style={{ color: '#64748b' }} /> : <Sun size={13} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
-                              <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
-                            </div>
-                          </div>
-
-                          {/* la TUA scelta (a raccolta aperta e se importato) */}
-                          {mia && desEditabile && (
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-semibold text-stone-500">La tua scelta:</span>
-                              <button onClick={() => setPref(ds, turno.id, mieScelta === 'desiderata' ? null : 'desiderata')} title="Vorrei"
-                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold border transition-colors"
-                                style={mieScelta === 'desiderata' ? { background: '#16a34a', color: '#fff', borderColor: '#15803d' } : { background: '#fff', color: '#166534', borderColor: '#bbf7d0' }}><Check size={13} /> Vorrei</button>
-                              <button onClick={() => setPref(ds, turno.id, mieScelta === 'indisponibilita' ? null : 'indisponibilita')} title="Non posso"
-                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold border transition-colors"
-                                style={mieScelta === 'indisponibilita' ? { background: '#dc2626', color: '#fff', borderColor: '#b91c1c' } : { background: '#fff', color: '#b91c1c', borderColor: '#fecaca' }}><Ban size={13} /> Non posso</button>
-                            </div>
-                          )}
-
-                          {/* scelte degli altri (o di tutti, in sola lettura) */}
-                          {vogliono.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1">
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold shrink-0" style={{ color: '#166534' }}><Check size={12} /> Vorrei:</span>
-                              {vogliono.map(t => <span key={t.id} className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ background: '#dcfce7', color: '#166534' }}>{nomeCompleto(t)}{t.id === mia?.membershipId ? ' (tu)' : ''}</span>)}
-                            </div>
-                          )}
-                          {nonPossono.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1">
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold shrink-0" style={{ color: '#b91c1c' }}><Ban size={12} /> Non può:</span>
-                              {nonPossono.map(t => <span key={t.id} className="rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ background: '#fee2e2', color: '#b91c1c' }}>{nomeCompleto(t)}{t.id === mia?.membershipId ? ' (tu)' : ''}</span>)}
-                            </div>
-                          )}
-                          {vogliono.length === 0 && nonPossono.length === 0 && !(mia && desEditabile) && (
-                            <p className="text-[11px] text-stone-400 italic">Nessuna preferenza espressa.</p>
-                          )}
-                        </div>
-                      )
-                    })}
-
-                    {/* riepilogo disponibilità per turnista (come il piè di pagina della matrice) */}
-                    <div className="p-3" style={{ background: 'var(--t-tenue)', borderTop: '2px solid #cdd8c4' }}>
-                      <p className="text-[11px] font-bold uppercase tracking-wider mb-1.5 inline-flex items-center gap-1" style={{ color: 'var(--t-titolo)' }}><Check size={12} style={{ color: '#16a34a' }} /> Disponibilità (in questo foglio)</p>
-                      <div className="flex flex-wrap gap-1">
-                        {colonne.map(t => {
-                          const tot = righeF.reduce((n, r) => n + (desByKey.get(`${r.ds}|${r.turno.id}|${t.id}`) === 'desiderata' ? 1 : 0), 0)
-                          const io = t.id === mia?.membershipId
-                          return <span key={t.id} className="rounded px-1.5 py-0.5 text-[11px] font-semibold" style={{ background: io ? '#dcfce7' : '#fff', border: '1px solid var(--t-riga)', color: tot > 0 ? '#166534' : '#94a3b8' }}>{nomeCompleto(t)}{io ? ' (tu)' : ''}: {tot}</span>
-                        })}
-                      </div>
-                    </div>
-                  </div>
                 </div>
                 ))}
               </>
