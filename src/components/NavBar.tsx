@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw, MapPin, Crown, Package, PackageOpen } from 'lucide-react'
+import { Stethoscope, LogOut, Settings, CalendarDays, FlaskConical, RefreshCw, MapPin, Crown, Package, PackageOpen, ChevronLeft, ChevronRight } from 'lucide-react'
 import { haAccessoAdmin, nomeCompleto } from '../types'
 import { usePostazione } from '../contexts/PostazioneContext'
 import { useDebug } from '../contexts/DebugContext'
+import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
+import { usePostazionePubblica } from '../hooks/usePostazionePubblica'
 import { CentroMessaggi } from './CentroMessaggi'
 import { store } from '../lib/store'
 import { TEMI, applicaTema, temaSalvato } from '../lib/temi'
 import { updateCachedTema } from '../lib/authHelpers'
 import type { AuthUser, Livello, UtenteImpersonabile } from '../types'
+
+const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 
 // Finestre dedicate: l'amministrazione vive in una finestra/scheda a parte e le
 // pagine pubbliche tutte nella stessa. Un nome-finestra fisso per contesto fa sì
@@ -34,6 +38,29 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   // Nella pagina pubblica "I miei turni" il selettore postazione è già nel corpo:
   // nasconderlo dalla navbar per non confondere.
   const mostraSelettore = haAccessoAdmin(user) && postazioni.length > 0 && loc.pathname !== '/turni'
+
+  // ── Selettore mesi centrato nella barra, SOLO su mobile e SOLO nella pagina pubblica «I miei
+  //    turni». Usa lo stesso stato globale del mese e gli stessi limiti (mesi con contenuto) della
+  //    pagina — la query è deduplicata da React Query (stessa queryKey), quindi niente chiamate extra. ──
+  const suTurni = loc.pathname === '/turni'
+  const { postazioneId: pubPostazioneId } = usePostazionePubblica()   // stessa postazione scelta nella pagina pubblica
+  const { meseKey, mese, anno, setMeseAnno } = useMeseSelezionato()
+  const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({
+    queryKey: ['mesi-contenuto', pubPostazioneId],
+    queryFn: () => store.getMesiConContenuto(pubPostazioneId!),
+    enabled: suTurni && !!pubPostazioneId,
+  })
+  const meseCorrNav = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })()
+  const rangeMinNav = rangeContenuto?.min && rangeContenuto.min < meseCorrNav ? rangeContenuto.min : meseCorrNav
+  const rangeMaxNav = rangeContenuto?.max && rangeContenuto.max > meseCorrNav ? rangeContenuto.max : meseCorrNav
+  const canPrevNav = meseKey > rangeMinNav
+  const canNextNav = meseKey < rangeMaxNav
+  function cambiaMeseNav(delta: number) {
+    if (delta < 0 ? !canPrevNav : !canNextNav) return
+    let m = mese + delta, a = anno
+    if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
+    setMeseAnno(a, m)
+  }
 
   // Tema interfaccia: quadratino ciclico nella navbar (mostra il tema attivo; ogni click applica il successivo)
   const [temaAttivo, setTemaAttivo] = useState<string>(() => temaSalvato())
@@ -107,11 +134,11 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   return (
     <>
     <nav className="text-white shadow-md" style={{ background: 'var(--t-titolo)' }}>
-      <div className="max-w-screen-xl mx-auto px-4 flex items-center gap-3 h-12">
-        {/* Brand */}
+      <div className="max-w-screen-xl mx-auto px-4 flex items-center gap-2 sm:gap-3 h-12">
+        {/* Brand — su cellulare resta solo l'icona (il testo occuperebbe spazio prezioso) */}
         <div className="flex items-center gap-2 shrink-0">
           <Stethoscope size={18} style={{ color: 'var(--t-soft)' }} />
-          <span className="font-bold text-sm tracking-tight" style={{ color: '#e0e8d8' }}>
+          <span className="hidden sm:inline font-bold text-sm tracking-tight" style={{ color: '#e0e8d8' }}>
             Guardia Medica
           </span>
         </div>
@@ -155,9 +182,21 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
 
         <div className="flex-1" />
 
+        {/* Selettore mesi centrato TRA i gruppi — SOLO mobile, SOLO «I miei turni» con postazione attiva.
+            I due flex-1 (questo sopra e quello mobile qui sotto) lo tengono centrato senza mai sovrapporsi
+            alle icone laterali; su desktop resta nel corpo della pagina (qui è sm:hidden). */}
+        {suTurni && pubPostazioneId && (
+          <div className="sm:hidden flex items-center gap-0.5 shrink-0">
+            <button onClick={() => cambiaMeseNav(-1)} disabled={!canPrevNav} className="p-1 rounded" style={{ opacity: canPrevNav ? 1 : 0.3, cursor: canPrevNav ? 'pointer' : 'not-allowed', color: '#e0e8d8' }} aria-label="Mese precedente"><ChevronLeft size={18} /></button>
+            <span className="font-bold text-sm whitespace-nowrap" style={{ color: '#fff' }}>{MESI[mese - 1]} {anno}</span>
+            <button onClick={() => cambiaMeseNav(1)} disabled={!canNextNav} className="p-1 rounded" style={{ opacity: canNextNav ? 1 : 0.3, cursor: canNextNav ? 'pointer' : 'not-allowed', color: '#e0e8d8' }} aria-label="Mese successivo"><ChevronRight size={18} /></button>
+          </div>
+        )}
+        {suTurni && pubPostazioneId && <div className="flex-1 sm:hidden" />}
+
         {/* DEV: switch rapido del ruolo per provare le viste */}
         {isDev && (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 shrink-0">
             <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded"
               style={{ background: '#fbbf24', color: 'var(--t-notte)' }}>
               <FlaskConical size={11} /> DEV
@@ -193,7 +232,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
 
           {/* DEBUG: Modalità Admin + Doppleganger (dopo il nome utente, solo per l'admin reale) */}
           {isRealAdmin && (
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="hidden sm:flex items-center gap-1.5 shrink-0">
               <button onClick={() => setDebugModal('admin')} title="Modalità admin (debug) — un di più sopra ai normali poteri da admin"
                 className={`relative text-[10px] font-bold px-1.5 py-0.5 rounded transition-all ${adminMode ? 'animate-pulse' : ''}`}
                 style={adminMode

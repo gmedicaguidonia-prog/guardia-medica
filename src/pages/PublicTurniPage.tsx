@@ -11,6 +11,7 @@ import { nomeCompleto, cmpTurnisti } from '../types'
 import type { TurnoPersona, Utente } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
+import { usePostazionePubblica } from '../hooks/usePostazionePubblica'
 import { useRealtimePostazione } from '../hooks/useRealtime'
 import { useDebug } from '../contexts/DebugContext'
 import { IconaLivello } from '../components/IconaLivello'
@@ -52,8 +53,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: mie = [], isLoading: loadingMie } = useQuery<MiaPostazione[]>({ queryKey: ['mie-postazioni', user?.id], queryFn: () => store.getMiePostazioni(user!.id), enabled: !!user })
   const { data: tuttePost = [] } = useQuery<Postazione[]>({ queryKey: ['postazioni'], queryFn: () => store.getPostazioni(), enabled: !!user && godMode })
   // postazione ricordata per la sessione (chiave condivisa con l'admin)
-  const [postazioneId, setPostazioneId] = useState<string | null>(() => { try { return localStorage.getItem('gm_postazione') } catch { return null } })
-  function scegliPostazione(id: string) { try { localStorage.setItem('gm_postazione', id) } catch { /* ignore */ } setPostazioneId(id) }
+  const { postazioneId, setPostazioneId } = usePostazionePubblica()   // store condiviso con la NavBar (selettore mesi mobile)
+  function scegliPostazione(id: string) { setPostazioneId(id) }
   // in "god mode" (admin reale) il selettore mostra TUTTE le postazioni, non solo le proprie
   const opzioni = useMemo<{ postazioneId: string; nome: string }[]>(() =>
     godMode && tuttePost.length ? tuttePost.map(p => ({ postazioneId: p.id, nome: p.nome }))
@@ -256,7 +257,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const turniConfigurati = !!versione && schema.length > 0 && impaginazioneOk
 
   const MeseNav = (
-    <div className="flex items-center gap-2">
+    // Su cellulare il navigatore mesi è nella barra in alto (centrato): qui lo mostriamo solo da ≥sm.
+    <div className="hidden sm:flex items-center gap-2">
       <button onClick={() => cambiaMese(-1)} disabled={!canPrev} className="btn-secondary px-2 py-1" style={{ opacity: canPrev ? 1 : 0.35, cursor: canPrev ? 'pointer' : 'not-allowed' }} title={canPrev ? 'Mese precedente' : 'Niente da vedere prima'}><ChevronLeft size={16} /></button>
       <span className="font-bold text-lg text-center" style={{ color: 'var(--t-testo)', minWidth: 140 }}>{MESI[mese - 1]} {anno}</span>
       <button onClick={() => cambiaMese(1)} disabled={!canNext} className="btn-secondary px-2 py-1" style={{ opacity: canNext ? 1 : 0.35, cursor: canNext ? 'pointer' : 'not-allowed' }} title={canNext ? 'Mese successivo' : 'Niente da vedere dopo'}><ChevronRight size={16} /></button>
