@@ -100,3 +100,25 @@
     background: var(--t-card);
   }
 }
+
+/* ── Pagina pubblica: calendario turni / desiderata adattivi su schermi piccoli ──
+   Su mobile la card diventa a piena larghezza, la tabella sta dentro il viewport e i
+   nomi lunghi (turno, turnisti, reperibile) vanno a capo invece di allargare la tabella:
+   tutte le informazioni restano visibili SENZA scroll orizzontale, mai troncate. */
+@media (max-width: 640px) {
+  .pub-cal-card { width: 100% !important; max-width: 100% !important; }
+  .pub-cal-table { width: 100%; font-size: 12px !important; }
+  .pub-cal-table th, .pub-cal-table td { padding: 4px 6px !important; }
+  .pub-cal-table td.pt-turno, .pub-cal-table td.pt-turnisti,
+  .pub-cal-table td.pt-rep, .pub-cal-table td.pt-scelta { white-space: normal !important; }
+  .pub-cal-table td.pt-turnisti > div { flex-wrap: wrap; }
+  .pub-cal-table td.pt-turno span,
+  .pub-cal-table td.pt-turnisti span, .pub-cal-table td.pt-turnisti button,
+  .pub-cal-table td.pt-rep span, .pub-cal-table td.pt-rep button {
+    white-space: normal !important; overflow-wrap: anywhere; word-break: break-word;
+  }
+  /* Matrice desiderata pubbliche (una colonna per turnista): colonne più strette e
+     compatte così serve meno scorrimento; la prima colonna resta bloccata a sinistra. */
+  .pub-cal-matrix th.pt-matrix-col { min-width: 46px !important; font-size: 10px; padding: 4px 3px !important; }
+  .pub-cal-matrix td.pt-matrix-col { padding: 4px 3px !important; }
+}

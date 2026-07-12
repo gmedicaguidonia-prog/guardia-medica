@@ -343,15 +343,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   </div>
                 )}
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
+                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto pub-cal-card">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
                     <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
-                  {/* STESSA impaginazione delle Desiderata: card centrata a larghezza-contenuto (w-fit),
-                      così passando tra le due schede la pagina non si ridimensiona. Layout AUTO + celle
-                      nowrap → nomi turno/turnisti/reperibili interi, mai troncati. */}
-                  <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+                  {/* Desktop: card a larghezza-contenuto (w-fit), celle nowrap → nomi interi su una riga.
+                      Mobile (≤640px, classi pub-cal-*): card a piena larghezza e nomi lunghi a capo, così
+                      tutte le info stanno nello schermo del cellulare SENZA scroll orizzontale, mai troncate. */}
+                  <table className="pub-cal-table" style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead><tr><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Giorno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turno</th><th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Turnisti</th>{hasRep && <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Reperibile</th>}</tr></thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
@@ -367,13 +367,13 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         const hoChiesto = mieRichieste.has(k)
                         return (
                           <tr key={k} style={{ background: rowBg }}>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
+                            <td className="pt-giorno" style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
+                            <td className="pt-turno" style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                               <span className="inline-flex items-center gap-1" style={{ color: '#475569', fontSize: 14 }}>{overnight ? <Moon size={13} style={{ color: '#64748b' }} /> : <Sun size={13} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
                             </td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
-                              <div className="flex gap-1.5 items-center">
+                            <td className="pt-turnisti" style={{ ...tdBase, whiteSpace: 'nowrap' }}>
+                              <div className="flex gap-1.5 items-center flex-wrap">
                                 {ids.length === 0 && !(pianificazione && mancano > 0) && <span className="text-[11px] text-stone-300 italic">—</span>}
                                 {ids.map((id, idx) => {
                                   if (isGhost(id)) return <span key={`${id}|${idx}`} className="rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap" style={{ background: '#eceae7', color: '#78716c', border: '1px dashed #b8b2a8', fontStyle: 'italic' }} title="Turnista non più in anagrafica">{ghostNome(id)}</span>
@@ -398,7 +398,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                               </div>
                             </td>
                             {hasRep && (
-                              <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
+                              <td className="pt-rep" style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                                 {rep
                                   ? (isGhost(rep)
                                     ? <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[12px] font-medium whitespace-nowrap" style={{ background: '#eceae7', color: '#78716c', border: '1px dashed #b8b2a8', fontStyle: 'italic' }} title="Turnista non più in anagrafica"><Phone size={10} /> {ghostNome(rep)}</span>
@@ -448,13 +448,13 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                     <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
-                  <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
+                  <table className="pub-cal-matrix" style={{ borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr>
                         <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 3, whiteSpace: 'nowrap' }}>Giorno · Turno</th>
                         {colonne.map(t => {
                           const io = t.id === mia?.membershipId
-                          return <th key={t.id} style={{ ...thStyle, textAlign: 'center', minWidth: 92, background: io ? '#15803d' : 'var(--t-titolo)' }}>{nomeCompleto(t)}{io ? ' (tu)' : ''}</th>
+                          return <th key={t.id} className="pt-matrix-col" style={{ ...thStyle, textAlign: 'center', minWidth: 92, background: io ? '#15803d' : 'var(--t-titolo)' }}>{nomeCompleto(t)}{io ? ' (tu)' : ''}</th>
                         })}
                       </tr>
                     </thead>
@@ -478,7 +478,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                               const io = t.id === mia?.membershipId
                               const scelta = desByKey.get(`${ds}|${turno.id}|${t.id}`)
                               return (
-                                <td key={t.id} style={{ ...tdBase, textAlign: 'center', background: io ? 'rgba(22,163,74,0.06)' : undefined }}>
+                                <td key={t.id} className="pt-matrix-col" style={{ ...tdBase, textAlign: 'center', background: io ? 'rgba(22,163,74,0.06)' : undefined }}>
                                   {io && desEditabile ? (
                                     <div className="inline-flex gap-1">
                                       <button onClick={() => setPref(ds, turno.id, scelta === 'desiderata' ? null : 'desiderata')} title="Vorrei"
@@ -509,7 +509,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                           const tot = righeF.reduce((n, r) => n + (desByKey.get(`${r.ds}|${r.turno.id}|${t.id}`) === 'desiderata' ? 1 : 0), 0)
                           const io = t.id === mia?.membershipId
                           return (
-                            <td key={t.id} style={{ ...tdBase, textAlign: 'center', fontWeight: 800, fontSize: 14, background: io ? 'rgba(22,163,74,0.12)' : 'var(--t-tenue)', color: tot > 0 ? '#166534' : '#94a3b8' }} title={`${nomeCompleto(t)}: ${tot} disponibilità in questo foglio`}>{tot}</td>
+                            <td key={t.id} className="pt-matrix-col" style={{ ...tdBase, textAlign: 'center', fontWeight: 800, fontSize: 14, background: io ? 'rgba(22,163,74,0.12)' : 'var(--t-tenue)', color: tot > 0 ? '#166534' : '#94a3b8' }} title={`${nomeCompleto(t)}: ${tot} disponibilità in questo foglio`}>{tot}</td>
                           )
                         })}
                       </tr>
@@ -525,12 +525,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 {avvisoChiusura}
                 <p className="text-xs text-stone-500">Per ogni turno indica se lo <strong style={{ color: '#166534' }}>vorresti</strong> o se <strong style={{ color: '#b91c1c' }}>non puoi</strong>.</p>
                 {righePerFoglio.map(({ foglio, righe: righeF }) => (
-                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto">
+                <div key={foglio.id} className="card overflow-auto w-fit max-w-full mx-auto pub-cal-card">
                   <div className="px-3 py-2 flex items-center justify-center gap-2" style={{ borderBottom: '1px solid var(--t-riga)' }}>
                     <LayoutGrid size={14} style={{ color: 'var(--t-accento)' }} />
                     <h3 className="text-sm font-bold uppercase text-center" style={{ color: 'var(--t-titolo)' }}>{foglio.nome} - Turni del mese di {MESI[mese - 1]} {anno}</h3>
                   </div>
-                  <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
+                  <table className="pub-cal-table" style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
                     <thead><tr><th style={thStyle}>Giorno</th><th style={thStyle}>Turno</th><th style={{ ...thStyle, textAlign: 'center' }}>La tua scelta</th></tr></thead>
                     <tbody>
                       {righeF.map(({ ds, d, turno }) => {
@@ -542,12 +542,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         const cur = miaPref.get(`${ds}|${turno.id}`)
                         return (
                           <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
-                            <td style={{ ...tdBase, whiteSpace: 'nowrap' }}>
+                            <td className="pt-giorno" style={{ ...tdBase, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04', display: 'inline', marginLeft: 3, verticalAlign: '-1px' }} />}</td>
+                            <td className="pt-turno" style={{ ...tdBase, whiteSpace: 'nowrap' }}>
                               <span className="inline-flex items-center gap-1">{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
                             </td>
-                            <td style={{ ...tdBase, textAlign: 'center' }}>
+                            <td className="pt-scelta" style={{ ...tdBase, textAlign: 'center' }}>
                               <div className="inline-flex gap-1.5">
                                 <button onClick={() => setPref(ds, turno.id, cur === 'desiderata' ? null : 'desiderata')}
                                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold border transition-colors"
