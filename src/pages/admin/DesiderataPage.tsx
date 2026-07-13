@@ -59,6 +59,9 @@ export function DesiderataPage() {
   const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId })
   const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
+  // Finestra RIAPERTA come eccezione: la sua chiusura cade DENTRO/oltre il mese (cosa che la regola
+  // normale non consente). Solo per queste allentiamo il vincolo di data, sempre con avviso.
+  const finestraRiaperta = !!finestra?.aperta_a && finestra.aperta_a >= `${meseKey}-01`
   // Stato del calendario del mese: se è già pubblicato o in pianificazione, le desiderata (che si
   // raccolgono PRIMA di generare il calendario) non si attivano né si mostrano più.
   const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
@@ -185,7 +188,13 @@ export function DesiderataPage() {
     if (importati.size === 0) { showWarn('Definisci prima il personale del mese (passo ① Personale): senza non c\'è chi possa esprimere le desiderata.'); return }
     if (!finDa || !finA) { showWarn('Imposta sia la data di apertura sia quella di chiusura prima di pubblicare.'); return }
     if (finDa > finA) { showWarn('La data di apertura non può essere successiva a quella di chiusura.'); return }
-    if (finA >= primoDelMese) { showWarn(`La chiusura deve cadere entro il ${itDate(ultimoMesePrec)} (il giorno prima dell'inizio di ${MESI[mese - 1]} ${anno}): le desiderata vanno raccolte prima che il mese cominci.`); return }
+    if (finA >= primoDelMese) {
+      // Regola normale: la chiusura deve cadere prima che il mese inizi. ALLENTATA solo per le
+      // raccolte RIAPERTE come eccezione — e comunque con avviso esplicito, ogni volta.
+      if (!finestraRiaperta) { showWarn(`La chiusura deve cadere entro il ${itDate(ultimoMesePrec)} (il giorno prima dell'inizio di ${MESI[mese - 1]} ${anno}): le desiderata vanno raccolte prima che il mese cominci.`); return }
+      const ok = await confirm({ title: 'Raccolta riaperta: chiusura dentro il mese', message: `Questa raccolta è stata RIAPERTA come eccezione. La chiusura è il ${itDate(finA)}, cioè dentro ${MESI[mese - 1]} ${anno}: di norma le desiderata si raccolgono PRIMA che il mese inizi (i turnisti potrebbero cambiare disponibilità su turni già assegnati). Pubblicare comunque questa finestra eccezionale?`, confirmLabel: 'Sì, pubblica lo stesso', danger: true })
+      if (!ok) return
+    }
     try {
       await store.setDesiderataFinestra(postazioneId!, meseKey, finDa || null, finA || null)
       const chiudeOra = !!finA && finA < oggiStr
@@ -417,9 +426,9 @@ export function DesiderataPage() {
         ) : (
           <div className="flex items-center gap-3 flex-wrap">
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>apertura
-              <input type="date" value={finDa} max={ultimoMesePrec} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
+              <input type="date" value={finDa} max={finestraRiaperta ? undefined : ultimoMesePrec} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>chiusura
-              <input type="date" value={finA} max={ultimoMesePrec} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
+              <input type="date" value={finA} max={finestraRiaperta ? undefined : ultimoMesePrec} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <button onClick={salvaFinestra} disabled={!finDa || !finA || importati.size === 0} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={importati.size === 0 ? 'Definisci prima il personale del mese' : !finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
             {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
             {importati.size === 0 && <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: '#b45309' }}><AlertTriangle size={13} /> Definisci prima il personale del mese (passo ① Personale).</span>}
