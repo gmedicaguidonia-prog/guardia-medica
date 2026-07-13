@@ -441,6 +441,11 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               /* ── DESIDERATA PUBBLICHE (o god mode admin): una colonna per turnista, modifichi la tua ── */
               <>
                 {avvisoChiusura}
+                {godMode && !pubblicheMode && (
+                  <p className="text-xs rounded-lg px-2.5 py-1.5" style={{ background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
+                    <strong>Anteprima admin:</strong> le desiderata di questo mese sono su «Singole» — i turnisti vedono <strong>solo la propria colonna</strong>, non questa griglia. Vedi tutte le colonne perché hai la <strong>Modalità Admin</strong> attiva.
+                  </p>
+                )}
                 <p className="text-xs text-stone-500">
                   {desEditabile
                     ? <>Scegli nella <strong>tua</strong> colonna; vedi anche le scelte degli altri. Raccolta aperta fino al {itDate(fin!.aperta_a!)}.</>

@@ -179,6 +179,7 @@ export function DesiderataPage() {
   // ── finestra di raccolta (periodo aperto ai turnisti) ──
   const [finDa, setFinDa] = useState(''); const [finA, setFinA] = useState('')
   const [finMsg, setFinMsg] = useState<string | null>(null)
+  const [pubMsg, setPubMsg] = useState<string | null>(null)   // conferma "salvato" del toggle singole/pubbliche
   useEffect(() => { setFinDa(finestra?.aperta_da ?? ''); setFinA(finestra?.aperta_a ?? '') }, [finestra])
   async function salvaFinestra() {
     if (importati.size === 0) { showWarn('Definisci prima il personale del mese (passo ① Personale): senza non c\'è chi possa esprimere le desiderata.'); return }
@@ -198,10 +199,12 @@ export function DesiderataPage() {
   // ── switch "desiderata pubbliche" (visibili a tutti i turnisti) ──
   const pubbliche = !!finestra?.pubbliche
   async function togglePubbliche() {
+    const nuovo = !pubbliche   // il toggle SALVA SUBITO nel DB (nessun "Salva" separato) e i turnisti si aggiornano in tempo reale
     try {
-      await store.setDesiderataPubbliche(postazioneId!, meseKey, !pubbliche)
-      if (!pubbliche) store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubbliche', messaggio: `Desiderata di ${MESI[mese - 1]} ${anno} rese pubbliche (visibili a tutti i turnisti).`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
+      await store.setDesiderataPubbliche(postazioneId!, meseKey, nuovo)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubbliche', messaggio: nuovo ? `Desiderata di ${MESI[mese - 1]} ${anno} rese pubbliche (visibili a tutti i turnisti).` : `Desiderata di ${MESI[mese - 1]} ${anno} tornate singole (ogni turnista vede solo le proprie).`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
+      setPubMsg(nuovo ? 'Ora pubbliche · salvato' : 'Ora singole · salvato'); setTimeout(() => setPubMsg(null), 2600)
     } catch (e) { console.error(e); void notify({ title: 'Errore', message: 'Errore nel cambio modalità desiderata pubbliche.' }) }
   }
 
@@ -430,7 +433,8 @@ export function DesiderataPage() {
             <span className="inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform" style={{ transform: pubbliche ? 'translateX(18px)' : 'translateX(2px)' }} />
           </button>
           <span className="text-sm font-semibold" style={{ color: 'var(--t-titolo)' }}>{pubbliche ? 'Desiderata Pubbliche' : 'Desiderata Singole'}</span>
-          <span className="text-xs text-stone-500 flex-1" style={{ minWidth: 200 }}>{pubbliche ? 'I turnisti vedono le scelte di tutti (vista a colonne) e modificano la propria. Adatta a postazioni con pochi turnisti.' : 'Ogni turnista vede e modifica solo le proprie scelte (default).'}</span>
+          {pubMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {pubMsg}</span>}
+          <span className="text-xs text-stone-500 flex-1" style={{ minWidth: 200 }}>{pubbliche ? 'I turnisti vedono le scelte di tutti (vista a colonne) e modificano la propria. Adatta a postazioni con pochi turnisti. Il cambio è immediato e si aggiorna in tempo reale nella pagina pubblica.' : 'Ogni turnista vede e modifica solo le proprie scelte (default). Il cambio è immediato e si aggiorna in tempo reale nella pagina pubblica.'}</span>
         </div>
         )}
       </div>
