@@ -28,16 +28,19 @@
   --t-testo: #3a3d30;         /* testo base */
 }
 [data-tema='azzurro'] {       /* Celeste pastello */
+  color-scheme: light;        /* tema chiaro: coerente col toggle (un futuro tema scuro metterà 'dark') */
   --t-notte: #24455e; --t-titolo: #2e5878; --t-primario: #5aa7d6; --t-accento: #4a97c8;
   --t-etichetta: #7db8dd; --t-soft: #a8cfe8; --t-side-testo: #d3e6f2; --t-side-forte: #eef6fb;
   --t-bg: #f0f7fb; --t-card: #f9fcfe; --t-tenue: #e4f0f8; --t-riga: #e7f0f6; --t-testo: #33424d;
 }
 [data-tema='bordeaux'] {      /* Bordeaux pastello (rosa antico) */
+  color-scheme: light;
   --t-notte: #4a2c33; --t-titolo: #5f3742; --t-primario: #b0687a; --t-accento: #a05b6c;
   --t-etichetta: #c08a97; --t-soft: #d8aeb8; --t-side-testo: #ecd5da; --t-side-forte: #f8edef;
   --t-bg: #f9f3f4; --t-card: #fdfafa; --t-tenue: #f4e9eb; --t-riga: #f1e7e9; --t-testo: #453a3c;
 }
 [data-tema='antracite'] {     /* Antracite pastello (grigio azzurrato) */
+  color-scheme: light;
   --t-notte: #333b44; --t-titolo: #414c57; --t-primario: #7a8896; --t-accento: #6b7987;
   --t-etichetta: #93a1ae; --t-soft: #b4bfc9; --t-side-testo: #d8dee3; --t-side-forte: #eff2f4;
   --t-bg: #f4f6f7; --t-card: #fbfcfc; --t-tenue: #eceff1; --t-riga: #eaedef; --t-testo: #3a4148;
