@@ -12,6 +12,7 @@
    Il tema attivo si imposta con data-tema su <html> (vedi src/lib/temi.ts);
    i colori SEMANTICI (rossi festivi, gialli avviso, badge ruoli) restano fissi. */
 :root {                       /* Verde bosco (classico) */
+  color-scheme: light;        /* sito solo-chiaro: evita l'inversione forzata del browser (Samsung Internet, ecc.) */
   --t-notte: #1c2818;         /* sidebar / navbar scura */
   --t-titolo: #2b3c24;        /* titoli */
   --t-primario: #456b3a;      /* voce attiva, pulsanti primari hover */

@@ -55,6 +55,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   // postazione ricordata per la sessione (chiave condivisa con l'admin)
   const { postazioneId, setPostazioneId } = usePostazionePubblica()   // store condiviso con la NavBar (selettore mesi mobile)
   function scegliPostazione(id: string) { setPostazioneId(id) }
+  // Popover "clicca qui" per impostare la propria preferenza nelle desiderata pubbliche
+  const [desPicker, setDesPicker] = useState<{ ds: string; turnoId: string; scelta: 'desiderata' | 'indisponibilita' | undefined; x: number; y: number } | null>(null)
   // in "god mode" (admin reale) il selettore mostra TUTTE le postazioni, non solo le proprie
   const opzioni = useMemo<{ postazioneId: string; nome: string }[]>(() =>
     godMode && tuttePost.length ? tuttePost.map(p => ({ postazioneId: p.id, nome: p.nome }))
@@ -466,8 +468,14 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                         const fest = isFestivo(d, festivoSet), pref = isPrefestivo(d, festivoSet)
                         const superF = isSuperfestivo(d, superSet) && !!superTurniByData.get(ds)?.includes(turno.id)
                         const dayColor = fest ? '#b91c1c' : pref ? '#b45309' : 'var(--t-titolo)'
-                        const rowBg = fest ? '#fdecea' : pref ? '#fff5e6' : '#fff'
                         const overnight = turno.ora_fine <= turno.ora_inizio
+                        // Copertura del turno: quanti hanno espresso "Vorrei" (X) sul numero di turnisti previsti (Y).
+                        // Nelle DESIDERATA lo sfondo riga NON segue festivi/prefestivi (basta il colore del giorno):
+                        // bianco se X<Y (scoperto), verde se X=Y (giusto), giallo se X>Y (in eccesso).
+                        const nVogliono = colonne.reduce((n, t) => n + (desByKey.get(`${ds}|${turno.id}|${t.id}`) === 'desiderata' ? 1 : 0), 0)
+                        const richiesti = turno.n_turnisti
+                        const rowBg = nVogliono < richiesti ? '#ffffff' : nVogliono === richiesti ? '#dcfce7' : '#fef9c3'
+                        const contColor = nVogliono < richiesti ? '#94a3b8' : nVogliono === richiesti ? '#166534' : '#a16207'
                         return (
                           <tr key={`${ds}|${turno.id}`} style={{ background: rowBg }}>
                             <td className="pt-gt" style={{ ...tdBase, whiteSpace: 'nowrap', position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
@@ -475,7 +483,11 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                                 <span style={{ fontWeight: 700, color: dayColor }}>{d.getDate()} {WD[d.getDay()]}</span>{superF && <Star size={11} fill="#facc15" style={{ color: '#ca8a04' }} />}
                                 <span className="inline-flex items-center gap-1" style={{ color: '#475569' }}>{overnight ? <Moon size={12} style={{ color: '#64748b' }} /> : <Sun size={12} style={{ color: '#f59e0b' }} />}{turno.nome || 'Turno'}</span>
                               </div>
-                              <div style={{ fontSize: 10, color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</div>
+                              {/* orario a sinistra, contatore X/Y allineato a destra */}
+                              <div className="flex items-center justify-between gap-3" style={{ fontSize: 10 }}>
+                                <span style={{ color: '#94a3b8' }}>{turno.ora_inizio}–{turno.ora_fine}</span>
+                                <span className="font-bold tabular-nums" style={{ color: contColor }} title={`${nVogliono} vorrebbero questo turno su ${richiesti} previsti`}>{nVogliono}/{richiesti}</span>
+                              </div>
                             </td>
                             {colonne.map(t => {
                               const io = t.id === mia?.membershipId
@@ -483,14 +495,11 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                               return (
                                 <td key={t.id} className="pt-matrix-col" style={{ ...tdBase, textAlign: 'center', background: io ? 'rgba(22,163,74,0.06)' : undefined }}>
                                   {io && desEditabile ? (
-                                    <div className="inline-flex gap-1">
-                                      <button onClick={() => setPref(ds, turno.id, scelta === 'desiderata' ? null : 'desiderata')} title="Vorrei"
-                                        className="inline-flex items-center justify-center rounded-md w-7 h-7 border transition-colors"
-                                        style={scelta === 'desiderata' ? { background: '#16a34a', color: '#fff', borderColor: '#15803d' } : { background: '#fff', color: '#166534', borderColor: '#bbf7d0' }}><Check size={13} /></button>
-                                      <button onClick={() => setPref(ds, turno.id, scelta === 'indisponibilita' ? null : 'indisponibilita')} title="Non posso"
-                                        className="inline-flex items-center justify-center rounded-md w-7 h-7 border transition-colors"
-                                        style={scelta === 'indisponibilita' ? { background: '#dc2626', color: '#fff', borderColor: '#b91c1c' } : { background: '#fff', color: '#b91c1c', borderColor: '#fecaca' }}><Ban size={13} /></button>
-                                    </div>
+                                    <button onClick={e => setDesPicker({ ds, turnoId: turno.id, scelta, x: e.clientX, y: e.clientY })} title="Imposta la tua preferenza"
+                                      className="inline-flex items-center justify-center rounded-md border transition-colors"
+                                      style={{ minWidth: 52, minHeight: 28, ...(scelta === 'desiderata' ? { background: '#16a34a', color: '#fff', borderColor: '#15803d' } : scelta === 'indisponibilita' ? { background: '#dc2626', color: '#fff', borderColor: '#b91c1c' } : { background: '#fff', color: 'var(--t-accento)', borderColor: 'var(--t-riga)' }) }}>
+                                      {scelta === 'desiderata' ? <Check size={14} /> : scelta === 'indisponibilita' ? <Ban size={14} /> : <span className="text-[10px] font-semibold underline decoration-dotted">clicca qui</span>}
+                                    </button>
                                   ) : scelta === 'desiderata' ? (
                                     <span className="inline-flex items-center justify-center w-6 h-6 rounded-full" style={{ background: '#dcfce7', color: '#166534' }} title="Vorrei"><Check size={13} /></span>
                                   ) : scelta === 'indisponibilita' ? (
@@ -573,6 +582,23 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                 ))}
               </>
             )
+          )}
+
+          {/* Popover "clicca qui": scelta della preferenza (Vorrei / Non posso) nelle desiderata pubbliche */}
+          {desPicker && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setDesPicker(null)} />
+              <div className="fixed z-50 card p-1.5 shadow-2xl" style={{ left: Math.max(8, Math.min(desPicker.x - 90, window.innerWidth - 196)), top: Math.max(8, Math.min(desPicker.y + 6, window.innerHeight - 170)), width: 188, animation: 'fadeSlideIn 120ms ease-out' }} onClick={e => e.stopPropagation()}>
+                <p className="text-[11px] font-bold text-stone-500 px-1.5 pt-0.5 pb-1.5">La tua preferenza</p>
+                <button onClick={() => { setPref(desPicker.ds, desPicker.turnoId, 'desiderata'); setDesPicker(null) }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+                  style={desPicker.scelta === 'desiderata' ? { background: '#16a34a', color: '#fff' } : { background: '#f0fdf4', color: '#166534' }}><Check size={15} /> Vorrei fare il turno</button>
+                <button onClick={() => { setPref(desPicker.ds, desPicker.turnoId, 'indisponibilita'); setDesPicker(null) }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm font-semibold mt-1 transition-colors"
+                  style={desPicker.scelta === 'indisponibilita' ? { background: '#dc2626', color: '#fff' } : { background: '#fef2f2', color: '#b91c1c' }}><Ban size={15} /> Non posso</button>
+                {desPicker.scelta && <button onClick={() => { setPref(desPicker.ds, desPicker.turnoId, null); setDesPicker(null) }} className="w-full text-center px-2 py-1 rounded-lg text-xs text-stone-500 hover:bg-stone-100 mt-1">Rimuovi preferenza</button>}
+              </div>
+            </>
           )}
 
           {/* Modal: candidatura su un turno scoperto (Modalità Pianificazione) */}
