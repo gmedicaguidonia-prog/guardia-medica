@@ -46,7 +46,6 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { adminMode, doppleganger } = useDebug()   // "god mode": l'admin reale bypassa i controlli di autorizzazione lato vista
   const godMode = adminMode && !doppleganger   // ⚠️ la god mode NON si applica mentre impersoni qualcuno (Doppleganger): vedi ESATTAMENTE come lui
   const oggiStr = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, '0')}-${String(oggi.getDate()).padStart(2, '0')}`
-  const [tab, setTab] = useState<'turni' | 'desiderata'>('turni')
   const [syncOpen, setSyncOpen] = useState(false)   // modal "Sincronizza Calendario"
 
   // postazioni dell'utente
@@ -68,13 +67,18 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: versione } = useQuery<ConfigVersione | null>({ queryKey: ['versione', postazioneId, meseKey], queryFn: () => store.getVersioneMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: schema = [] } = useQuery<TurnoSchema[]>({ queryKey: ['schema', versione?.id], queryFn: () => store.getSchemaVersione(versione!.id), enabled: !!versione })
   const { data: personale = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
-  const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'turni' })
+  const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
   const { finalizzato } = useFinalizzato(postazioneId, meseKey)   // mese finalizzato ⇒ calendario definitivo in sola lettura (letto dal JSON)
-  const pianificazione = tab === 'turni' && statoCal === 'pianificazione' && !finalizzato   // niente candidature su un mese chiuso
+  const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
+  // VISTA UNICA (mutua esclusione calendario ↔ desiderata): si mostra SOLO quella attiva. Il calendario
+  // vince se pubblicato/pianificazione o finalizzato; altrimenti, se la raccolta desiderata è aperta o
+  // programmata, si mostra quella; se non c'è nessuna delle due si resta sul calendario (che avvisa «non pubblicato»).
+  const desiderataAttiva = !!finestra?.aperta_a && finestra.aperta_a >= oggiStr
+  const vista: 'turni' | 'desiderata' = (finalizzato || statoCal === 'pubblicato' || statoCal === 'pianificazione') ? 'turni' : (desiderataAttiva ? 'desiderata' : 'turni')
+  const pianificazione = vista === 'turni' && statoCal === 'pianificazione' && !finalizzato   // niente candidature su un mese chiuso
   // un mese finalizzato mostra COMUNQUE il calendario (letto dal JSON), anche se lo stato archiviato non fosse 'pubblicato'
-  const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) })
-  const { data: finestra } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId && tab === 'desiderata' })
-  const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && tab === 'desiderata' })
+  const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && vista === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) })
+  const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && vista === 'desiderata' })
   const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })   // serve anche al tab Turni (cambio turno: personale autorizzato del mese)
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
   const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneId], queryFn: () => store.getMesiConContenuto(postazioneId!), enabled: !!postazioneId })
@@ -301,15 +305,11 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             </div>
           </div>
 
-          {/* Schede */}
+          {/* Vista unica: calendario e desiderata sono in mutua esclusione → si mostra solo quella attiva */}
           <div className="flex gap-2">
-            {([['turni', 'Calendario Turni', CalendarDays], ['desiderata', 'Desiderata - Indisponibilità', CalendarHeart]] as const).map(([key, label, Icon]) => (
-              <button key={key} onClick={() => setTab(key)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
-                style={tab === key ? { background: 'var(--t-primario)', color: '#fff' } : { background: 'var(--t-tenue)', color: 'var(--t-accento)' }}>
-                <Icon size={15} /> {label}
-              </button>
-            ))}
+            <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold" style={{ background: 'var(--t-primario)', color: '#fff' }}>
+              {vista === 'turni' ? <><CalendarDays size={15} /> Calendario Turni</> : <><CalendarHeart size={15} /> Desiderata - Indisponibilità</>}
+            </div>
           </div>
 
           {/* Navigatore mese + banner "mese chiuso" (finalizzato) + Sincronizza Calendario */}
@@ -321,7 +321,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               </div>
             ) : <span />}
             <div className="flex items-center gap-2 flex-wrap">
-              {tab === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) && mia && (
+              {vista === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) && mia && (
                 <button onClick={() => setSyncOpen(true)}
                   className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5"
                   title="Sincronizza i tuoi turni di questo mese con il tuo Google Calendar">
@@ -333,7 +333,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           </div>
 
           {/* ───── CALENDARIO TURNI ───── */}
-          {tab === 'turni' && (
+          {vista === 'turni' && (
             statoCal === 'non_pubblicato' && !finalizzato ? (
               <Avviso>Il <strong>calendario turni</strong> di {MESI[mese - 1]} {anno} non è ancora stato pubblicato per questa postazione.</Avviso>
             ) : !turniConfigurati ? (
@@ -426,7 +426,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           )}
 
           {/* ───── DESIDERATA ───── */}
-          {tab === 'desiderata' && (
+          {vista === 'desiderata' && (
             mia && livMese(mia.membershipId) === 'esterno' && !godMode ? (
               <Avviso>Come <strong>esterno</strong> non puoi accedere alle desiderata/indisponibilità. Puoi però vedere il <strong>Calendario Turni</strong> e candidarti ai turni scoperti.</Avviso>
             ) : desStato === 'assente' ? (

@@ -190,6 +190,7 @@ export function DesiderataPage() {
       const chiudeOra = !!finA && finA < oggiStr
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: chiudeOra ? 'desiderata_chiusa' : 'desiderata_pubblicata', messaggio: chiudeOra ? `Raccolta desiderata di ${MESI[mese - 1]} ${anno} chiusa.` : `Raccolta desiderata di ${MESI[mese - 1]} ${anno} aperta${finDa && finA ? ` · dal ${itDate(finDa)} al ${itDate(finA)}` : ''}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
+      if (!chiudeOra && await smontaCalendarioSeAvviato()) void notify({ title: 'Calendario nascosto', message: `Il calendario turni di ${MESI[mese - 1]} ${anno} era pubblicato: l'ho riportato a «Non pubblicato» perché ora è aperta la raccolta desiderata. Ripubblicalo quando chiuderai le desiderata.` })
       setFinMsg('Pubblicato'); setTimeout(() => setFinMsg(null), 2500)
     } catch (e) { console.error(e); void notify({ title: 'Errore', message: 'Errore nella pubblicazione del periodo.' }) }
   }
@@ -248,7 +249,18 @@ export function DesiderataPage() {
       await store.setDesiderataFinestra(postazioneId!, meseKey, finestra.aperta_da ?? oggiStr, domaniStr)
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_pubblicata', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} riaperta · chiude il ${itDate(domaniStr)}.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
       await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
+      if (await smontaCalendarioSeAvviato()) void notify({ title: 'Calendario nascosto', message: `Il calendario turni di ${MESI[mese - 1]} ${anno} era pubblicato: l'ho riportato a «Non pubblicato» perché hai riaperto la raccolta desiderata.` })
     } catch (e) { console.error('[Desiderata] riapertura fallita:', e); void notify({ title: 'Errore', message: 'Errore nella riapertura della raccolta.' }) }
+  }
+
+  // Mutua esclusione: se il calendario è pubblicato/pianificazione lo riporto a «Non pubblicato»
+  // quando apro/pubblico la raccolta desiderata (calendario e desiderata non coesistono mai).
+  async function smontaCalendarioSeAvviato(): Promise<boolean> {
+    if (statoCal !== 'pubblicato' && statoCal !== 'pianificazione') return false
+    await store.setStatoCalendario(postazioneId!, meseKey, 'non_pubblicato')
+    store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'calendario_nascosto', messaggio: `Calendario di ${MESI[mese - 1]} ${anno} riportato a «Non pubblicato»: aperta la raccolta desiderata.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
+    await qc.invalidateQueries({ queryKey: ['turni-stato', postazioneId, meseKey] })
+    return true
   }
 
   const Header = (
@@ -304,20 +316,9 @@ export function DesiderataPage() {
     </div>
   )
 
-  // Calendario del mese GIÀ avviato (pubblicato o in pianificazione): le desiderata si raccolgono
-  // PRIMA di generare il calendario ⇒ non si attivano né si mostrano più. Messaggio dedicato.
-  const calendarioAvviato = statoCal === 'pubblicato' || statoCal === 'pianificazione'
-  if (calendarioAvviato) return (
-    <div className="p-4 sm:p-6 space-y-4">{Header}{WarnToast}
-      <div className="card p-6 flex items-start gap-3 mt-2" style={{ maxWidth: 620, margin: '0 auto' }}>
-        <AlertCircle className="shrink-0 mt-0.5" size={20} style={{ color: '#b45309' }} />
-        <div>
-          <h2 className="text-base font-bold mb-1" style={{ color: 'var(--t-titolo)' }}>Calendario già avviato</h2>
-          <p className="text-sm text-stone-600">Il calendario di <strong>{MESI[mese - 1]} {anno}</strong> è in stato <strong>{statoCal === 'pubblicato' ? 'Pubblicato' : 'Pianificazione'}</strong>: la raccolta delle desiderata si effettua <strong>prima</strong> di generare il calendario, quindi per questo mese non è più possibile attivarla né raccogliere desiderata.</p>
-        </div>
-      </div>
-    </div>
-  )
+  // NB: se il calendario è già pubblicato/pianificazione, la raccolta desiderata resta comunque
+  // gestibile: aprendola/pubblicandola il calendario viene riportato a "Non pubblicato" (mutua
+  // esclusione, vedi smontaCalendarioSeAvviato) — calendario e desiderata non coesistono mai.
 
   // Raccolta non attiva → schermata di attivazione (o mese passato non attivabile)
   if (!attiva) {

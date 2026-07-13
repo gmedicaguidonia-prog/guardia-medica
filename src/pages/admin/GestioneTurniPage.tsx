@@ -565,11 +565,9 @@ export function GestioneTurniPage() {
               <AlertTriangle size={20} style={{ color: '#b45309' }} />
               <h3 className="text-base font-bold" style={{ color: 'var(--t-titolo)' }}>Raccolta desiderata ancora aperta</h3>
             </div>
-            <p className="text-sm text-stone-600 mb-2">Stai per pubblicare il calendario di <strong>{MESI[mese - 1]} {anno}</strong>, ma la <strong>raccolta desiderata è ancora attiva</strong>{finestraDes?.aperta_a ? <> (fino al {itDate(finestraDes.aperta_a)})</> : null}. Non ha senso tenerla aperta mentre il calendario — anche parziale — è pubblicato: i turnisti potrebbero continuare a inserire desiderata su turni già assegnati.</p>
-            <p className="text-xs text-stone-500 mb-4">Come vuoi procedere?</p>
+            <p className="text-sm text-stone-600 mb-3">Stai per pubblicare il calendario di <strong>{MESI[mese - 1]} {anno}</strong>, ma la <strong>raccolta desiderata è ancora attiva</strong>{finestraDes?.aperta_a ? <> (fino al {itDate(finestraDes.aperta_a)})</> : null}. Pubblicando il calendario la raccolta verrà <strong>chiusa automaticamente</strong>: calendario e desiderata non possono restare attivi insieme.</p>
             <div className="flex flex-col gap-2">
-              <button onClick={() => risolviAnomalia('chiudi')} className="w-full text-sm font-semibold py-2 px-3 rounded-lg" style={{ background: '#2e7d32', color: '#fff' }}>Pubblica e chiudi la raccolta desiderata <span className="font-normal" style={{ opacity: 0.9 }}>(consigliato)</span></button>
-              <button onClick={() => risolviAnomalia('lascia')} className="w-full btn-secondary text-sm py-2 px-3">Pubblica lasciando aperta la raccolta</button>
+              <button onClick={() => risolviAnomalia('chiudi')} className="w-full text-sm font-semibold py-2 px-3 rounded-lg" style={{ background: '#2e7d32', color: '#fff' }}>Pubblica il calendario e chiudi la raccolta</button>
               <button onClick={() => risolviAnomalia(null)} className="w-full text-xs text-stone-500 py-1 hover:text-stone-700">Annulla</button>
             </div>
           </div>
