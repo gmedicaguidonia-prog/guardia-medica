@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, CalendarHeart, CalendarCheck, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search, Lock, FileDown } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
+import { costruisciFogliPdf, scaricaPdfCalendario } from '../lib/pdfCalendario'
 import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
 import { useFestivita } from '../hooks/useFestivita'
 import { useFinalizzato } from '../hooks/useFinalizzato'
@@ -108,6 +109,23 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     giorni.forEach(d => fc.turni.forEach(c => { if (turnoSiApplica(c, d, festivoSet)) out.push({ ds: isoDate(d), d, turno: c }) }))
     return { foglio: fc.foglio, righe: out }
   }), [fogliConTurni, giorni, festivoSet])
+
+  // ── «Scarica PDF Calendario»: genera e scarica il file SUBITO, senza aprire la pagina di stampa.
+  //    Usa le stesse funzioni della pagina di stampa ⇒ documento identico. ──
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfErr, setPdfErr] = useState<string | null>(null)
+  async function scaricaPdfCalendarioPubblico() {
+    if (pdfBusy || !postazioneId) return
+    setPdfBusy(true); setPdfErr(null)
+    try {
+      const fogli = costruisciFogliPdf({ fogliConTurni, giorni, turni, turnisti: personale, festivoSet })
+      await scaricaPdfCalendario(fogli, { postazioneNome: opzioni.find(o => o.postazioneId === postazioneId)?.nome ?? '', mese, anno, festivoSet })
+    } catch (e) {
+      console.error('[Turni] generazione PDF fallita:', e)
+      setPdfErr('PDF non riuscito. Riprova.')
+      setTimeout(() => setPdfErr(null), 4000)
+    } finally { setPdfBusy(false) }
+  }
 
   // calendario: assegnazioni
   const assegn = useMemo(() => {
@@ -328,14 +346,17 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   <CalendarCheck size={15} /> Sincronizza Calendario
                 </button>
               )}
-              {/* PDF del calendario: solo a calendario PUBBLICATO (o mese finalizzato). Apre la stessa
-                  pagina di stampa della Finalizzazione, generata dai dati correnti ⇒ sempre aggiornata. */}
-              {vista === 'turni' && (statoCal === 'pubblicato' || finalizzato) && (
-                <button onClick={() => window.open(`${import.meta.env.BASE_URL}stampa?p=${postazioneId}&m=${meseKey}`, '_blank')}
-                  className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5"
-                  title="Apri la versione stampabile del calendario e salvala in PDF (sempre aggiornata)">
-                  <FileDown size={15} /> Scarica PDF Calendario
-                </button>
+              {/* PDF del calendario: solo a calendario PUBBLICATO (o mese finalizzato). Scarica SUBITO
+                  il file (nessuna pagina intermedia), generato dai dati correnti ⇒ sempre aggiornato. */}
+              {vista === 'turni' && (statoCal === 'pubblicato' || finalizzato) && turniConfigurati && (
+                <>
+                  {pdfErr && <span className="text-xs font-semibold" style={{ color: '#b91c1c' }}>{pdfErr}</span>}
+                  <button onClick={scaricaPdfCalendarioPubblico} disabled={pdfBusy}
+                    className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5 disabled:opacity-60"
+                    title="Scarica il PDF del calendario di questo mese (sempre aggiornato)">
+                    <FileDown size={15} /> {pdfBusy ? 'Genero PDF…' : 'Scarica PDF Calendario'}
+                  </button>
+                </>
               )}
               {MeseNav}
             </div>
