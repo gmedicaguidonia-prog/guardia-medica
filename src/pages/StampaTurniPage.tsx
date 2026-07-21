@@ -1,8 +1,8 @@
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { Printer, X } from 'lucide-react'
+import { Printer, X, FileDown } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isoDate, isFestivo } from '../lib/holidays'
@@ -96,15 +96,64 @@ export function StampaTurniPage() {
 
   // Titolo del documento (= nome proposto per il PDF): "NOMEFOGLIO - Turni del mese di …"
   const nomePrimoFoglio = (fogli[0]?.foglio.nome || postazione?.nome || '').toUpperCase()
+  const nomeFile = nomePrimoFoglio ? `${nomePrimoFoglio} - Turni del mese di ${MESI[mese - 1].toLowerCase()} ${anno}` : 'Calendario turni'
   useEffect(() => {
-    if (valido && nomePrimoFoglio) document.title = `${nomePrimoFoglio} - Turni del mese di ${MESI[mese - 1].toLowerCase()} ${anno}`
-  }, [valido, nomePrimoFoglio, mese, anno])
+    if (valido && nomePrimoFoglio) document.title = nomeFile
+  }, [valido, nomePrimoFoglio, nomeFile])
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfErr, setPdfErr] = useState<string | null>(null)
 
   if (!valido) return <div style={{ padding: 24, fontSize: 14 }}>Parametri mancanti: apri la stampa dalla pagina ⑧ Finalizzazione.</div>
 
   // Dicitura in testa a ogni tabella: "NOME FOGLIO - TURNI DEL MESE DI GIUGNO 2026"
   // (il nome viene dal foglio definito nel passo ④ Impaginazione).
   const titoloFoglio = (nomeFoglio: string) => `${(nomeFoglio || postazione?.nome || '').toUpperCase()} - TURNI DEL MESE DI ${MESI[mese - 1]} ${anno}`
+
+  /** Scarica un PDF VERO (testo vettoriale e selezionabile, non uno screenshot) con la stessa
+   *  impaginazione della pagina: un foglio per pagina, titolo rosso, festivi in rosso.
+   *  Le librerie sono caricate solo al click (import dinamico ⇒ niente peso sul bundle). */
+  async function scaricaPdf() {
+    if (!fogli.length || pdfBusy) return
+    setPdfBusy(true); setPdfErr(null)
+    try {
+      const { jsPDF } = await import('jspdf')
+      const { default: autoTable } = await import('jspdf-autotable')
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      fogli.forEach(({ foglio, righe, conRep }, i) => {
+        if (i > 0) doc.addPage()
+        const festivi = righe.map(r => isFestivo(r.d, festivoSet))
+        autoTable(doc, {
+          startY: 10,
+          margin: { top: 10, right: 10, bottom: 10, left: 10 },
+          theme: 'grid',
+          styles: { fontSize: 9, cellPadding: { top: 1.1, bottom: 1.1, left: 2, right: 2 }, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [0, 0, 0], overflow: 'linebreak' },
+          headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.2 },
+          columnStyles: conRep
+            ? { 0: { cellWidth: 11, halign: 'center', fontStyle: 'bold' }, 1: { cellWidth: 24, halign: 'center' }, 2: { cellWidth: 32 }, 3: { fontStyle: 'bold' }, 4: { cellWidth: 34 } }
+            : { 0: { cellWidth: 11, halign: 'center', fontStyle: 'bold' }, 1: { cellWidth: 24, halign: 'center' }, 2: { cellWidth: 36 }, 3: { fontStyle: 'bold' } },
+          head: [
+            [{ content: titoloFoglio(foglio.nome), colSpan: conRep ? 5 : 4, styles: { halign: 'center', fontStyle: 'bold', fontSize: 12, textColor: [192, 0, 0] } }],
+            conRep ? ['N°', 'Giorno', 'Turno', 'Turnisti', 'Reperibile'] : ['N°', 'Giorno', 'Turno', 'Turnisti'],
+          ],
+          body: righe.map(r => {
+            const base = [String(r.d.getDate()), WD[r.d.getDay()], r.turno.nome || 'Turno', r.nomi.length ? r.nomi.join(' - ') : '']
+            return conRep ? [...base, r.rep ?? ''] : base
+          }),
+          // giorno festivo in rosso e grassetto, come a schermo
+          didParseCell: data => {
+            if (data.section === 'body' && data.column.index === 1 && festivi[data.row.index]) {
+              data.cell.styles.textColor = [192, 0, 0]
+              data.cell.styles.fontStyle = 'bold'
+            }
+          },
+        })
+      })
+      doc.save(`${nomeFile}.pdf`)
+    } catch (e) {
+      console.error('[Stampa] generazione PDF fallita:', e)
+      setPdfErr('PDF non riuscito — usa «Stampa / salva PDF».')
+    } finally { setPdfBusy(false) }
+  }
 
   return (
     <div style={{ background: '#fff', minHeight: '100vh' }}>
@@ -124,8 +173,14 @@ export function StampaTurniPage() {
       {/* Barra comandi (solo a schermo) */}
       <div className="no-print" style={{ position: 'sticky', top: 0, background: 'var(--t-notte)', color: '#fff', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 10 }}>
         <span style={{ fontSize: 14, fontWeight: 700, flex: 1 }}>Stampa turni — {postazione?.nome ?? '…'} · {MESI[mese - 1]} {anno}{finalizzato ? ' · definitivo' : ' · bozza'}</span>
-        <button onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--t-primario)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-          <Printer size={15} /> Stampa / salva PDF
+        {pdfErr && <span style={{ fontSize: 12, color: '#fca5a5' }}>{pdfErr}</span>}
+        <button onClick={scaricaPdf} disabled={pdfBusy || !fogli.length} title="Scarica direttamente il file PDF del calendario"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--t-primario)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: pdfBusy || !fogli.length ? 'default' : 'pointer', opacity: pdfBusy || !fogli.length ? 0.6 : 1 }}>
+          <FileDown size={15} /> {pdfBusy ? 'Genero PDF…' : 'Scarica PDF'}
+        </button>
+        <button onClick={() => window.print()} title="Apri la finestra di stampa del browser"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', color: 'var(--t-side-testo)', border: '1px solid var(--t-primario)', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <Printer size={15} /> Stampa
         </button>
         <button onClick={() => window.close()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', color: 'var(--t-side-testo)', border: '1px solid var(--t-primario)', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
           <X size={15} /> Chiudi
