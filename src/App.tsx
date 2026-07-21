@@ -83,6 +83,12 @@ function AppShell({ loading, signInWithGoogle, signOut, devLogin, isDev }: {
         <Route path="/turni"
           element={<ProtectedRoute user={user} loading={loading}><PublicTurniPage user={user} /></ProtectedRoute>} />
 
+        {/* Stampa/PDF pubblica: STESSA pagina di stampa, aperta dal pulsante «Scarica PDF Calendario»
+            della pagina pubblica. Accessibile a tutti i loggati autorizzati (non solo agli admin):
+            mostra gli stessi dati del calendario già pubblicato. */}
+        <Route path="/stampa"
+          element={<ProtectedRoute user={user} loading={loading}><StampaTurniPage /></ProtectedRoute>} />
+
         {/* Stampa turni: scheda a parte, senza layout admin (aperta dalla Finalizzazione) */}
         <Route path="/admin/stampa"
           element={<ProtectedRoute user={user} loading={loading} requireAdmin><StampaTurniPage /></ProtectedRoute>} />

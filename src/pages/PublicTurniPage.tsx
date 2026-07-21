@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, CalendarHeart, CalendarCheck, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search, Lock } from 'lucide-react'
+import { CalendarDays, CalendarHeart, CalendarCheck, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search, Lock, FileDown } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
 import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
@@ -326,6 +326,15 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
                   className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5"
                   title="Sincronizza i tuoi turni di questo mese con il tuo Google Calendar">
                   <CalendarCheck size={15} /> Sincronizza Calendario
+                </button>
+              )}
+              {/* PDF del calendario: solo a calendario PUBBLICATO (o mese finalizzato). Apre la stessa
+                  pagina di stampa della Finalizzazione, generata dai dati correnti ⇒ sempre aggiornata. */}
+              {vista === 'turni' && (statoCal === 'pubblicato' || finalizzato) && (
+                <button onClick={() => window.open(`${import.meta.env.BASE_URL}stampa?p=${postazioneId}&m=${meseKey}`, '_blank')}
+                  className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5"
+                  title="Apri la versione stampabile del calendario e salvala in PDF (sempre aggiornata)">
+                  <FileDown size={15} /> Scarica PDF Calendario
                 </button>
               )}
               {MeseNav}
