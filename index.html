@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Il sito è disegnato per il chiaro. "only light" (NON solo "light") è l'opt-out
+         ufficiale dall'auto-scurimento di Chrome Android (Auto Dark Theme) e viene
+         rispettato anche dal force-dark adattivo di Samsung Internet: senza "only",
+         quei browser invertono comunque i colori rovinando contrasti e testi. -->
+    <meta name="color-scheme" content="only light" />
+    <title>Sistema Turnazione Guardia Medica</title>
+    <meta name="description" content="Gestione turni della guardia medica" />
+
+    <!-- L'HTML non deve mai essere cachato: gli asset JS/CSS hanno l'hash
+         nel nome, ma l'HTML cachato punterebbe ai bundle vecchi. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <meta name="theme-color" content="#374f30" />
+
+    <!-- Favicon (browser + preferiti) / icone Apple e PWA (Android, schermata Home) -->
+    <link rel="icon" href="/guardia-medica/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/guardia-medica/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/guardia-medica/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/guardia-medica/apple-touch-icon.png" />
+    <link rel="manifest" href="/guardia-medica/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Guardia Medica" />
+
+    <style>
+      /* Previene FOUC */
+      body { margin: 0; background: #f4f1ea; }
+    </style>
+
+    <!-- Ripristina il path dopo il redirect del 404.html (SPA su GitHub Pages).
+         Deve girare PRIMA del router. -->
+    <script>
+      (function (l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function (s) {
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash);
+        }
+      }(window.location))
+    </script>
+
+    <!-- Pulisce il parametro _r=… usato per il refresh "duro" dopo un aggiornamento -->
+    <script>
+      if (window.location.search.indexOf('_r=') !== -1 && window.history && window.history.replaceState) {
+        var _u = new URL(window.location.href);
+        _u.searchParams.delete('_r');
+        window.history.replaceState(null, '', _u.pathname + (_u.search || '') + _u.hash);
+      }
+    </script>
+    <script type="module" crossorigin src="/guardia-medica/assets/index-DCWw2WZY.js"></script>
+    <link rel="stylesheet" crossorigin href="/guardia-medica/assets/index-CH77DwSa.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
