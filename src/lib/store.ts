@@ -207,6 +207,14 @@ const supaStore = {
       throw error
     }
   },
+  // Cerca un utente già esistente con la STESSA email oppure lo STESSO nome+cognome (per avvisare
+  // prima di crearne uno nuovo ed evitare doppioni). Confronti case-insensitive.
+  async verificaDuplicati(nome: string, cognome: string, email: string): Promise<{ perEmail: Utente | null; perNome: Utente | null }> {
+    const em = email.trim().toLowerCase(); const n = nome.trim(); const c = cognome.trim()
+    const byEmail = em ? (await supabase.from('utenti').select('id, nome, cognome, email').eq('email', em).maybeSingle()).data : null
+    const byNome  = (n && c) ? (await supabase.from('utenti').select('id, nome, cognome, email').ilike('nome', n).ilike('cognome', c).limit(1)).data : null
+    return { perEmail: (byEmail as Utente | null) ?? null, perNome: ((byNome as Utente[] | null)?.[0]) ?? null }
+  },
   async updateMembro(membershipId: string, utenteId: string, patch: Partial<NuovoMembro>): Promise<void> {
     const u: Record<string, unknown> = {}
     if (patch.nome    !== undefined) u.nome    = patch.nome.trim()
@@ -1199,6 +1207,14 @@ const localStore = {
     const utenteId = input.utenteId ?? list.find(t => t.email.toLowerCase() === email)?.utente_id ?? uid()
     list.push({ id: uid(), utente_id: utenteId, nome: input.nome.trim(), cognome: input.cognome.trim(), email, livello: input.livello, created_at: new Date().toISOString(), postazione_id: postazioneId })
     writeLs(LS_TURNISTI, list)
+  },
+  async verificaDuplicati(nome: string, cognome: string, email: string): Promise<{ perEmail: Utente | null; perNome: Utente | null }> {
+    const em = email.trim().toLowerCase(); const n = nome.trim().toLowerCase(); const c = cognome.trim().toLowerCase()
+    const list = read<WithPost<Turnista>[]>(LS_TURNISTI, [])
+    const toU = (t: WithPost<Turnista>): Utente => ({ id: t.utente_id ?? t.id, nome: t.nome, cognome: t.cognome, email: t.email })
+    const be = em ? list.find(t => t.email.toLowerCase() === em) : undefined
+    const bn = (n && c) ? list.find(t => t.nome.trim().toLowerCase() === n && t.cognome.trim().toLowerCase() === c) : undefined
+    return { perEmail: be ? toU(be) : null, perNome: bn ? toU(bn) : null }
   },
   async updateMembro(membershipId: string, _utenteId: string, patch: Partial<NuovoMembro>): Promise<void> {
     const list = read<WithPost<Turnista>[]>(LS_TURNISTI, [])

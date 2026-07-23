@@ -101,22 +101,63 @@ export function TurnistiPage() {
     finally { setSalvando(false) }
   }
 
-  // ── Anagrafica globale ──
+  // ── Anagrafica globale (form intelligente: crea nuovo con anti-duplicato, oppure modifica un esistente) ──
   const [apriAnagrafica, setApriAnagrafica] = useState(false)
   const [nome, setNome] = useState(''); const [cognome, setCognome] = useState(''); const [email, setEmail] = useState('')
-  const [utenteId, setUtenteId] = useState<string | null>(null)
+  const [picked, setPicked] = useState<Utente | null>(null)   // utente esistente scelto ⇒ il form diventa "Modifica"
   const [livello, setLivello] = useState<Livello>('turnista')
   const [errore, setErrore] = useState(''); const [saving, setSaving] = useState(false)
   const [sugg, setSugg] = useState<Utente[]>([])
-  async function cerca(term: string) { setUtenteId(null); if (term.trim().length < 3) { setSugg([]); return } try { setSugg(await store.searchUtenti(term)) } catch { setSugg([]) } }
-  function scegli(u: Utente) { setNome(u.nome); setCognome(u.cognome); setEmail(u.email); setUtenteId(u.id); setSugg([]) }
-  function resetForm() { setNome(''); setCognome(''); setEmail(''); setUtenteId(null); setLivello('turnista'); setSugg([]) }
-  async function aggiungiAnagrafica() {
+  const inEdit = !!picked
+  // suggerimenti SOLO se non stiamo già modificando un utente scelto (in modifica i campi si editano)
+  async function cerca(term: string) { if (picked) return; if (term.trim().length < 3) { setSugg([]); return } try { setSugg(await store.searchUtenti(term)) } catch { setSugg([]) } }
+  function scegli(u: Utente) { setNome(u.nome); setCognome(u.cognome); setEmail(u.email); setPicked(u); setSugg([]); setErrore('') }
+  function resetForm() { setNome(''); setCognome(''); setEmail(''); setPicked(null); setLivello('turnista'); setSugg([]); setErrore('') }
+
+  // NUOVO utente: prima di crearlo, avvisa se esiste già stessa email o stesso nome+cognome (anti-doppione)
+  async function creaNuovo() {
     if (!nome.trim() || !cognome.trim() || !email.trim()) { setErrore('Nome, cognome ed email obbligatori.'); return }
+    setErrore('')
+    let dup: { perEmail: Utente | null; perNome: Utente | null }
+    try { dup = await store.verificaDuplicati(nome, cognome, email) } catch { dup = { perEmail: null, perNome: null } }
+    if (dup.perEmail) {
+      if (await confirm({ title: 'Email già presente', message: `Esiste già ${nomeCompleto(dup.perEmail)} con questa email. Non si può creare un doppione: vuoi passare alla MODIFICA di quell'utente?`, confirmLabel: 'Modifica esistente' })) scegli(dup.perEmail)
+      else setErrore('Email già usata da un altro utente: cambia email oppure modifica l\'utente esistente.')
+      return
+    }
+    if (dup.perNome) {
+      if (!(await confirm({ title: 'Stesso nome e cognome', message: `Esiste già ${nomeCompleto(dup.perNome)} (${dup.perNome.email}). Vuoi davvero creare una persona NUOVA e diversa con email ${email.trim().toLowerCase()}? Se è la stessa persona, annulla e modifica quella esistente.`, confirmLabel: 'Crea nuovo comunque', danger: true }))) return
+    }
+    setSaving(true)
+    try {
+      await store.addMembro(postazioneId!, { nome, cognome, email, livello })
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${cognome} ${nome} aggiunto in anagrafica (${livello}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+      resetForm(); await qc.invalidateQueries({ queryKey: ['turnisti'] })
+    } catch (e) { setErrore((e as Error).message) }
+    finally { setSaving(false) }
+  }
+
+  // MODIFICA anagrafica di un utente esistente: una sola riga `utenti` (referenziata per id) ⇒ cambia OVUNQUE
+  async function salvaModifiche() {
+    if (!picked) return
+    if (!nome.trim() || !cognome.trim() || !email.trim()) { setErrore('Nome, cognome ed email obbligatori.'); return }
+    if (!(await confirm({ title: 'Modifica anagrafica', message: `Stai modificando l'anagrafica di ${picked.cognome} ${picked.nome}. La modifica vale in TUTTO il programma: ogni mese, ogni postazione e i turni già assegnati. Continuare?`, confirmLabel: 'Salva ovunque' }))) return
     setSaving(true); setErrore('')
     try {
-      await store.addMembro(postazioneId!, { nome, cognome, email, livello, utenteId: utenteId ?? undefined })
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${cognome} ${nome} aggiunto in anagrafica (${livello}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+      await store.aggiornaUtente(picked.id, { nome: nome.trim(), cognome: cognome.trim(), email: email.trim() })
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Anagrafica aggiornata: ${cognome} ${nome}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+      resetForm(); await qc.invalidateQueries()   // il nome cambia ovunque ⇒ invalida tutte le query
+    } catch (e) { setErrore((e as Error).message) }
+    finally { setSaving(false) }
+  }
+
+  // Aggiunge l'utente scelto (esistente) al personale della postazione corrente, senza ricrearlo
+  async function aggiungiEsistenteQui() {
+    if (!picked) return
+    setSaving(true); setErrore('')
+    try {
+      await store.addMembro(postazioneId!, { nome, cognome, email, livello, utenteId: picked.id })
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${picked.cognome} ${picked.nome} aggiunto in anagrafica (${livello}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
       resetForm(); await qc.invalidateQueries({ queryKey: ['turnisti'] })
     } catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
@@ -261,18 +302,24 @@ export function TurnistiPage() {
 
         {apriAnagrafica && (
           <div className="px-4 pb-4 space-y-3 border-t border-stone-100 pt-3">
+            {inEdit && (
+              <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af' }}>
+                <Pencil size={13} className="shrink-0 mt-0.5" />
+                <span>Stai <strong>modificando {picked!.cognome} {picked!.nome}</strong>: le modifiche valgono in <strong>tutto il programma</strong> (ogni mese e postazione). Per creare invece una persona nuova, premi «Svuota form».</span>
+              </div>
+            )}
             <div className="relative">
               <div className="grid sm:grid-cols-3 gap-3">
-                <div><label className="label text-xs flex items-center gap-1"><Search size={11} /> Nome *</label>
+                <div><label className="label text-xs flex items-center gap-1">{!inEdit && <Search size={11} />} Nome *</label>
                   <input value={nome} onChange={e => { setNome(e.target.value); cerca(e.target.value) }} placeholder="Mario" className="input text-sm" /></div>
-                <div><label className="label text-xs flex items-center gap-1"><Search size={11} /> Cognome *</label>
+                <div><label className="label text-xs flex items-center gap-1">{!inEdit && <Search size={11} />} Cognome *</label>
                   <input value={cognome} onChange={e => { setCognome(e.target.value); cerca(e.target.value) }} placeholder="Rossi" className="input text-sm" /></div>
                 <div><label className="label text-xs">Email Google *</label>
-                  <input value={email} onChange={e => { setEmail(e.target.value); setUtenteId(null) }} type="email" placeholder="mario.rossi@gmail.com" className="input text-sm" /></div>
+                  <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="mario.rossi@gmail.com" className="input text-sm" /></div>
               </div>
-              {sugg.length > 0 && (
+              {sugg.length > 0 && !inEdit && (
                 <div className="absolute z-20 left-0 right-0 mt-1 card p-1 shadow-xl max-h-56 overflow-auto">
-                  <p className="text-[10px] uppercase tracking-wider font-bold text-stone-400 px-2 py-1">Già in anagrafica — clicca per usare</p>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-stone-400 px-2 py-1">Già in anagrafica — clicca per modificarlo</p>
                   {sugg.map(u => (
                     <button key={u.id} onClick={() => scegli(u)} className="flex items-center justify-between gap-2 w-full text-left px-2 py-1.5 rounded hover:bg-stone-100 text-sm">
                       <span className="font-medium" style={{ color: 'var(--t-titolo)' }}>{nomeCompleto(u)}</span><span className="text-xs text-stone-400 font-mono">{u.email}</span>
@@ -281,13 +328,23 @@ export function TurnistiPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-end gap-3">
+            <div className="flex items-end gap-3 flex-wrap">
               <div><label className="label text-xs">Livello di default</label>
-                <select value={livello} onChange={e => setLivello(e.target.value as Livello)} className="input text-sm w-56">
+                <select value={livello} onChange={e => setLivello(e.target.value as Livello)} className="input text-sm w-48">
                   {LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                 </select></div>
-              {utenteId && <span className="text-xs text-emerald-700 mb-2">✓ utente esistente</span>}
-              <button onClick={aggiungiAnagrafica} disabled={saving} className="btn-primary text-sm ml-auto"><Plus size={15} /> Aggiungi in anagrafica</button>
+              {inEdit ? (
+                <div className="flex items-center gap-2 ml-auto flex-wrap">
+                  <button onClick={salvaModifiche} disabled={saving} className="btn-primary text-sm"><Save size={15} /> Salva modifiche</button>
+                  <button onClick={aggiungiEsistenteQui} disabled={saving} className="btn-secondary text-sm" title="Aggiungi questa persona esistente al personale di questa postazione"><Plus size={15} /> Aggiungi a questa postazione</button>
+                  <button onClick={resetForm} className="btn-secondary text-sm"><RotateCcw size={14} /> Svuota form</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 ml-auto flex-wrap">
+                  {(nome || cognome || email) && <button onClick={resetForm} className="btn-secondary text-sm"><RotateCcw size={14} /> Svuota form</button>}
+                  <button onClick={creaNuovo} disabled={saving} className="btn-primary text-sm"><Plus size={15} /> Aggiungi in anagrafica</button>
+                </div>
+              )}
             </div>
 
             <table className="w-full text-sm mt-1">
