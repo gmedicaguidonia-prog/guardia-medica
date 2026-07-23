@@ -3,9 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Il sito è disegnato per il chiaro: dichiararlo evita che il browser (es. Samsung
-         Internet / Chrome in "modalità scura forzata") inverta i colori rovinando i contrasti. -->
-    <meta name="color-scheme" content="light" />
+    <!-- Il sito è disegnato per il chiaro. "only light" (NON solo "light") è l'opt-out
+         ufficiale dall'auto-scurimento di Chrome Android (Auto Dark Theme) e viene
+         rispettato anche dal force-dark adattivo di Samsung Internet: senza "only",
+         quei browser invertono comunque i colori rovinando contrasti e testi. -->
+    <meta name="color-scheme" content="only light" />
     <title>Sistema Turnazione Guardia Medica</title>
     <meta name="description" content="Gestione turni della guardia medica" />
 
