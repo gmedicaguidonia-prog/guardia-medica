@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query'
+import { supabase } from '../lib/supabase'
 import { CalendarDays, CalendarHeart, CalendarCheck, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search, Lock, FileDown } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
@@ -57,6 +58,10 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   function scegliPostazione(id: string) { setPostazioneId(id) }
   // Popover "clicca qui" per impostare la propria preferenza nelle desiderata pubbliche
   const [desPicker, setDesPicker] = useState<{ ds: string; turnoId: string; scelta: 'desiderata' | 'indisponibilita' | undefined; x: number; y: number } | null>(null)
+  // DIAGNOSTICA temporanea: stato della sessione Supabase (per capire perché a volte il calendario è vuoto)
+  const [diagSess, setDiagSess] = useState<string>('verifico…')
+  useEffect(() => { supabase.auth.getSession().then(({ data }) => setDiagSess(data.session ? `SÌ · ${data.session.user.email ?? '?'}` : 'NO (anonimo!)')).catch(e => setDiagSess('errore: ' + (e as Error).message)) }, [user?.id])
+  const caricando = useIsFetching() > 0
   // in "god mode" (admin reale) il selettore mostra TUTTE le postazioni, non solo le proprie
   const opzioni = useMemo<{ postazioneId: string; nome: string }[]>(() =>
     godMode && tuttePost.length ? tuttePost.map(p => ({ postazioneId: p.id, nome: p.nome }))
@@ -311,6 +316,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
       <div className="flex items-center gap-2">
         <CalendarDays size={22} style={{ color: 'var(--t-accento)' }} />
         <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>I miei turni</h1>
+        {caricando && <span className="inline-flex items-center gap-1.5 text-xs text-stone-500 ml-2"><span className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: 'var(--t-accento)' }} /> caricamento…</span>}
+      </div>
+
+      {/* DIAGNOSTICA TEMPORANEA — per capire il "calendario vuoto". Da rimuovere dopo la diagnosi. */}
+      <div className="card p-2 text-[11px] font-mono leading-relaxed" style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#7c2d12', wordBreak: 'break-word' }}>
+        🔎 sessione: <strong>{diagSess}</strong> · turni ricevuti: <strong>{turni.length}</strong> · personale: <strong>{personale.length}</strong> · stato: <strong>{statoCal}</strong> · vista: <strong>{vista}</strong>
       </div>
 
       {opzioni.length === 0 ? (
