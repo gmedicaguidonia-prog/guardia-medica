@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query'
-import { supabase } from '../lib/supabase'
 import { CalendarDays, CalendarHeart, CalendarCheck, ChevronLeft, ChevronRight, Moon, Sun, MapPin, Info, Phone, Check, Ban, Clock, Hand, LayoutGrid, Star, ArrowRightLeft, AlertTriangle, UserPlus2, Search, Lock, FileDown } from 'lucide-react'
 import { store } from '../lib/store'
 import { giorniDelMese, turnoSiApplica } from '../lib/turniLogic'
@@ -58,9 +57,6 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   function scegliPostazione(id: string) { setPostazioneId(id) }
   // Popover "clicca qui" per impostare la propria preferenza nelle desiderata pubbliche
   const [desPicker, setDesPicker] = useState<{ ds: string; turnoId: string; scelta: 'desiderata' | 'indisponibilita' | undefined; x: number; y: number } | null>(null)
-  // DIAGNOSTICA temporanea: stato della sessione Supabase (per capire perché a volte il calendario è vuoto)
-  const [diagSess, setDiagSess] = useState<string>('verifico…')
-  useEffect(() => { supabase.auth.getSession().then(({ data }) => setDiagSess(data.session ? `SÌ · ${data.session.user.email ?? '?'}` : 'NO (anonimo!)')).catch(e => setDiagSess('errore: ' + (e as Error).message)) }, [user?.id])
   const caricando = useIsFetching() > 0
   // in "god mode" (admin reale) il selettore mostra TUTTE le postazioni, non solo le proprie
   const opzioni = useMemo<{ postazioneId: string; nome: string }[]>(() =>
@@ -85,7 +81,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   // un mese finalizzato mostra COMUNQUE il calendario (letto dal JSON), anche se lo stato archiviato non fosse 'pubblicato'
   const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && vista === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && vista === 'desiderata' })
-  const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })   // serve anche al tab Turni (cambio turno: personale autorizzato del mese)
+  const { data: personaleMese = [], isLoading: loadingPersMese } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })   // serve anche al tab Turni (cambio turno: personale autorizzato del mese)
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
   const { data: rangeContenuto } = useQuery<{ min: string | null; max: string | null }>({ queryKey: ['mesi-contenuto', postazioneId], queryFn: () => store.getMesiConContenuto(postazioneId!), enabled: !!postazioneId })
 
@@ -210,6 +206,9 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const livMese = (id: string): Livello => ruoloMese.get(id) ?? livGlob.get(id) ?? 'turnista'
   // un turnista può esprimere desiderata SOLO se è nel personale del mese
   const sonoImportato = !!mia && importatiMese.has(mia.membershipId)
+  // Autorizzazione del MESE: vedi il calendario di un mese SOLO se fai parte del suo personale
+  // (turnista/esterno/responsabile del mese). Admin e supervisori vedono sempre; god mode bypassa.
+  const autorizzatoMese = godMode || user?.livello === 'admin' || !!user?.isSupervisore || sonoImportato
   // colonne = personale del mese con ruolo-del-mese turnista/responsabile (gli esterni-del-mese non compaiono)
   const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id) && livMese(t.id) !== 'esterno').sort(cmpTurnisti), [personale, importatiMese, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   // responsabili della postazione (mostrati nel div postazione)
@@ -319,11 +318,6 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
         {caricando && <span className="inline-flex items-center gap-1.5 text-xs text-stone-500 ml-2"><span className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: 'var(--t-accento)' }} /> caricamento…</span>}
       </div>
 
-      {/* DIAGNOSTICA TEMPORANEA — per capire il "calendario vuoto". Da rimuovere dopo la diagnosi. */}
-      <div className="card p-2 text-[11px] font-mono leading-relaxed" style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#7c2d12', wordBreak: 'break-word' }}>
-        🔎 sessione: <strong>{diagSess}</strong> · turni ricevuti: <strong>{turni.length}</strong> · personale: <strong>{personale.length}</strong> · stato: <strong>{statoCal}</strong> · vista: <strong>{vista}</strong>
-      </div>
-
       {opzioni.length === 0 ? (
         <Avviso>{loadingMie ? 'Caricamento…' : 'Non sei ancora inserito nel personale di nessuna postazione. Chiedi al responsabile di aggiungerti.'}</Avviso>
       ) : (
@@ -394,6 +388,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           {vista === 'turni' && (
             statoCal === 'non_pubblicato' && !finalizzato ? (
               <Avviso>Il <strong>calendario turni</strong> di {MESI[mese - 1]} {anno} non è ancora stato pubblicato per questa postazione.</Avviso>
+            ) : !autorizzatoMese && !finalizzato && !loadingPersMese ? (
+              <Avviso>Non fai parte del <strong>personale</strong> di {MESI[mese - 1]} {anno} per questa postazione: non ci sono turni da mostrarti. Se pensi che sia un errore, chiedi al responsabile.</Avviso>
             ) : !turniConfigurati ? (
               <Avviso>Non ci sono turni configurati per {MESI[mese - 1]} {anno}.</Avviso>
             ) : (
