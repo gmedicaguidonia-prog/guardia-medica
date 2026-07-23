@@ -179,7 +179,9 @@ const supaStore = {
     return (data ?? []).map(normMembro)
   },
   async searchUtenti(query: string): Promise<Utente[]> {
-    const q = query.trim()
+    // Il termine finisce dentro la stringa .or() di PostgREST: virgole/parentesi/virgolette
+    // spezzerebbero il parser (→ 0 risultati) e % _ agirebbero da jolly. Li neutralizziamo.
+    const q = query.trim().replace(/[(),."]/g, '').replace(/\\/g, '\\\\').replace(/[%_]/g, m => '\\' + m)
     if (q.length < 3) return []
     const { data, error } = await supabase.from('utenti').select('id, nome, cognome, email').or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`).order('cognome').limit(8)
     if (error) throw error
@@ -203,16 +205,22 @@ const supaStore = {
     }
     const { error } = await supabase.from('turnisti').insert({ postazione_id: postazioneId, utente_id: utenteId, livello: input.livello })
     if (error) {
-      if (pgCode(error) === '23505') throw new Error('Questa persona è già nel personale di questa postazione.')
+      if (pgCode(error) === '23505') {
+        // due vincoli unique possibili: distinguiamo dal nome dell'indice nel messaggio
+        if ((error.message ?? '').includes('turnisti_turnista_unico')) throw new Error(`${input.nome} ${input.cognome} è già Turnista in un'altra postazione. Può esserlo in una sola.`)
+        throw new Error('Questa persona è già nel personale di questa postazione.')
+      }
       throw error
     }
   },
   // Cerca un utente già esistente con la STESSA email oppure lo STESSO nome+cognome (per avvisare
   // prima di crearne uno nuovo ed evitare doppioni). Confronti case-insensitive.
+  // I caratteri jolly di ilike (% e _) vengono escapati: "Ro%" NON deve combaciare con "Rossi".
   async verificaDuplicati(nome: string, cognome: string, email: string): Promise<{ perEmail: Utente | null; perNome: Utente | null }> {
+    const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/[%_]/g, m => '\\' + m)
     const em = email.trim().toLowerCase(); const n = nome.trim(); const c = cognome.trim()
     const byEmail = em ? (await supabase.from('utenti').select('id, nome, cognome, email').eq('email', em).maybeSingle()).data : null
-    const byNome  = (n && c) ? (await supabase.from('utenti').select('id, nome, cognome, email').ilike('nome', n).ilike('cognome', c).limit(1)).data : null
+    const byNome  = (n && c) ? (await supabase.from('utenti').select('id, nome, cognome, email').ilike('nome', esc(n)).ilike('cognome', esc(c)).limit(1)).data : null
     return { perEmail: (byEmail as Utente | null) ?? null, perNome: ((byNome as Utente[] | null)?.[0]) ?? null }
   },
   async updateMembro(membershipId: string, utenteId: string, patch: Partial<NuovoMembro>): Promise<void> {
@@ -230,7 +238,11 @@ const supaStore = {
         if (gia) throw new Error(`È già Turnista nella postazione “${(gia.postazioni as { nome?: string } | null)?.nome ?? '—'}”. Può esserlo in una sola.`)
       }
       const { error } = await supabase.from('turnisti').update({ livello: patch.livello }).eq('id', membershipId)
-      if (error) throw error
+      if (error) {
+        // rete di sicurezza dell'indice turnisti_turnista_unico (corsa col pre-check qui sopra)
+        if (pgCode(error) === '23505') throw new Error('È già Turnista in un\'altra postazione. Può esserlo in una sola.')
+        throw error
+      }
     }
   },
   async removeMembro(membershipId: string): Promise<void> {

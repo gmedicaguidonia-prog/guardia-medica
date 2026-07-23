@@ -144,7 +144,7 @@ export function TurnistiPage() {
     if (!(await confirm({ title: 'Modifica anagrafica', message: `Stai modificando l'anagrafica di ${picked.cognome} ${picked.nome}. La modifica vale in TUTTO il programma: ogni mese, ogni postazione e i turni già assegnati. Continuare?`, confirmLabel: 'Salva ovunque' }))) return
     setSaving(true); setErrore('')
     try {
-      await store.aggiornaUtente(picked.id, { nome: nome.trim(), cognome: cognome.trim(), email: email.trim() })
+      await store.aggiornaUtente(picked.id, { nome: nome.trim(), cognome: cognome.trim(), email: email.trim().toLowerCase() })
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Anagrafica aggiornata: ${cognome} ${nome}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
       resetForm(); await qc.invalidateQueries()   // il nome cambia ovunque ⇒ invalida tutte le query
     } catch (e) { setErrore((e as Error).message) }
