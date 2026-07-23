@@ -95,6 +95,23 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
     { tabella: 'turnisti_mese',       invalida: [['personale-mese', postazioneId]] },
   ])
 
+  // ── Resync al RIENTRO sull'app (mobile): la config globale ha refetchOnWindowFocus:false
+  //    per non perdere le bozze in admin, ma qui NON ci sono bozze. Su cellulare il realtime si
+  //    scollega quando l'app va in background, quindi al ritorno riscarichiamo i dati del calendario:
+  //    così le colleghe vedono SEMPRE l'ultima versione (tutti i turni pubblicati), non una cache vecchia. ──
+  useEffect(() => {
+    if (!postazioneId) return
+    const resync = () => {
+      if (document.visibilityState !== 'visible') return
+      for (const k of ['turni', 'turni-stato', 'turnisti', 'personale-mese', 'desiderata', 'desiderata-finestra', 'mie-postazioni']) {
+        qc.invalidateQueries({ queryKey: [k, postazioneId] })
+      }
+    }
+    document.addEventListener('visibilitychange', resync)
+    window.addEventListener('focus', resync)
+    return () => { document.removeEventListener('visibilitychange', resync); window.removeEventListener('focus', resync) }
+  }, [qc, postazioneId])
+
   const { fogliConTurni, impaginazioneOk } = useImpaginazione(postazioneId, meseKey, schema)
   const { festivoSet, superSet } = useFestivita(postazioneId)   // festivi locali + superfestivi
   // turni SPECIFICI marcati come superfestivo: la stellina va SOLO su questi, non su tutti i turni del giorno
