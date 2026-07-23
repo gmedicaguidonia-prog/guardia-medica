@@ -24,6 +24,7 @@ import { PostazioneProvider } from './contexts/PostazioneContext'
 import { DebugProvider, useDebug } from './contexts/DebugContext'
 import { useEffect } from 'react'
 import { setAutoreCorrente } from './lib/store'
+import { supabase } from './lib/supabase'
 import { applicaTema, temaSalvato } from './lib/temi'
 import { nomeCompleto } from './types'
 import type { Livello } from './types'
@@ -52,6 +53,20 @@ function Spinner() {
 
 function AppRoutes() {
   const { user, loading, signInWithGoogle, signOut, devLogin, isDev } = useAuth()
+  // ── Sessione ↔ query: fix «vedo il calendario vuoto» ──
+  //  A volte le query partono PRIMA che la sessione Supabase sia agganciata (profilo dalla cache +
+  //  timeout di setup), quindi vanno "anonime" e la RLS restituisce vuoto (niente turni/nomi). Qui,
+  //  appena l'utente è disponibile, ASPETTIAMO che la sessione sia caricata in memoria e poi
+  //  RIFACCIAMO tutte le query: così vengono rilette con l'identità e i turni compaiono.
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    ;(async () => {
+      try { await supabase.auth.getSession() } catch { /* ignore */ }
+      if (!cancelled) queryClient.invalidateQueries()
+    })()
+    return () => { cancelled = true }
+  }, [user?.id])
   return (
     <DebugProvider realUser={user}>
       <AppShell loading={loading} signInWithGoogle={signInWithGoogle} signOut={signOut} devLogin={devLogin} isDev={isDev} />
