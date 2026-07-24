@@ -281,6 +281,58 @@ function primaDi(endDate: string, endTime: string, mins: number): [string, strin
   return [date, `${String(Math.floor(tot / 60)).padStart(2, '0')}:${String(tot % 60).padStart(2, '0')}`]
 }
 
+// ── Turni a cavallo della mezzanotte: configurazione di visualizzazione ──
+//  Ogni TIPO di turno notturno (chiave = nome|inizio|fine, stabile tra versioni
+//  dello schema) può essere rappresentato sul calendario in due modi, scelti
+//  dal turnista nel modal di sincronizzazione:
+//   · 'singola' → UN evento nel giorno del turno, fascia f1i→f1f (es. 20:00→22:00)
+//   · 'doppia'  → fascia 1 come sopra + una fascia 2 il GIORNO DOPO (f2i→f2f)
+//                 con nome libero (default "Smonto <turno>").
+//  Gli ID degli eventi NON dipendono dalla modalità (trn…/smo…): cambiare idea
+//  e risincronizzare AGGIORNA la fascia 1 in place e crea/elimina la fascia 2,
+//  senza mai produrre doppioni.
+export interface ConfigNotteTipo {
+  mode: 'singola' | 'doppia'
+  f1i: string; f1f: string           // fascia 1 (giorno del turno) 'HH:MM'
+  f2i: string; f2f: string           // fascia 2 (giorno dopo) 'HH:MM'
+  f2n: string                        // nome della fascia 2 (es. "Smonto Notte")
+}
+export type ConfigNotte = Record<string, ConfigNotteTipo>
+
+/** Chiave stabile del TIPO di turno notturno (sopravvive al cambio di versione
+ *  dello schema, dove gli id cambiano): nome + orari. */
+export function chiaveNotte(sc: Pick<TurnoSchema, 'nome' | 'ora_inizio' | 'ora_fine'>): string {
+  return `${sc.nome || 'Turno'}|${sc.ora_inizio}|${sc.ora_fine}`
+}
+
+export interface TipoNotte { chiave: string; nome: string; ora_inizio: string; ora_fine: string }
+
+/** Tipi DISTINTI di turno a cavallo della mezzanotte assegnati al turnista nel
+ *  mese (slot ≥ 0: la reperibilità resta fuori, non è configurabile). Serve alla
+ *  UI per decidere se mostrare «Continua» e quali schede di configurazione. */
+export function tipiNotteDelMese(turni: Turno[], schema: TurnoSchema[], turnistaId: string): TipoNotte[] {
+  const byId = new Map(schema.map(s => [s.id, s]))
+  const out = new Map<string, TipoNotte>()
+  for (const t of turni) {
+    if (t.turnista_id !== turnistaId || t.slot < 0) continue
+    const sc = byId.get(t.turno_schema_id)
+    if (!sc || sc.ora_fine > sc.ora_inizio) continue   // non a cavallo
+    const k = chiaveNotte(sc)
+    if (!out.has(k)) out.set(k, { chiave: k, nome: sc.nome || 'Turno', ora_inizio: sc.ora_inizio, ora_fine: sc.ora_fine })
+  }
+  return [...out.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
+}
+
+/** Default proposti per un tipo di turno notturno: fascia 1 inizio→22:00,
+ *  fascia 2 (solo per la doppia) da 2 ore prima della fine → fine, "Smonto <nome>".
+ *  Se la fine è così presto che "2 ore prima" cadrebbe il giorno del turno
+ *  (es. fine 01:00), la fascia 2 parte da mezzanotte. */
+export function defaultConfigNotte(tipo: TipoNotte): ConfigNotteTipo {
+  const [s2date, s2time] = primaDi('2000-01-02', tipo.ora_fine, 120)
+  const f2i = (s2date !== '2000-01-02' || s2time >= tipo.ora_fine) ? '00:00' : s2time
+  return { mode: 'singola', f1i: tipo.ora_inizio, f1f: '22:00', f2i, f2f: tipo.ora_fine, f2n: `Smonto ${tipo.nome}` }
+}
+
 interface Desiderato {
   id: string; date: string; mese: string; startDT: string; endDT: string
   title: string; sig: string; colorId: string
@@ -302,6 +354,7 @@ interface Desiderato {
  *  base32hex (0-9 a-v): prefisso trn/rep/smo + turnista + data + turno (no trattini). */
 function buildDesiderati(
   turni: Turno[], schemaById: Map<string, TurnoSchema>, turnistaId: string, colorId: string, postazioneNome: string,
+  configNotte: ConfigNotte,
 ): Map<string, Desiderato> {
   const m = new Map<string, Desiderato>()
   const put = (d: Desiderato) => m.set(d.id, d)
@@ -326,19 +379,32 @@ function buildDesiderati(
         title:   titolo,
         colorId, sig: `${rep ? 'rep' : 'one'}|${titolo}|${sc.ora_inizio}|${sc.ora_fine}|c${colorId}`,
       })
-    } else {
-      // A cavallo del giorno → parte 1 (inizio → mezzanotte), sia turno che reperibilità.
+    } else if (rep) {
+      // REPERIBILITÀ a cavallo: solo la parte 1 (inizio → mezzanotte), come sempre.
       const nextDay = addGiorno(t.data)
       put({
-        id: `${rep ? 'rep' : 'trn'}${base}`, date: t.data, mese,
+        id: `rep${base}`, date: t.data, mese,
         startDT: `${t.data}T${sc.ora_inizio}:00`,
         endDT:   `${nextDay}T00:00:00`,
         title:   titolo,
-        colorId, sig: `${rep ? 'rep1' : 'p1'}|${titolo}|${sc.ora_inizio}|c${colorId}`,
+        colorId, sig: `rep1|${titolo}|${sc.ora_inizio}|c${colorId}`,
       })
-      // Parte 2 "Smonto" (due ore prima della fine → fine, il giorno dopo): SOLO i turni
-      // normali; per la REPERIBILITÀ la seconda parte NON si scrive.
-      if (!rep) {
+    } else {
+      // TURNO a cavallo della mezzanotte: rappresentazione scelta dal turnista.
+      //  Gli ID (trn…/smo…) NON dipendono dalla modalità: cambiare idea aggiorna
+      //  la fascia 1 in place e crea/elimina la fascia 2 — mai doppioni.
+      const cfg = configNotte[chiaveNotte(sc)]
+      const nextDay = addGiorno(t.data)
+      if (!cfg) {
+        // Nessuna configurazione (sync avviata fuori dal nuovo modal): comportamento
+        // storico → parte 1 (inizio→mezzanotte) + "Smonto" (2 ore prima della fine).
+        put({
+          id: `trn${base}`, date: t.data, mese,
+          startDT: `${t.data}T${sc.ora_inizio}:00`,
+          endDT:   `${nextDay}T00:00:00`,
+          title:   titolo,
+          colorId, sig: `p1|${titolo}|${sc.ora_inizio}|c${colorId}`,
+        })
         const [s2date, s2time] = primaDi(nextDay, sc.ora_fine, 120)
         put({
           id: `smo${base}`, date: s2date, mese,
@@ -347,6 +413,26 @@ function buildDesiderati(
           title:   `Smonto ${nome}${pz}`,
           colorId, sig: `smo|${nome}${pz}|${s2time}|${sc.ora_fine}|c${colorId}`,
         })
+      } else {
+        // Fascia 1 (giorno del turno, f1i→f1f) col nome del turno.
+        put({
+          id: `trn${base}`, date: t.data, mese,
+          startDT: `${t.data}T${cfg.f1i}:00`,
+          endDT:   `${t.data}T${cfg.f1f}:00`,
+          title:   titolo,
+          colorId, sig: `n1|${titolo}|${cfg.f1i}|${cfg.f1f}|c${colorId}`,
+        })
+        // Fascia 2 (giorno dopo, f2i→f2f) SOLO in modalità doppia, con nome libero.
+        if (cfg.mode === 'doppia') {
+          const titolo2 = `${(cfg.f2n || `Smonto ${nome}`).trim()}${pz}`
+          put({
+            id: `smo${base}`, date: nextDay, mese,
+            startDT: `${nextDay}T${cfg.f2i}:00`,
+            endDT:   `${nextDay}T${cfg.f2f}:00`,
+            title:   titolo2,
+            colorId, sig: `n2|${titolo2}|${cfg.f2i}|${cfg.f2f}|c${colorId}`,
+          })
+        }
       }
     }
   }
@@ -439,9 +525,12 @@ export async function syncToGoogleCalendar(opts: {
   postazioneNome: string
   /** Id della postazione → chiave hint localStorage per-postazione. */
   postazioneId: string
+  /** Rappresentazione dei turni a cavallo della mezzanotte (per tipo). */
+  configNotte?: ConfigNotte
   onProgress?: (p: SyncProgress) => void
 }): Promise<SyncResult> {
   const { clientId, turnistaId, mese, turni, schema, colorId, postazioneNome, postazioneId, onProgress } = opts
+  const configNotte = opts.configNotte ?? {}
 
   onProgress?.({ phase: 'auth' })
   const token = await requestCalendarToken(clientId)
@@ -450,11 +539,11 @@ export async function syncToGoogleCalendar(opts: {
   // non esiste più (eliminato a mano → CALENDAR_GONE), si azzera l'hint, si ricrea
   // il calendario da zero e si riprova UNA volta.
   try {
-    return await runSyncOnce(token, turnistaId, mese, turni, schema, colorId, postazioneNome, postazioneId, false, onProgress)
+    return await runSyncOnce(token, turnistaId, mese, turni, schema, colorId, postazioneNome, postazioneId, configNotte, false, onProgress)
   } catch (e) {
     if (isCalendarGone(e)) {
       try { localStorage.removeItem(hintKeyFor(postazioneId)) } catch { /* ignore */ }
-      return await runSyncOnce(token, turnistaId, mese, turni, schema, colorId, postazioneNome, postazioneId, true, onProgress)
+      return await runSyncOnce(token, turnistaId, mese, turni, schema, colorId, postazioneNome, postazioneId, configNotte, true, onProgress)
     }
     throw e
   }
@@ -462,7 +551,7 @@ export async function syncToGoogleCalendar(opts: {
 
 async function runSyncOnce(
   token: string, turnistaId: string, mese: string, turni: Turno[], schema: TurnoSchema[],
-  colorId: string, postazioneNome: string, postazioneId: string, forceCreate: boolean,
+  colorId: string, postazioneNome: string, postazioneId: string, configNotte: ConfigNotte, forceCreate: boolean,
   onProgress?: (p: SyncProgress) => void,
 ): Promise<SyncResult> {
   onProgress?.({ phase: 'calendar' })
@@ -472,7 +561,7 @@ async function runSyncOnce(
   // Se appena ricreato (forceCreate) la lista è vuota → tutto da creare.
   const existing = forceCreate ? new Map<string, GEvent>() : await listManagedEvents(token, calId)
   const schemaById = new Map(schema.map(s => [s.id, s]))
-  const desired = buildDesiderati(turni, schemaById, turnistaId, colorId, postazioneNome)
+  const desired = buildDesiderati(turni, schemaById, turnistaId, colorId, postazioneNome, configNotte)
 
   // ── Diff (le CANCELLAZIONI sono limitate al MESE in corso) ──────────
   const toCreate: Desiderato[] = []

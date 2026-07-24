@@ -6,7 +6,16 @@
  * suo Google Calendar (account usato per il login).
  *
  * Flusso:
- *   1. intro  → spiegazione + scelta colore + "Sincronizza"
+ *   1. intro  → spiegazione + scelta colore; se nel mese ci sono TURNI A CAVALLO
+ *      della mezzanotte il pulsante è «Continua» → step config; altrimenti
+ *      «Sincronizza» diretto.
+ *   1b. config → per ogni TIPO di turno notturno il turnista sceglie come
+ *      rappresentarlo: SINGOLA fascia (un evento nel giorno del turno, default
+ *      inizio→22:00) o DOPPIA fascia (in più una riga il giorno dopo, default
+ *      2 ore prima della fine→fine, nome libero "Smonto <turno>"). La scelta è
+ *      salvata sul profilo (utenti.cal_notte): risincronizzando dopo un cambio
+ *      di idea gli eventi esistenti vengono AGGIORNATI (mai doppioni, gli ID
+ *      degli eventi non dipendono dalla modalità).
  *   2. syncing→ popup consenso Google + creazione calendario + diff eventi
  *   3. done   → riepilogo (creati/aggiornati/eliminati/invariati) + link
  *   error     → messaggio + "Riprova"
@@ -15,12 +24,14 @@
  * per-mese: tocca solo i turni cambiati, non tocca gli altri mesi).
  */
 
-import { useState } from 'react'
-import { CalendarCheck, X, Loader2, Check, AlertTriangle, ExternalLink } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { CalendarCheck, X, Loader2, Check, AlertTriangle, ExternalLink, MoonStar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { store } from '../lib/store'
 import type { Turno, TurnoSchema } from '../types'
 import {
   syncToGoogleCalendar, GOOGLE_OAUTH_CLIENT_ID, CAL_COLORS, getSavedCalendarColor,
-  type SyncProgress, type SyncResult,
+  tipiNotteDelMese, defaultConfigNotte,
+  type SyncProgress, type SyncResult, type ConfigNotte, type ConfigNotteTipo, type TipoNotte,
 } from '../lib/googleCalendarSync'
 
 const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre']
@@ -39,7 +50,7 @@ interface Props {
   onClose: () => void
 }
 
-type Step = 'intro' | 'syncing' | 'done' | 'error'
+type Step = 'intro' | 'config' | 'syncing' | 'done' | 'error'
 
 const PHASE_LABEL: Record<SyncProgress['phase'], string> = {
   auth:     'Autorizzazione Google…',
@@ -48,6 +59,9 @@ const PHASE_LABEL: Record<SyncProgress['phase'], string> = {
   writing:  'Aggiornamento turni…',
   done:     'Completato',
 }
+
+/** true se 'HH:MM' a < b (confronto lessicografico, valido per il formato). */
+const primaDiOra = (a: string, b: string) => !!a && !!b && a < b
 
 export function SyncCalendarModal({ turnistaId, mese, turni, schema, postazioneNome, postazioneId, onClose }: Props) {
   const [step, setStep]         = useState<Step>('intro')
@@ -64,14 +78,62 @@ export function SyncCalendarModal({ turnistaId, mese, turni, schema, postazioneN
   const nTurni = turni.filter(t => t.turnista_id === turnistaId).length
   const haDati = nTurni > 0
 
-  async function handleSync() {
+  // ── Turni a cavallo della mezzanotte nel mese (del turnista) ──
+  const tipiNotte = useMemo(() => tipiNotteDelMese(turni, schema, turnistaId), [turni, schema, turnistaId])
+  const serveConfig = tipiNotte.length > 0
+
+  // Config salvata sul profilo (per precompilare le schede) + form di modifica.
+  const [cfgSalvata, setCfgSalvata] = useState<ConfigNotte | null>(null)   // null = in caricamento
+  const [form, setForm] = useState<Record<string, ConfigNotteTipo>>({})
+  useEffect(() => {
+    let via = false
+    store.getCalNotte().then(c => { if (!via) setCfgSalvata(c ?? {}) }).catch(() => { if (!via) setCfgSalvata({}) })
+    return () => { via = true }
+  }, [])
+
+  function apriConfig() {
+    // precompila: config salvata del tipo, altrimenti i default proposti
+    const f: Record<string, ConfigNotteTipo> = {}
+    for (const tipo of tipiNotte) f[tipo.chiave] = { ...(cfgSalvata?.[tipo.chiave] ?? defaultConfigNotte(tipo)) }
+    setForm(f)
+    setStep('config')
+  }
+  const setCampo = (chiave: string, patch: Partial<ConfigNotteTipo>) =>
+    setForm(prev => ({ ...prev, [chiave]: { ...prev[chiave], ...patch } }))
+
+  /** Errori di validazione del form config (vuoto = tutto ok). */
+  const erroriForm = useMemo(() => {
+    const errs: string[] = []
+    for (const tipo of tipiNotte) {
+      const c = form[tipo.chiave]
+      if (!c) continue
+      if (!c.f1i || !c.f1f || !primaDiOra(c.f1i, c.f1f)) errs.push(`${tipo.nome}: la fascia del giorno del turno deve avere inizio prima della fine (es. ${tipo.ora_inizio} → 22:00).`)
+      if (c.mode === 'doppia') {
+        if (!c.f2i || !c.f2f || !primaDiOra(c.f2i, c.f2f)) errs.push(`${tipo.nome}: la fascia del giorno dopo deve avere inizio prima della fine (es. 06:00 → ${tipo.ora_fine}).`)
+        if (!c.f2n.trim()) errs.push(`${tipo.nome}: dai un nome alla riga del giorno dopo (es. "Smonto ${tipo.nome}").`)
+      }
+    }
+    return errs
+  }, [form, tipiNotte])
+
+  async function handleSync(conConfig: boolean) {
     setStep('syncing')
     setError(null)
     setProgress({ phase: 'auth' })
     try {
+      // La scelta vale per le prossime sincronizzazioni su OGNI dispositivo:
+      // salvala sul profilo PRIMA della sync (se il salvataggio fallisce ci
+      // fermiamo: meglio non sincronizzare che farlo con una config non salvata).
+      let cfg: ConfigNotte = cfgSalvata ?? {}
+      if (conConfig) {
+        cfg = { ...(cfgSalvata ?? {}), ...form }
+        await store.setCalNotte(cfg)
+        setCfgSalvata(cfg)
+      }
       const res = await syncToGoogleCalendar({
         clientId: GOOGLE_OAUTH_CLIENT_ID,
         turnistaId, mese, turni, schema, colorId, postazioneNome, postazioneId,
+        configNotte: cfg,
         onProgress: setProgress,
       })
       setResult(res)
@@ -140,11 +202,99 @@ export function SyncCalendarModal({ turnistaId, mese, turni, schema, postazioneN
                   : <>Non hai turni assegnati in <strong>{meseLabel(mese)}</strong>: non c'è nulla da sincronizzare.</>}
               </div>
 
+              {serveConfig && haDati && (
+                <div className="mt-3 rounded-lg p-3 text-xs flex items-start gap-2" style={{ background: '#eef2ff', border: '1px solid #c7d2fe', color: '#3730a3' }}>
+                  <MoonStar size={14} className="mt-0.5 shrink-0" />
+                  <span>Alcuni tuoi turni <strong>finiscono il giorno dopo</strong> ({tipiNotte.map(t => t.nome).join(', ')}): al passo successivo scegli come rappresentarli sul calendario.</span>
+                </div>
+              )}
+
               {!configured && (
                 <div className="mt-4 rounded-lg p-3 text-xs flex items-start gap-2"
                   style={{ background: '#fef3c7', border: '1px solid #fbbf24', color: '#92400e' }}>
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   <span>Funzione non ancora attiva: manca la configurazione Google (<code>VITE_GOOGLE_OAUTH_CLIENT_ID</code>). Contatta l'amministratore.</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── CONFIG: turni a cavallo della mezzanotte ───────────── */}
+          {step === 'config' && (
+            <>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--t-testo)' }}>
+                Alcuni turni <strong>iniziano un giorno e finiscono il giorno dopo</strong>. Un unico blocco
+                a cavallo della mezzanotte si legge male sul calendario: scegli tu come rappresentarli.
+                Potrai <strong>cambiare idea quando vuoi</strong>: alla sincronizzazione successiva i turni già
+                sul calendario si aggiornano da soli, senza doppioni.
+              </p>
+
+              {tipiNotte.map(tipo => {
+                const c = form[tipo.chiave]
+                if (!c) return null
+                return (
+                  <div key={tipo.chiave} className="mt-4 rounded-xl p-3.5" style={{ background: 'var(--t-tenue)', border: '1px solid var(--t-riga)' }}>
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <MoonStar size={15} style={{ color: 'var(--t-accento)' }} />
+                      <span className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>{tipo.nome}</span>
+                      <span className="text-xs" style={{ color: '#94a3b8' }}>{tipo.ora_inizio} → {tipo.ora_fine} del giorno dopo</span>
+                    </div>
+
+                    {/* scelta modalità */}
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      {([['singola', 'Singola fascia', 'Un solo evento, nel giorno del turno'], ['doppia', 'Doppia fascia', 'In più una riga il giorno dopo']] as const).map(([val, tit, sub]) => {
+                        const sel = c.mode === val
+                        return (
+                          <button key={val} onClick={() => setCampo(tipo.chiave, { mode: val })}
+                            className="rounded-lg p-2.5 text-left transition-colors"
+                            style={{ background: sel ? 'var(--t-primario)' : '#fff', color: sel ? '#fff' : 'var(--t-testo)', border: sel ? '2px solid var(--t-primario)' : '1px solid var(--t-riga)' }}>
+                            <div className="text-xs font-bold">{tit}</div>
+                            <div className="text-[10px] mt-0.5" style={{ opacity: 0.85 }}>{sub}</div>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* fascia 1 — giorno del turno */}
+                    <div className="rounded-lg p-2.5 mb-2" style={{ background: '#fff', border: '1px solid var(--t-riga)' }}>
+                      <div className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--t-accento)' }}>Giorno del turno · «{tipo.nome}»</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <label className="text-xs" style={{ color: 'var(--t-testo)' }}>dalle</label>
+                        <input type="time" value={c.f1i} onChange={e => setCampo(tipo.chiave, { f1i: e.target.value })} className="input text-sm py-1" style={{ width: 96 }} />
+                        <label className="text-xs" style={{ color: 'var(--t-testo)' }}>alle</label>
+                        <input type="time" value={c.f1f} onChange={e => setCampo(tipo.chiave, { f1f: e.target.value })} className="input text-sm py-1" style={{ width: 96 }} />
+                      </div>
+                    </div>
+
+                    {/* fascia 2 — giorno dopo (solo doppia) */}
+                    {c.mode === 'doppia' && (
+                      <div className="rounded-lg p-2.5" style={{ background: '#fff', border: '1px solid var(--t-riga)' }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--t-accento)' }}>Giorno dopo</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <label className="text-xs" style={{ color: 'var(--t-testo)' }}>dalle</label>
+                          <input type="time" value={c.f2i} onChange={e => setCampo(tipo.chiave, { f2i: e.target.value })} className="input text-sm py-1" style={{ width: 96 }} />
+                          <label className="text-xs" style={{ color: 'var(--t-testo)' }}>alle</label>
+                          <input type="time" value={c.f2f} onChange={e => setCampo(tipo.chiave, { f2f: e.target.value })} className="input text-sm py-1" style={{ width: 96 }} />
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <label className="text-xs shrink-0" style={{ color: 'var(--t-testo)' }}>nome</label>
+                          <input value={c.f2n} onChange={e => setCampo(tipo.chiave, { f2n: e.target.value })} placeholder={`Smonto ${tipo.nome}`} className="input text-sm py-1 flex-1" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* anteprima */}
+                    <div className="mt-2.5 text-[11px] leading-relaxed" style={{ color: '#64748b' }}>
+                      Es. turno del 10: <strong>10</strong> · {c.f1i || '?'}–{c.f1f || '?'} «{tipo.nome}{postazioneNome ? ` (${postazioneNome})` : ''}»
+                      {c.mode === 'doppia' && <> &nbsp;+&nbsp; <strong>11</strong> · {c.f2i || '?'}–{c.f2f || '?'} «{(c.f2n || `Smonto ${tipo.nome}`).trim()}{postazioneNome ? ` (${postazioneNome})` : ''}»</>}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {erroriForm.length > 0 && (
+                <div className="mt-3 rounded-lg p-3 text-xs space-y-1" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b' }}>
+                  {erroriForm.map((e, i) => <div key={i}>• {e}</div>)}
                 </div>
               )}
             </>
@@ -205,7 +355,23 @@ export function SyncCalendarModal({ turnistaId, mese, turni, schema, postazioneN
           {step === 'intro' && (
             <>
               <button onClick={onClose} className="btn-secondary py-2 px-4 text-sm">Annulla</button>
-              <button onClick={handleSync} disabled={!configured || !haDati} className="btn-primary py-2 px-4 text-sm flex items-center gap-1.5">
+              {serveConfig ? (
+                <button onClick={apriConfig} disabled={!configured || !haDati || cfgSalvata === null}
+                  className="btn-primary py-2 px-4 text-sm flex items-center gap-1.5"
+                  title="Scegli come rappresentare i turni che finiscono il giorno dopo">
+                  {cfgSalvata === null ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />} Continua
+                </button>
+              ) : (
+                <button onClick={() => handleSync(false)} disabled={!configured || !haDati} className="btn-primary py-2 px-4 text-sm flex items-center gap-1.5">
+                  <CalendarCheck size={16} /> Sincronizza
+                </button>
+              )}
+            </>
+          )}
+          {step === 'config' && (
+            <>
+              <button onClick={() => setStep('intro')} className="btn-secondary py-2 px-4 text-sm flex items-center gap-1"><ChevronLeft size={15} /> Indietro</button>
+              <button onClick={() => handleSync(true)} disabled={erroriForm.length > 0} className="btn-primary py-2 px-4 text-sm flex items-center gap-1.5">
                 <CalendarCheck size={16} /> Sincronizza
               </button>
             </>
@@ -214,7 +380,7 @@ export function SyncCalendarModal({ turnistaId, mese, turni, schema, postazioneN
           {step === 'error' && (
             <>
               <button onClick={onClose} className="btn-secondary py-2 px-4 text-sm">Chiudi</button>
-              <button onClick={handleSync} className="btn-primary py-2 px-4 text-sm">Riprova</button>
+              <button onClick={() => handleSync(serveConfig)} className="btn-primary py-2 px-4 text-sm">Riprova</button>
             </>
           )}
         </div>

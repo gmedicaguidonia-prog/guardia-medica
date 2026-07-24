@@ -6,6 +6,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 import { cmpTurnisti } from '../types'
+import type { ConfigNotte } from './googleCalendarSync'
 import type { Turnista, TurnistaMese, TurnoSchema, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista, Turno, Livello, Ricorrenza, Desiderata, DesiderataFinestra, TipoDesiderata, Postazione, Utente, MiaPostazione, StatoCalendario, RichiestaTurno, StatoRichiesta, ImpaginazioneVersione, Foglio, FoglioTurno, UtenteImpersonabile, UtenteAdmin, UtenteAnagrafica, MembershipUtente, Supervisore, Notifica, CandidaturaAttesa, LogPostazione, BackupTurni, SnapshotTurno, Festivita, CambioTurno, TurnoPersona, BackupGiorno, BackupInfo, BackupMese, BackupPostazioneItem, UtenteOrfano } from '../types'
 
 // ── Notifiche: input per crearne una + mapping riga DB → Notifica ──
@@ -432,6 +433,19 @@ const supaStore = {
   // ── Tema interfaccia (salvato per utente) ──
   async setMioTema(tema: string): Promise<void> {
     const { error } = await supabase.rpc('set_mio_tema', { p_tema: tema })
+    if (error) throw error
+  },
+
+  // ── Sincronizza Calendario: rappresentazione dei turni a cavallo della
+  //    mezzanotte, salvata PER UTENTE (utenti.cal_notte) così vale su ogni
+  //    dispositivo e le risincronizzazioni aggiornano i vecchi eventi. ──
+  async getCalNotte(): Promise<ConfigNotte> {
+    const { data, error } = await supabase.rpc('get_mia_cal_notte')
+    if (error) throw error
+    return (data ?? {}) as ConfigNotte
+  },
+  async setCalNotte(cfg: ConfigNotte): Promise<void> {
+    const { error } = await supabase.rpc('set_mia_cal_notte', { p_cfg: cfg })
     if (error) throw error
   },
 
@@ -1457,6 +1471,8 @@ const localStore = {
     clearArchivioCache()
   },
   async setMioTema(_tema: string): Promise<void> { /* DEV: basta il localStorage di applicaTema */ },
+  async getCalNotte(): Promise<ConfigNotte> { return read<ConfigNotte>('gm_cal_notte', {}) },
+  async setCalNotte(cfg: ConfigNotte): Promise<void> { writeLs('gm_cal_notte', cfg) },
   async getEmailMittente(postazioneId: string): Promise<string> {
     return read<Record<string, string>>('gm_email_mittente', {})[postazioneId] ?? ''
   },
