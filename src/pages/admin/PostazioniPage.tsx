@@ -65,13 +65,17 @@ export function PostazioniPage() {
     await qc.invalidateQueries({ queryKey: ['postazioni'] })
   }
   async function eliminaConfermata(p: Postazione, utentiDaCancellare: string[]) {
-    await store.eliminaPostazione(p.id, utentiDaCancellare)
+    await store.eliminaPostazione(p.id, utentiDaCancellare)   // CRITICO: un errore qui risale al modale (mostra l'errore)
+    // Da qui in poi è "bookkeeping": non deve né bloccare la chiusura del modale né lasciare lo spinner appeso.
     const suffix = utentiDaCancellare.length ? ` (con ${utentiDaCancellare.length} utente/i)` : ''
-    await store.addLogPostazione(`Postazione «${p.nome}» eliminata${suffix}. Backup pre-eliminazione creato.`, nomeAutore)
+    store.addLogPostazione(`Postazione «${p.nome}» eliminata${suffix}. Backup pre-eliminazione creato.`, nomeAutore).catch(e => console.error('[Postazioni] log eliminazione fallito:', e))
     if (p.id === postazioneId) setPostazioneId(postazioni.find(x => x.id !== p.id)?.id ?? '')
-    await qc.invalidateQueries({ queryKey: ['postazioni'] })
-    await qc.invalidateQueries({ queryKey: ['log-postazioni'] })
-    await qc.invalidateQueries({ queryKey: ['anagrafica-utenti'] })
+    qc.invalidateQueries({ queryKey: ['postazioni'] })
+    qc.invalidateQueries({ queryKey: ['log-postazioni'] })
+    qc.invalidateQueries({ queryKey: ['anagrafica-utenti'] })
+    qc.invalidateQueries({ queryKey: ['utenti'] })
+    qc.invalidateQueries({ queryKey: ['supervisori'] })
+    void notify({ title: 'Postazione eliminata', message: `«${p.nome}» è stata eliminata${utentiDaCancellare.length ? `, insieme a ${utentiDaCancellare.length} utente/i` : ''}. Puoi ripristinarla dal backup finché resta in archivio.` })
   }
 
   if (user?.livello !== 'admin') {
@@ -797,7 +801,10 @@ function EliminaPostazioneModal({ postazione, onChiudi, onConferma }: {
 
   async function esegui() {
     setBusy(true)
-    try { await onConferma(postazione, [...sel]) }
+    try {
+      await onConferma(postazione, [...sel])
+      onChiudi()   // SUCCESSO: chiudi il modale e ferma lo spinner (prima restava aperto → spinner infinito)
+    }
     catch (e) { void notify({ title: 'Eliminazione non riuscita', message: (e as Error).message }); setBusy(false) }
   }
 
