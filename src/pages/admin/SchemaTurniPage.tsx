@@ -273,6 +273,16 @@ export function SchemaTurniPage() {
     const fino = valid.draft
     if (fino != null && fino < versione.valido_da) { await notify({ title: 'Scadenza non valida', message: `La scadenza non può precedere l'inizio del periodo (${meseLabel(versione.valido_da)}).` }); return }
     if (fino === (versione.valido_fino ?? null)) return
+    // Taglio pericoloso: se DOPO la nuova scadenza restano turni reali agganciati a
+    // questa configurazione, quei mesi resterebbero senza schema (calendario "sparito").
+    if (fino != null) {
+      const orfani = await store.contaTurniDopoMese(versione.id, fino).catch(() => 0)
+      if (orfani > 0 && !(await confirm({
+        title: 'Attenzione: turni oltre la scadenza',
+        message: `Dopo ${meseLabel(fino)} ci sono ancora ${orfani} turni nel calendario agganciati a questa configurazione: accorciandola, quei mesi resterebbero SENZA configurazione e il loro calendario non sarebbe più visibile. Continuare comunque?`,
+        confirmLabel: 'Sì, accorcia', danger: true,
+      }))) return
+    }
     setSalvandoVal(true)
     try {
       await store.setValiditaVersione(versione.id, fino)
@@ -286,7 +296,13 @@ export function SchemaTurniPage() {
     if (!versione) return
     const ok = await confirm({ title: 'Cancella configurazione', message: `Cancellare la configurazione valida da ${meseLabel(versione.valido_da)} e i suoi turni? Non è reversibile.`, confirmLabel: 'Cancella', danger: true })
     if (!ok) return
-    await store.deleteVersione(versione.id)
+    try {
+      await store.deleteVersione(versione.id)
+    } catch (e) {
+      // il DB fa da guardiano: una configurazione con turni reali nel calendario non si cancella
+      await notify({ title: 'Non cancellabile', message: (e as Error).message })
+      return
+    }
     await qc.invalidateQueries({ queryKey: ['versione'] })
     await qc.invalidateQueries({ queryKey: ['versioni-all'] })
   }

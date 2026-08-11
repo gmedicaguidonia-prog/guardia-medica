@@ -277,6 +277,18 @@ const supaStore = {
     const { error } = await supabase.from('schema_versioni').update({ valido_da: validoDa }).eq('id', id)
     if (error) throw error
   },
+  /** Quanti turni REALI del calendario, agganciati a questa versione, cadono nei
+   *  mesi DOPO `fino`? (Per avvisare prima di accorciare la validità: quei mesi
+   *  resterebbero senza configurazione e il calendario sparirebbe dalla vista.) */
+  async contaTurniDopoMese(versioneId: string, fino: string): Promise<number> {
+    const schema = await this.getSchemaVersione(versioneId)
+    if (!schema.length) return 0
+    const [a, m] = fino.split('-').map(Number)
+    const dal = m >= 12 ? `${a + 1}-01-01` : `${a}-${String(m + 1).padStart(2, '0')}-01`
+    const { count, error } = await supabase.from('turni').select('id', { count: 'exact', head: true }).in('turno_schema_id', schema.map(s => s.id)).gte('data', dal)
+    if (error) throw error
+    return count ?? 0
+  },
   /** SCORPORO del mese, tutto lato server in UNA transazione (RPC): la versione
    *  ORIGINALE (con gli id a cui puntano i turni storici) resta al PASSATO; il
    *  mese e il futuro ricevono copie e TUTTI i riferimenti dei mesi ≥ mese
@@ -1294,6 +1306,12 @@ const localStore = {
   },
   async setValidoDaVersione(id: string, validoDa: string): Promise<void> {
     writeLs(LS_VERSIONI, read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).map(v => v.id === id ? { ...v, valido_da: validoDa } : v))
+  },
+  async contaTurniDopoMese(versioneId: string, fino: string): Promise<number> {
+    const ids = new Set(read<TurnoSchema[]>(LS_SCHEMA, []).filter(s => s.versione_id === versioneId).map(s => s.id))
+    const [a, m] = fino.split('-').map(Number)
+    const dal = m >= 12 ? `${a + 1}-01-01` : `${a}-${String(m + 1).padStart(2, '0')}-01`
+    return read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => ids.has(t.turno_schema_id) && t.data >= dal).length
   },
   /** Scorporo DEV: stessa semantica della RPC (l'originale resta al passato,
    *  copie per mese/dopo, rimappa turni+desiderata locali). */
