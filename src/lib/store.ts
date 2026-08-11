@@ -277,6 +277,20 @@ const supaStore = {
     const { error } = await supabase.from('schema_versioni').update({ valido_da: validoDa }).eq('id', id)
     if (error) throw error
   },
+  /** SCORPORO del mese, tutto lato server in UNA transazione (RPC): la versione
+   *  ORIGINALE (con gli id a cui puntano i turni storici) resta al PASSATO; il
+   *  mese e il futuro ricevono copie e TUTTI i riferimenti dei mesi ≥ mese
+   *  (turni, desiderata, richieste, cambi, superfestivi, impaginazione, regole)
+   *  vengono rimappati ai nuovi id. Ritorna la versione del mese e la mappa
+   *  vecchioId→nuovoId per tradurre gli id degli schema aperti nella UI.
+   *  (Sostituisce il vecchio scorporo client-side che assegnava i segmenti al
+   *  contrario e ha sganciato i turni di agosto — 11/08/2026.) */
+  async scorporaMeseConfig(postazioneId: string, mese: string): Promise<{ versioneId: string; mappa: Record<string, string> }> {
+    const { data, error } = await supabase.rpc('scorpora_mese_config', { p_postazione: postazioneId, p_mese: mese })
+    if (error) throw error
+    const d = data as { versione_id: string; mappa: Record<string, string> | null }
+    return { versioneId: d.versione_id, mappa: d.mappa ?? {} }
+  },
 
   // ── Attivazioni mese (procedura sequenziale: passo 1..5 per mese) ──
   async getAttivazioni(postazioneId: string, mese: string): Promise<number[]> {
@@ -1280,6 +1294,48 @@ const localStore = {
   },
   async setValidoDaVersione(id: string, validoDa: string): Promise<void> {
     writeLs(LS_VERSIONI, read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).map(v => v.id === id ? { ...v, valido_da: validoDa } : v))
+  },
+  /** Scorporo DEV: stessa semantica della RPC (l'originale resta al passato,
+   *  copie per mese/dopo, rimappa turni+desiderata locali). */
+  async scorporaMeseConfig(postazioneId: string, mese: string): Promise<{ versioneId: string; mappa: Record<string, string> }> {
+    const mPrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
+    const mSucc = (k: string) => { let [a, m] = k.split('-').map(Number); m++; if (m > 12) { m = 1; a++ } return `${a}-${String(m).padStart(2, '0')}` }
+    const vers = read<WithPost<ConfigVersione>[]>(LS_VERSIONI, [])
+    const mie = vers.filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
+    const V = pickVersione(mie, mese)
+    if (!V) throw new Error('Nessuna configurazione copre questo mese')
+    if (V.valido_da === mese && V.valido_fino === mese) return { versioneId: V.id, mappa: {} }
+    const allSchema = read<TurnoSchema[]>(LS_SCHEMA, [])
+    const miei = allSchema.filter(s => s.versione_id === V.id).sort((a, b) => a.ordine - b.ordine)
+    const clona = (da: string, a: string | null) => {
+      const nv: WithPost<ConfigVersione> = { id: uid(), valido_da: da, valido_fino: a, created_at: new Date().toISOString(), postazione_id: postazioneId }
+      vers.push(nv)
+      const m: Record<string, string> = {}
+      for (const s of miei) { const ns = { ...s, id: uid(), versione_id: nv.id }; allSchema.push(ns); m[s.id] = ns.id }
+      return { nv, m }
+    }
+    const rimappa = (cond: (ym: string) => boolean, m: Record<string, string>) => {
+      if (!Object.keys(m).length) return
+      writeLs(LS_TURNI, read<WithPost<Turno>[]>(LS_TURNI, []).map(t => ((t.postazione_id ?? DEV_POSTAZIONE) === postazioneId && cond(t.data.slice(0, 7)) && m[t.turno_schema_id]) ? { ...t, turno_schema_id: m[t.turno_schema_id] } : t))
+      writeLs(LS_DESIDERATA, read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).map(d => ((d.postazione_id ?? DEV_POSTAZIONE) === postazioneId && cond(d.data.slice(0, 7)) && m[d.turno_schema_id]) ? { ...d, turno_schema_id: m[d.turno_schema_id] } : d))
+    }
+    const hasPast = V.valido_da < mese
+    const hasAfter = V.valido_fino == null || V.valido_fino > mese
+    let versioneId = V.id
+    let mappa: Record<string, string> = {}
+    if (!hasPast) {
+      if (hasAfter) { const { m } = clona(mSucc(mese), V.valido_fino); rimappa(ym => ym > mese, m) }
+      V.valido_fino = mese
+    } else {
+      const S = clona(mese, mese); versioneId = S.nv.id; mappa = S.m
+      let mD: Record<string, string> = {}
+      if (hasAfter) { mD = clona(mSucc(mese), V.valido_fino).m }
+      V.valido_fino = mPrec(mese)
+      rimappa(ym => ym === mese, mappa)
+      rimappa(ym => ym > mese, mD)
+    }
+    writeLs(LS_VERSIONI, vers); writeLs(LS_SCHEMA, allSchema)
+    return { versioneId, mappa }
   },
 
   // ── Attivazioni mese (DEV) ──

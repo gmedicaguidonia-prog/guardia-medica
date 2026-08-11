@@ -33,8 +33,9 @@ function sameTurno(a: TurnoSchema, b: TurnoSchema): boolean {
 // ── Card turno con salvataggio esplicito (floppy bianco/nero → verde) ──
 function TurnoCard({ turno, onDelete, onDirty, prima }: {
   turno: TurnoSchema; onDelete: () => void; onDirty: (id: string, dirty: boolean) => void
-  // isola il mese (copy-on-write) PRIMA di scrivere, così la modifica non tocca gli altri mesi
-  prima: () => Promise<unknown>
+  // isola il mese (copy-on-write) PRIMA di scrivere: ritorna la mappa vecchioId→nuovoId
+  // per tradurre l'id del turno se lo scorporo ha creato la copia del mese
+  prima: () => Promise<{ versioneId: string; mappa: Record<string, string> }>
 }) {
   const qc = useQueryClient()
   const [form, setForm]     = useState<TurnoSchema>(turno)
@@ -54,14 +55,12 @@ function TurnoCard({ turno, onDelete, onDirty, prima }: {
   async function salva() {
     setSaving(true); setErrore('')
     try {
-      await prima()   // scorpora il mese se la versione è condivisa (id del turno preservato)
-      await store.updateTurnoSchema(turno.id, {
+      const { mappa } = await prima()   // scorpora il mese se la versione è condivisa
+      await store.updateTurnoSchema(mappa[turno.id] ?? turno.id, {   // dopo lo scorporo si scrive sulla COPIA del mese
         nome: form.nome, ora_inizio: form.ora_inizio, ora_fine: form.ora_fine,
         n_turnisti: form.n_turnisti, ricorrenza: form.ricorrenza, giorni_custom: form.giorni_custom,
       })
-      await qc.invalidateQueries({ queryKey: ['schema', turno.versione_id] })
-      await qc.invalidateQueries({ queryKey: ['versione'] })
-      await qc.invalidateQueries({ queryKey: ['versioni-all'] })
+      await qc.invalidateQueries()   // lo scorporo può aver rimappato id in più sezioni
     } catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
   }
@@ -189,33 +188,21 @@ export function SchemaTurniPage() {
   }
 
   // ── Isolamento per mese (copy-on-write a "scorporo") ──
-  // Se la configurazione che governa il mese è condivisa (ereditata da un periodo
-  // precedente e/o estesa oltre questo mese), la SCORPORA così la modifica tocca
-  // SOLO questo mese. Mantiene la versione corrente (e gli id dei suoi turni) come
-  // versione di QUESTO mese e crea copie del contenuto originale per «prima»/«dopo».
-  async function assicuraConfigDelMese(): Promise<string> {
-    // Rileggo lo stato FRESCO dal DB: rende lo scorporo idempotente anche con più
-    // salvataggi ravvicinati (se è già stato isolato, esce subito senza duplicare).
-    const V = await store.getVersioneMese(postazioneId!, meseKey)
-    if (!V) return versione!.id
-    if (V.valido_da === meseKey && V.valido_fino === meseKey) return V.id   // già isolata
-    const turni = await store.getSchemaVersione(V.id)
-    const finoOrig = V.valido_fino
-    const creaCopia = async (da: string, a: string | null) => {
-      const W = await store.creaVersione(postazioneId!, da)
-      if (a != null) await store.setValiditaVersione(W.id, a)
-      for (const t of turni) await store.addTurnoSchema(W.id, { nome: t.nome, ora_inizio: t.ora_inizio, ora_fine: t.ora_fine, n_turnisti: t.n_turnisti, ricorrenza: t.ricorrenza, giorni_custom: t.giorni_custom })
-    }
-    if (finoOrig == null || finoOrig > meseKey) await creaCopia(meseSucc(meseKey), finoOrig)   // «dopo»
-    if (V.valido_da < meseKey) { await creaCopia(V.valido_da, mesePrec(meseKey)); await store.setValidoDaVersione(V.id, meseKey) }   // «prima»
-    await store.setValiditaVersione(V.id, meseKey)   // V = solo questo mese
-    return V.id
+  // Tutto lato SERVER in una transazione (RPC scorpora_mese_config): la versione
+  // ORIGINALE — con gli id a cui puntano i turni/desiderata/impaginazione dei mesi
+  // passati — resta al PASSATO; questo mese e il futuro ricevono copie e tutti i
+  // riferimenti dei mesi ≥ questo vengono rimappati ai nuovi id. Ritorna la mappa
+  // vecchioId→nuovoId per tradurre gli id delle card aperte nella UI.
+  // ⚠️ Il vecchio scorporo client-side assegnava i segmenti al CONTRARIO (teneva
+  // l'originale su questo mese): i mesi passati si sganciavano dai loro turni
+  // (bug "agosto sparito" dell'11/08/2026). Non reintrodurlo.
+  async function assicuraConfigDelMese(): Promise<{ versioneId: string; mappa: Record<string, string> }> {
+    return store.scorporaMeseConfig(postazioneId!, meseKey)
   }
   async function dopoScorporo() {
-    await qc.invalidateQueries({ queryKey: ['versione'] })
-    await qc.invalidateQueries({ queryKey: ['versioni-all'] })
-    await qc.invalidateQueries({ queryKey: ['attivazioni'] })
-    await qc.invalidateQueries({ queryKey: ['ultima-config-con-turni'] })
+    // Lo scorporo può aver rimappato id in mezza applicazione (turni, desiderata,
+    // impaginazione, regole): evento raro ⇒ si invalida TUTTO, correttezza prima di tutto.
+    await qc.invalidateQueries()
   }
 
   // ── Attivazione del mese (passo 1) ──
@@ -305,18 +292,16 @@ export function SchemaTurniPage() {
   }
   async function aggiungiTurno() {
     if (!versione) return
-    await assicuraConfigDelMese()   // isola il mese prima di aggiungere
-    await store.addTurnoSchema(versione.id, { nome: '', ora_inizio: '08:00', ora_fine: '20:00', n_turnisti: 1, ricorrenza: 'tutti', giorni_custom: [] })
-    await qc.invalidateQueries({ queryKey: ['schema', versione.id] })
+    const { versioneId } = await assicuraConfigDelMese()   // isola il mese prima di aggiungere
+    await store.addTurnoSchema(versioneId, { nome: '', ora_inizio: '08:00', ora_fine: '20:00', n_turnisti: 1, ricorrenza: 'tutti', giorni_custom: [] })
     await dopoScorporo()
   }
   async function eliminaTurno(t: TurnoSchema) {
     const ok = await confirm({ title: 'Elimina turno', message: `Vuoi eliminare il turno "${t.nome || 'senza nome'}"?`, confirmLabel: 'Elimina', danger: true })
     if (!ok) return
     handleDirty(t.id, false)
-    await assicuraConfigDelMese()   // isola il mese prima di eliminare
-    await store.deleteTurnoSchema(t.id)
-    await qc.invalidateQueries({ queryKey: ['schema', t.versione_id] })
+    const { mappa } = await assicuraConfigDelMese()   // isola il mese prima di eliminare
+    await store.deleteTurnoSchema(mappa[t.id] ?? t.id)   // dopo lo scorporo la card punta alla COPIA del mese
     await dopoScorporo()
   }
 
