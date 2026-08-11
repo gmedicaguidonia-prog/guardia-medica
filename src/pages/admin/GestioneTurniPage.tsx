@@ -442,15 +442,10 @@ export function GestioneTurniPage() {
       return
     }
     // Modifiche non salvate in griglia (es. Auto Assegnazione appena eseguita): pubblicare ORA
-    // mostrerebbe ai turnisti il calendario VECCHIO (caselle scoperte «???»). Si propone di
-    // salvare prima; se il salvataggio fallisce, non si pubblica.
+    // mostrerebbe ai turnisti il calendario VECCHIO (caselle scoperte «???»). L'avviso è
+    // dentro il modale (banner ambra) e il pulsante diventa «Salva turni e pubblica»: il
+    // salvataggio della griglia è il PRIMO passo della procedura; se fallisce non si pubblica.
     if (statoScelto !== 'non_pubblicato' && dirty) {
-      const ok = await confirm({
-        title: 'Turni non salvati',
-        message: `Hai modifiche non salvate nella griglia (es. l'Auto Assegnazione). Se ${statoScelto === 'pianificazione' ? 'passi in pianificazione' : 'pubblichi'} adesso, i turnisti vedrebbero il calendario SENZA queste modifiche (caselle scoperte «???»). Vuoi prima salvarle e poi ${statoScelto === 'pianificazione' ? 'passare in pianificazione' : 'pubblicare'}?`,
-        confirmLabel: 'Salva e pubblica',
-      })
-      if (!ok) return
       if (!(await salva())) return
     }
     // anomalia: si pubblica il calendario ma la raccolta desiderata è ancora aperta
@@ -564,9 +559,19 @@ export function GestioneTurniPage() {
                 )
               })}
             </div>
+            {/* Turni non salvati in griglia: l'avviso è PARTE della procedura (niente secondo
+                modale) e il pulsante esplicita che salverà la griglia prima di pubblicare. */}
+            {dirty && statoScelto !== 'non_pubblicato' && (
+              <div className="flex items-start gap-2 rounded-lg p-3 mt-3 text-xs" style={{ background: '#fef3c7', border: '1px solid #fbbf24', color: '#92400e' }}>
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                <span>Hai <strong>turni non salvati</strong> nella griglia (es. l'Auto Assegnazione appena calcolata). Verranno <strong>salvati adesso</strong>, insieme alla pubblicazione: così i turnisti vedono il calendario aggiornato, senza caselle scoperte «???».</span>
+              </div>
+            )}
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowStatoModal(false)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
-              <button onClick={salvaStato} disabled={savingStato} className="btn-primary text-sm py-1.5 px-4">{savingStato ? 'Salvo…' : 'Salva'}</button>
+              <button onClick={salvaStato} disabled={savingStato} className="btn-primary text-sm py-1.5 px-4">
+                {savingStato ? 'Salvo…' : (dirty && statoScelto !== 'non_pubblicato') ? 'Salva turni e pubblica' : 'Salva'}
+              </button>
             </div>
           </div>
         </div>
