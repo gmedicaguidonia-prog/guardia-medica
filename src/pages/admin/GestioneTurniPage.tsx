@@ -340,8 +340,10 @@ export function GestioneTurniPage() {
     const ok = await confirm({ title: 'Aggiungi reperibile', message: 'Aggiungere la colonna “Reperibile” per assegnare un reperibile a ogni turno?', confirmLabel: 'Aggiungi' })
     if (ok) setMostraRepMesi(prev => { const n = new Set(prev); n.add(meseKey); return n })
   }
-  async function salva() {
-    if (finalizzato) { await notify({ title: 'Mese finalizzato', message: `${MESI[mese - 1]} ${anno} è bloccato: per modificare i turni sbloccalo dalla pagina ⑧ Finalizzazione.` }); return }
+  /** Salva la griglia (bozza → definitivo). Ritorna true se il salvataggio è riuscito
+   *  (serve a «Salva e pubblica» per non pubblicare se il salvataggio fallisce). */
+  async function salva(): Promise<boolean> {
+    if (finalizzato) { await notify({ title: 'Mese finalizzato', message: `${MESI[mese - 1]} ${anno} è bloccato: per modificare i turni sbloccalo dalla pagina ⑧ Finalizzazione.` }); return false }
     setSaving(true)
     try {
       const mod = diff()
@@ -352,7 +354,8 @@ export function GestioneTurniPage() {
         store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'turni_salvati', messaggio: `Calendario turni di ${MESI[mese - 1]} ${anno} salvato · ${mod.length} modific${mod.length === 1 ? 'a' : 'he'}.`, target: '/admin/turni', perAdmin: true, autore: nomeAutore }).catch(() => {})
       }
       await qc.invalidateQueries({ queryKey: ['turni', postazioneId, anno, mese] })
-    } catch (e) { console.error('[Turni] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }) }
+      return true
+    } catch (e) { console.error('[Turni] salvataggio fallito:', e); void notify({ title: 'Errore', message: 'Errore nel salvataggio.' }); return false }
     finally { setSaving(false) }
   }
 
@@ -437,6 +440,18 @@ export function GestioneTurniPage() {
     if (statoScelto !== 'non_pubblicato' && importati.size === 0) {
       void notify({ title: 'Manca il personale del mese', message: `Per pubblicare o mettere in pianificazione il calendario di ${MESI[mese - 1]} ${anno} devi prima definire il personale del mese nel passo ① Personale.` })
       return
+    }
+    // Modifiche non salvate in griglia (es. Auto Assegnazione appena eseguita): pubblicare ORA
+    // mostrerebbe ai turnisti il calendario VECCHIO (caselle scoperte «???»). Si propone di
+    // salvare prima; se il salvataggio fallisce, non si pubblica.
+    if (statoScelto !== 'non_pubblicato' && dirty) {
+      const ok = await confirm({
+        title: 'Turni non salvati',
+        message: `Hai modifiche non salvate nella griglia (es. l'Auto Assegnazione). Se ${statoScelto === 'pianificazione' ? 'passi in pianificazione' : 'pubblichi'} adesso, i turnisti vedrebbero il calendario SENZA queste modifiche (caselle scoperte «???»). Vuoi prima salvarle e poi ${statoScelto === 'pianificazione' ? 'passare in pianificazione' : 'pubblicare'}?`,
+        confirmLabel: 'Salva e pubblica',
+      })
+      if (!ok) return
+      if (!(await salva())) return
     }
     // anomalia: si pubblica il calendario ma la raccolta desiderata è ancora aperta
     let chiudiDes = false
