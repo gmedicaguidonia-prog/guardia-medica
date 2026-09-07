@@ -1,78 +1,82 @@
-name: Keepalive (Supabase + cron Actions)
+name: Keepalive
 
-# Evita che l'inattivita' prolungata "spenga" il progetto:
-#  1) chiama la RPC public.ping() su Supabase -> il progetto FREE non va in pausa
-#     (Supabase sospende dopo ~7 giorni SENZA richieste all'API/DB). La RPC e'
-#     SECURITY DEFINER, legge davvero il DB e risponde 200.
-#  2) aggiorna un timestamp sul branch SEPARATO "keepalive" (mai su main) -> il
-#     repo resta "attivo", cosi' GitHub non disabilita i workflow schedulati
-#     (spenti dopo 60 giorni di inattivita' del repo). Usa il GITHUB_TOKEN (niente
-#     PAT extra) e CREA il branch da solo se manca. Il branch e' isolato: non
-#     tocca main ne' il deploy gh-pages.
-# Il ping fa FALLIRE il job (email di avviso) se Supabase non risponde 200.
-# L'heartbeat e' best-effort: un suo errore non fa fallire il job.
-
+# Tiene attivo il progetto Supabase free. Storia (24/08/2026): i keepalive in
+# sola LETTURA (GET tabella o RPC read-only) NON alimentano il contatore di
+# attivita' di Supabase: i run erano verdi ma il progetto andava in pausa lo
+# stesso. Standard v3, l'unico dimostrato robusto:
+#   1. controlla lo stato via Management API; se in pausa fa RESTORE da solo
+#      (anche nel caso peggiore il fermo massimo e' ~24h)
+#   2. heartbeat di SCRITTURA vera sul DB (update keepalive.updated_at)
+#   3. verifica end-to-end: RPC ping() via REST anon, che a sua volta SCRIVE
+#      (hard-fail: se fallisce il run e' rosso e arriva l'email di GitHub)
+#   4. commit vuoto se il repo e' fermo da 45+ gg (GitHub spegne i cron a 60)
 on:
   schedule:
-    - cron: '23 5 */2 * *'   # ogni 2 giorni, 05:23 UTC (orario decentrato: i cron "tondi" vengono spesso ritardati/saltati)
+    - cron: '37 4 * * *'   # ogni giorno
   workflow_dispatch:
 
 permissions:
   contents: write
 
-concurrency:
-  group: keepalive
-  cancel-in-progress: false
-
 jobs:
   keepalive:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase (RPC ping)
+      - name: Stato progetto + auto-restore se in pausa
         env:
-          URL:  ${{ secrets.VITE_SUPABASE_URL }}
-          ANON: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          MGMT: ${{ secrets.SUPABASE_MGMT_TOKEN }}
         run: |
-          if [ -z "$URL" ] || [ -z "$ANON" ]; then
-            echo "::error::Secret VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY mancanti"; exit 1
+          REF=vctiwobkokkaesmnkcnv
+          status=$(curl -sS -H "Authorization: Bearer $MGMT" "https://api.supabase.com/v1/projects/$REF" | sed -nE 's/.*"status":"([^"]*)".*/\1/p')
+          echo "Stato: $status"
+          if [ "$status" != "ACTIVE_HEALTHY" ]; then
+            echo "Progetto non attivo -> restore..."
+            curl -sS -X POST -H "Authorization: Bearer $MGMT" -H "Content-Type: application/json" -d '{}' \
+              -o /dev/null -w "restore HTTP %{http_code}\n" "https://api.supabase.com/v1/projects/$REF/restore"
+            for i in $(seq 1 30); do
+              sleep 10
+              status=$(curl -sS -H "Authorization: Bearer $MGMT" "https://api.supabase.com/v1/projects/$REF" | sed -nE 's/.*"status":"([^"]*)".*/\1/p')
+              echo "  attesa $i: $status"
+              [ "$status" = "ACTIVE_HEALTHY" ] && break
+            done
           fi
-          code=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
-            -X POST "$URL/rest/v1/rpc/ping" \
+          test "$status" = "ACTIVE_HEALTHY"
+
+      - name: Heartbeat SQL (scrittura vera sul DB)
+        env:
+          MGMT: ${{ secrets.SUPABASE_MGMT_TOKEN }}
+        run: |
+          REF=vctiwobkokkaesmnkcnv
+          out=$(curl -sS -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $MGMT" -H "Content-Type: application/json" \
+            -d '{"query":"update public.keepalive set updated_at = now() where id = 1 returning updated_at;"}')
+          echo "Heartbeat: $out"
+          echo "$out" | grep -q "updated_at"
+
+      - name: Verifica end-to-end (RPC ping via REST anon, scrive anche lei)
+        run: |
+          ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZjdGl3b2Jrb2trYWVzbW5rY252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMzk2NzEsImV4cCI6MjA5NzcxNTY3MX0.np8UxLdr_lKARa_H2UC_-tzaZRPuvVvY4ujBvDHnpOc"
+          code=$(curl -sS -o /tmp/r -w "%{http_code}" -X POST \
+            "https://vctiwobkokkaesmnkcnv.supabase.co/rest/v1/rpc/ping" \
             -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
             -H "Content-Type: application/json" -d '{}')
-          echo "HTTP $code"; cat /tmp/resp.json 2>/dev/null || true; echo
-          if [ "$code" != "200" ]; then
-            echo "::error::Ping Supabase fallito (HTTP $code) - progetto in pausa/offline?"; exit 1
-          fi
-          echo "Supabase attivo."
+          echo "RPC ping -> HTTP $code"; cat /tmp/r 2>/dev/null; echo
+          test "$code" = "200"
 
-      - name: Heartbeat sul branch 'keepalive' (auto-creato, isolato da main)
-        env:
-          GH:       ${{ secrets.GITHUB_TOKEN }}
-          REPO:     ${{ github.repository }}   # owner/repo, sempre valorizzato
-          BASE_SHA: ${{ github.sha }}
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rinnova il repo se fermo da 45+ giorni (anti-disable cron)
         run: |
-          BR=keepalive; FILE=last-ping.txt
-          TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          AUTH="Authorization: Bearer $GH"
-          ACC="Accept: application/vnd.github+json"
-          # crea il branch se non esiste (parte dallo SHA corrente)
-          exists=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" "https://api.github.com/repos/$REPO/git/ref/heads/$BR")
-          if [ "$exists" = "404" ]; then
-            echo "Branch $BR assente: lo creo da $BASE_SHA"
-            curl -s -X POST -H "$AUTH" -H "$ACC" "https://api.github.com/repos/$REPO/git/refs" \
-              -d "{\"ref\":\"refs/heads/$BR\",\"sha\":\"$BASE_SHA\"}" -o /dev/null -w "  create ref -> %{http_code}\n"
-          fi
-          # sha del file (se gia' presente) per l'update
-          SHA=$(curl -s -H "$AUTH" "https://api.github.com/repos/$REPO/contents/$FILE?ref=$BR" \
-            | grep -oE '"sha":[[:space:]]*"[0-9a-f]{40}"' | head -1 | cut -d'"' -f4)
-          CONTENT=$(printf "%s\n" "keepalive $TS" | base64 -w0)
-          body="{\"message\":\"keepalive $TS\",\"content\":\"$CONTENT\",\"branch\":\"$BR\""
-          [ -n "$SHA" ] && body="$body,\"sha\":\"$SHA\""
-          body="$body}"
-          code=$(curl -s -o /tmp/put.json -w "%{http_code}" -X PUT -H "$AUTH" -H "$ACC" \
-            "https://api.github.com/repos/$REPO/contents/$FILE" -d "$body")
-          echo "PUT $FILE -> HTTP $code"
-          if [ "$code" != "200" ] && [ "$code" != "201" ]; then
-            echo "::warning::heartbeat non aggiornato (HTTP $code)"; head -c 400 /tmp/put.json 2>/dev/null || true
+          DIFF=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "Giorni dall'ultimo commit: $DIFF"
+          if [ "$DIFF" -ge 45 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "chore: keepalive heartbeat [skip ci]"
+            git push
+          else
+            echo "Nessun rinnovo necessario"
           fi
