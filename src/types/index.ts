@@ -25,6 +25,7 @@ export interface Utente {
   nome: string
   cognome: string
   email: string
+  attivo?: boolean   // false = sospeso (nei suggerimenti di ricerca: non può ricevere turni)
 }
 
 /** Utente impersonabile (debug "doppleganger"): livello = max dalle appartenenze. */

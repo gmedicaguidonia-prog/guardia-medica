@@ -157,8 +157,9 @@ export function GestioneTurniPage() {
   // ruolo CONGELATO del mese (turnisti_mese.livello): fonte di verità per palette/colori/pool
   const ruoloMese = useMemo(() => new Map(personaleMese.map(p => [p.turnista_id, p.livello] as const)), [personaleMese])
   const livMese = (id: string): Livello => ruoloMese.get(id) ?? tById.get(id)?.livello ?? 'turnista'
-  // palette = solo il personale di questo mese, diviso per ruolo-del-mese
-  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
+  // palette = solo il personale di questo mese, diviso per ruolo-del-mese, SENZA i sospesi
+  // (non assegnabili a turni/reperibilità; i turni già loro restano visibili via tById)
+  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id) && t.attivo).map(t => ({ ...t, livello: livMese(t.id) }))), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   // riepilogo auto-aggiornante (in base a ciò che è in tabella): T turni, N notti, F festivi, PF prefestivi
   const riepilogo = useMemo(() => {
     const stat = new Map<string, { T: number; N: number; F: number; PF: number; SF: number }>()
@@ -215,7 +216,7 @@ export function GestioneTurniPage() {
   }, [righe, local])
   const coperturaOk = copertura.totali > 0 && copertura.coperti >= copertura.totali
   // pre-controllo Auto Assegnazione
-  const poolAuto = useMemo(() => turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno'), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
+  const poolAuto = useMemo(() => turnisti.filter(t => importati.has(t.id) && t.attivo && livMese(t.id) !== 'esterno'), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   const slotTotali = useMemo(() => righe.reduce((n, r) => n + r.turno.n_turnisti, 0), [righe])
   const nVorrei = useMemo(() => { const pool = new Set(poolAuto.map(t => t.id)); return desiderataMese.filter(d => d.tipo === 'desiderata' && pool.has(d.turnista_id)).length }, [desiderataMese, poolAuto])
   const regolePresenti = !!regoleVer && regole.length > 0
@@ -361,10 +362,10 @@ export function GestioneTurniPage() {
 
   // ── Auto Assegnazione ──
   function eseguiAuto(aggiungi: boolean) {
-    const poolIds = turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno').map(t => t.id)
+    const poolIds = turnisti.filter(t => importati.has(t.id) && t.attivo && livMese(t.id) !== 'esterno').map(t => t.id)
     if (!poolIds.length) { showWarn('Nessun turnista nel personale di questo mese: definiscilo prima nel passo ① Personale.'); return }
     // gli ESTERNI (ruolo del mese) restano fuori dal pool/riempimento, ma i loro turni FISSI (Regole) vanno onorati
-    const extraFissi = turnisti.filter(t => importati.has(t.id) && livMese(t.id) === 'esterno').map(t => t.id)
+    const extraFissi = turnisti.filter(t => importati.has(t.id) && t.attivo && livMese(t.id) === 'esterno').map(t => t.id)
     // "aggiungi": mantieni i turnisti già inseriti (slot ≥ 0); "sostituisci": riparti da zero
     const esistenti = aggiungi ? new Map([...local].filter(([k]) => +k.split('|')[2] >= 0)) : undefined
     const res = autoAssegna({ giorni: giorniDelMese(anno, mese), schema, poolIds, regole, desiderata: desiderataMese, durataById, maxSettimana: regoleVer?.ore_max_settimana ?? null, maxConsecutive: regoleVer?.ore_max_consecutive ?? null, limitiTurnista, extraFissi, esistenti })
@@ -421,7 +422,7 @@ export function GestioneTurniPage() {
     if (copertura.totali === 0 || copertura.coperti / copertura.totali < 0.8) {
       showWarn('Per assegnare le reperibilità i turni devono essere coperti almeno all’80% del totale.'); return
     }
-    const poolIds = turnisti.filter(t => importati.has(t.id) && livMese(t.id) !== 'esterno').map(t => t.id)
+    const poolIds = turnisti.filter(t => importati.has(t.id) && t.attivo && livMese(t.id) !== 'esterno').map(t => t.id)
     const { rep, assegnati } = autoReperibilita({ giorni: giorniDelMese(anno, mese), schema, poolIds, desiderata: desiderataMese, assegnazioni: local })
     if (!assegnati) { showWarn('Nessuna reperibilità assegnabile: nessuna disponibilità libera e compatibile.'); return }
     const nuovo = new Map(local); rep.forEach((v, k) => nuovo.set(k, v))

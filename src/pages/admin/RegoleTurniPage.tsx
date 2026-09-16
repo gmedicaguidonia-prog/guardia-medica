@@ -104,7 +104,9 @@ export function RegoleTurniPage() {
   useEffect(() => { speEditing.current = false; setBozze([]) }, [regoleVer?.id])   // cambio mese/versione: scarta bozze, riallinea
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
-  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti), [turnisti])
+  // palette dei trascinabili SENZA gli utenti sospesi (non assegnabili a nulla);
+  // tById resta completo per continuare a mostrare i nomi nelle celle già assegnate
+  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => t.attivo)), [turnisti])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
   // ordine dei turnisti come nella palette di sinistra (ruolo + alfabetico): per ordinare le regole speciali
   const ordineTid = useMemo(() => { const m = new Map<string, number>(); let i = 0; paletteGruppi.forEach(g => g.items.forEach(t => m.set(t.id, i++))); return m }, [paletteGruppi])
@@ -246,7 +248,12 @@ export function RegoleTurniPage() {
       const srcNome = new Map(srcTurni.map(t => [t.id, norm(t.nome)]))
       const curPerNome = new Map(schema.map(t => [norm(t.nome), t.id]))
       const curIds = new Set(schema.map(s => s.id))
+      // gli utenti SOSPESI non vengono copiati (né turni fissi né regole speciali): avvisa con i nomi
+      const sospesoDi = (tid: string) => { const t = tById.get(tid); return t && !t.attivo ? t : null }
+      const saltati = new Map<string, string>()
       for (const r of src) {
+        const sosp = r.turnista_id ? sospesoDi(r.turnista_id) : null
+        if (sosp) { saltati.set(sosp.id, nomeCompleto(sosp)); continue }
         const nome = srcNome.get(r.turno_schema_id)
         let curTurnoId = nome ? curPerNome.get(nome) : undefined
         if (!curTurnoId && curIds.has(r.turno_schema_id)) curTurnoId = r.turno_schema_id
@@ -257,10 +264,23 @@ export function RegoleTurniPage() {
       if (versionePrec.ore_max_settimana != null) await store.setOreMaxSettimana(nuova.id, versionePrec.ore_max_settimana)
       if (versionePrec.ore_max_consecutive != null) await store.setOreMaxConsecutive(nuova.id, versionePrec.ore_max_consecutive)
       await store.setCambioAuto(nuova.id, versionePrec.cambio_auto ?? true)
-      // regole speciali per turnista: si copiano per turnista_id (stabile tra i mesi), solo per chi è ancora nel personale
-      const turnistiIds = new Set(turnisti.map(t => t.id))
+      // regole speciali per turnista: si copiano per turnista_id (stabile tra i mesi), solo per chi è ancora nel personale (e non sospeso)
+      const turnistiIds = new Set(turnisti.filter(t => t.attivo).map(t => t.id))
       const srcSpe = await store.getRegoleTurnista(versionePrec.id)
-      for (const rs of srcSpe) if (turnistiIds.has(rs.turnista_id)) await store.setRegolaTurnista(nuova.id, rs.turnista_id, rs.tipo, rs.valore)
+      for (const rs of srcSpe) {
+        const sosp = sospesoDi(rs.turnista_id)
+        if (sosp) { saltati.set(sosp.id, nomeCompleto(sosp)); continue }
+        if (turnistiIds.has(rs.turnista_id)) await store.setRegolaTurnista(nuova.id, rs.turnista_id, rs.tipo, rs.valore)
+      }
+      if (saltati.size > 0) {
+        const nomi = [...saltati.values()].join(', ')
+        await notify({
+          title: saltati.size === 1 ? 'Utente sospeso non copiato' : 'Utenti sospesi non copiati',
+          message: saltati.size === 1
+            ? `L'utente ${nomi} risulta sospeso: i suoi turni fissi e le sue regole non sono stati copiati nel nuovo mese.`
+            : `Gli utenti ${nomi} risultano sospesi: i loro turni fissi e le loro regole non sono stati copiati nel nuovo mese.`,
+        })
+      }
     }
     await store.attivaPasso(postazioneId!, meseKey, 2)
     logRegoleAtt(`attivate (copiate da ${versionePrec ? meseLabel(versionePrec.valido_da) : 'periodo precedente'})`)

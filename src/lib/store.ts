@@ -189,9 +189,9 @@ const supaStore = {
     // spezzerebbero il parser (→ 0 risultati) e % _ agirebbero da jolly. Li neutralizziamo.
     const q = query.trim().replace(/[(),."]/g, '').replace(/\\/g, '\\\\').replace(/[%_]/g, m => '\\' + m)
     if (q.length < 3) return []
-    const { data, error } = await supabase.from('utenti').select('id, nome, cognome, email').or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`).order('cognome').limit(8)
+    const { data, error } = await supabase.from('utenti').select('id, nome, cognome, email, attivo').or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`).order('cognome').limit(8)
     if (error) throw error
-    return (data ?? []) as Utente[]
+    return (data ?? []).map(x => ({ ...x, attivo: (x.attivo as boolean) !== false })) as Utente[]
   },
   async addMembro(postazioneId: string, input: NuovoMembro): Promise<void> {
     const email = input.email.trim().toLowerCase()
@@ -1266,11 +1266,12 @@ const localStore = {
   async searchUtenti(query: string): Promise<Utente[]> {
     const q = query.trim().toLowerCase()
     if (q.length < 3) return []
+    const sosp = new Set(read<string[]>('gm_utenti_sospesi', []))
     const seen = new Set<string>(); const out: Utente[] = []
     for (const t of read<WithPost<Turnista>[]>(LS_TURNISTI, [])) {
       const key = t.email.toLowerCase()
       if (seen.has(key)) continue
-      if (t.nome.toLowerCase().includes(q) || t.cognome.toLowerCase().includes(q)) { seen.add(key); out.push({ id: t.utente_id ?? t.id, nome: t.nome, cognome: t.cognome, email: t.email }) }
+      if (t.nome.toLowerCase().includes(q) || t.cognome.toLowerCase().includes(q)) { seen.add(key); out.push({ id: t.utente_id ?? t.id, nome: t.nome, cognome: t.cognome, email: t.email, attivo: !sosp.has(t.utente_id ?? t.id) }) }
     }
     return out.sort(cmpTurnisti).slice(0, 8)
   },

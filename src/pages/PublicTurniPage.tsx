@@ -776,7 +776,8 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
   const tutti = useMemo(() => { const m = new Map(personale.map(p => [p.id, p])); extra.forEach(p => m.set(p.id, p)); return [...m.values()] }, [personale, extra])
   // Candidati = SOLO il personale AUTORIZZATO per questo mese (turnisti_mese) + eventuali
   // aggiunti al volo. Chi non è autorizzato non compare: lo si aggiunge con «Aggiungilo».
-  const candidati = useMemo(() => { const ex = new Set(extra.map(e => e.id)); return tutti.filter(p => p.id !== da && (autorizzatiMese.has(p.id) || ex.has(p.id))) }, [tutti, da, autorizzatiMese, extra])
+  // Gli utenti SOSPESI non possono ricevere turni: mai proposti.
+  const candidati = useMemo(() => { const ex = new Set(extra.map(e => e.id)); return tutti.filter(p => p.id !== da && p.attivo !== false && (autorizzatiMese.has(p.id) || ex.has(p.id))) }, [tutti, da, autorizzatiMese, extra])
   const gTurnisti = useMemo(() => candidati.filter(p => livMese(p.id) !== 'esterno').sort(cmpTurnisti), [candidati, livMese])
   const gEsterni = useMemo(() => candidati.filter(p => livMese(p.id) === 'esterno').sort(cmpTurnisti), [candidati, livMese])
   const dest = tutti.find(p => p.id === destId) ?? null
@@ -799,8 +800,12 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
   // Riusa un utente già esistente in anagrafica (niente duplicati). Se è già membro di
   // questa postazione lo seleziona; altrimenti lo aggiunge come esterno riusando l'identità.
   async function pickEsistente(s: Utente) {
+    if (s.attivo === false) { setErr(`${s.cognome} ${s.nome} risulta sospeso e non può ricevere turni.`); setSugg([]); return }
     const giaMembro = tutti.find(t => t.utente_id === s.id)
-    if (giaMembro) { setExtra(x => [...x.filter(e => e.id !== giaMembro.id), giaMembro]); setDestId(giaMembro.id); setNuovo(false); setCerca(''); setSugg([]); return }
+    if (giaMembro) {
+      if (!giaMembro.attivo) { setErr(`${nomeCompleto(giaMembro)} risulta sospeso e non può ricevere turni.`); setSugg([]); return }
+      setExtra(x => [...x.filter(e => e.id !== giaMembro.id), giaMembro]); setDestId(giaMembro.id); setNuovo(false); setCerca(''); setSugg([]); return
+    }
     setBusy(true); setErr(null)
     try {
       await store.addMembro(postazioneId, { nome: s.nome, cognome: s.cognome, email: s.email, livello: 'esterno', utenteId: s.id })
