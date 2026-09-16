@@ -20,7 +20,7 @@ function mapNotifica(r: Record<string, unknown>): Notifica {
 
 const RANK_LIVELLO: Record<string, number> = { responsabile: 3, turnista: 2, esterno: 1 }
 // Potere complessivo di un utente nell'Anagrafica (dal più al meno potente), per l'ordinamento.
-const RANK_RUOLO: Record<string, number> = { admin: 5, supervisore: 4, responsabile: 3, turnista: 2, esterno: 1, '—': 0 }
+const RANK_RUOLO: Record<string, number> = { admin: 2, supervisore: 1, utente: 0 }   // solo ruoli GLOBALI: gli altri vanno in ordine alfabetico
 import { ADMIN_EMAIL } from './constants'
 
 export interface NuovoMembro { nome: string; cognome: string; email: string; livello: Livello; utenteId?: string }
@@ -934,8 +934,10 @@ const supaStore = {
   // ── Anagrafica Utenti (Centro di Controllo, solo admin) ──
   //  Elenco paginato di TUTTE le identità del sistema, con ricerca su nome/cognome/email.
   async getUtentiAnagrafica(search: string, offset: number, limit: number): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
-    // Il ruolo (per ordinare) dipende da admin + supervisore + miglior livello di appartenenza,
-    // quindi carichiamo tutto e ordiniamo/paginiamo lato client (l'anagrafica è piccola).
+    // In elenco contano solo i ruoli GLOBALI (admin/supervisore, mostrati in testa); per gli
+    // altri si CONTANO le appartenenze per livello di default (badge «Esterno ×2»…): i ruoli
+    // operativi veri sono per-postazione/mese. Carichiamo tutto e ordiniamo/paginiamo lato
+    // client (l'anagrafica è piccola).
     const [u, m, sup] = await Promise.all([
       supabase.from('utenti').select('id, nome, cognome, email, admin, attivo'),
       supabase.from('turnisti').select('utente_id, livello'),
@@ -945,10 +947,16 @@ const supaStore = {
     if (m.error) throw m.error
     if (sup.error) throw sup.error
     const supSet = new Set((sup.data ?? []).map(s => s.utente_id as string))
-    const best = new Map<string, string>()
-    ;(m.data ?? []).forEach(r => { const id = r.utente_id as string, lv = r.livello as string; const cur = best.get(id); if (!cur || (RANK_LIVELLO[lv] ?? 0) > (RANK_LIVELLO[cur] ?? 0)) best.set(id, lv) })
-    const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : (best.get(id) ?? '—')
-    let rows: UtenteAnagrafica[] = (u.data ?? []).map(x => { const id = x.id as string, admin = !!x.admin; return { id, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin, attivo: (x.attivo as boolean) !== false, ruolo: ruoloOf(id, admin) } })
+    const vuoto = () => ({ responsabile: 0, turnista: 0, esterno: 0 })
+    const conta = new Map<string, { responsabile: number; turnista: number; esterno: number }>()
+    ;(m.data ?? []).forEach(r => {
+      const id = r.utente_id as string, lv = r.livello as string
+      const c = conta.get(id) ?? vuoto()
+      if (lv === 'responsabile' || lv === 'turnista' || lv === 'esterno') c[lv]++
+      conta.set(id, c)
+    })
+    const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : 'utente'
+    let rows: UtenteAnagrafica[] = (u.data ?? []).map(x => { const id = x.id as string, admin = !!x.admin; return { id, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin, attivo: (x.attivo as boolean) !== false, ruolo: ruoloOf(id, admin), livelli: conta.get(id) ?? vuoto() } })
     const s = search.trim().toLowerCase()
     if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
     rows.sort((a, b) => (RANK_RUOLO[b.ruolo] - RANK_RUOLO[a.ruolo]) || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
@@ -1941,16 +1949,19 @@ const localStore = {
     const adminSet = new Set(read<string[]>('gm_dev_admins', []))
     const sosp = new Set(read<string[]>('gm_utenti_sospesi', []))
     const supSet = new Set(read<{ utenteId: string }[]>('gm_dev_supervisori', []).map(s => s.utenteId))
-    const best = new Map<string, string>()
+    const vuoto = () => ({ responsabile: 0, turnista: 0, esterno: 0 })
+    const conta = new Map<string, { responsabile: number; turnista: number; esterno: number }>()
     const base = new Map<string, { id: string; nome: string; cognome: string; email: string }>()
     read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
       const id = t.utente_id ?? t.id
-      const cur = best.get(id); if (!cur || (RANK_LIVELLO[t.livello] ?? 0) > (RANK_LIVELLO[cur] ?? 0)) best.set(id, t.livello)
+      const c = conta.get(id) ?? vuoto()
+      if (t.livello === 'responsabile' || t.livello === 'turnista' || t.livello === 'esterno') c[t.livello]++
+      conta.set(id, c)
       if (!base.has(id)) base.set(id, { id, nome: t.nome, cognome: t.cognome, email: t.email })
     })
     read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!base.has(u.id)) base.set(u.id, { id: u.id, nome: u.nome, cognome: u.cognome, email: u.email }) })
-    const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : (best.get(id) ?? '—')
-    let rows: UtenteAnagrafica[] = [...base.values()].map(x => { const admin = x.email === ADMIN_EMAIL || adminSet.has(x.id); return { ...x, admin, attivo: !sosp.has(x.id), ruolo: ruoloOf(x.id, admin) } })
+    const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : 'utente'
+    let rows: UtenteAnagrafica[] = [...base.values()].map(x => { const admin = x.email === ADMIN_EMAIL || adminSet.has(x.id); return { ...x, admin, attivo: !sosp.has(x.id), ruolo: ruoloOf(x.id, admin), livelli: conta.get(x.id) ?? vuoto() } })
     const s = search.trim().toLowerCase()
     if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
     rows.sort((a, b) => (RANK_RUOLO[b.ruolo] - RANK_RUOLO[a.ruolo]) || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))

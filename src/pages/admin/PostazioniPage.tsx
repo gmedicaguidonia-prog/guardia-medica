@@ -282,14 +282,17 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
 //  sue postazioni (ruolo + icona, link al Personale), la modifica dei dati, la
 //  sospensione reversibile dell'accesso e l'eliminazione definitiva.
 const PAGINA_UTENTI = 20
-// Etichetta + colore del ruolo complessivo mostrato nell'elenco (l'ordinamento è nel data layer).
+// In elenco compaiono SOLO i ruoli GLOBALI (admin/supervisore): gli altri sono semplici
+// "utenti" (icona neutra, ordine alfabetico) con i badge delle appartenenze per livello
+// di default («Esterno ×2»…); il dettaglio per postazione è nella scheda espansa.
 const RUOLO_META: Record<string, { label: string; color: string }> = {
-  admin:        { label: 'Admin',        color: '#a16207' },
-  supervisore:  { label: 'Supervisore',  color: '#0369a1' },
+  admin:       { label: 'Admin',       color: '#a16207' },
+  supervisore: { label: 'Supervisore', color: '#0369a1' },
+}
+const LIVELLO_META: Record<'responsabile' | 'turnista' | 'esterno', { label: string; color: string }> = {
   responsabile: { label: 'Responsabile', color: '#ca8a04' },
   turnista:     { label: 'Turnista',     color: '#1e40af' },
   esterno:      { label: 'Esterno',      color: '#166534' },
-  '—':          { label: 'Nessun ruolo', color: '#9ca3af' },
 }
 function AnagraficaUtentiBox() {
   const { confirm, notify, confirmState } = useConfirm()
@@ -333,17 +336,22 @@ function AnagraficaUtentiBox() {
       ) : (
         <div className="space-y-1.5" style={{ opacity: isFetching ? 0.6 : 1 }}>
           {rows.map(u => {
-            const meta = RUOLO_META[u.ruolo] ?? RUOLO_META['—']
+            const meta = RUOLO_META[u.ruolo]   // solo admin/supervisore; per gli altri undefined
             return (
             <div key={u.id} className="rounded-lg overflow-hidden" style={{ background: '#f4f6f1' }}>
               <button onClick={() => setAperto(aperto === u.id ? null : u.id)} className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left">
-                {u.ruolo === 'supervisore'
-                  ? <Shield size={15} className="shrink-0" style={{ color: u.attivo ? meta.color : '#9ca3af' }} />
-                  : u.ruolo === '—'
-                    ? <UserRound size={15} className="shrink-0" style={{ color: '#9ca3af' }} />
-                    : <IconaLivello livello={u.ruolo as Livello} size={15} className="shrink-0" color={u.attivo ? undefined : '#9ca3af'} />}
+                {u.ruolo === 'admin'
+                  ? <IconaLivello livello={'admin' as Livello} size={15} className="shrink-0" color={u.attivo ? undefined : '#9ca3af'} />
+                  : u.ruolo === 'supervisore'
+                    ? <Shield size={15} className="shrink-0" style={{ color: u.attivo ? meta!.color : '#9ca3af' }} />
+                    : <UserRound size={15} className="shrink-0" style={{ color: u.attivo ? '#6b7280' : '#c3c7cc' }} />}
                 <span className="text-sm font-semibold" style={{ color: u.attivo ? 'var(--t-titolo)' : '#9ca3af', textDecoration: u.attivo ? 'none' : 'line-through' }}>{nomeCompleto(u)}</span>
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: meta.color + '22', color: meta.color }}>{meta.label}</span>
+                {meta && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: meta.color + '22', color: meta.color }}>{meta.label}</span>}
+                {!meta && (['responsabile', 'turnista', 'esterno'] as const).filter(l => u.livelli[l] > 0).map(l => (
+                  <span key={l} className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: LIVELLO_META[l].color + '22', color: LIVELLO_META[l].color }}>
+                    {LIVELLO_META[l].label}{u.livelli[l] > 1 ? ` ×${u.livelli[l]}` : ''}
+                  </span>
+                ))}
                 {!u.attivo && <span className="text-[9px] font-bold px-1 py-0.5 rounded shrink-0" style={{ background: '#fee2e2', color: '#b91c1c' }}>SOSPESO</span>}
                 <span className="text-xs text-stone-400 hidden sm:inline truncate">{u.email}</span>
                 <div className="flex-1" />

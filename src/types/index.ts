@@ -55,7 +55,8 @@ export interface UtenteAnagrafica {
   email: string
   admin: boolean
   attivo: boolean
-  ruolo: string   // ruolo complessivo (admin | supervisore | responsabile | turnista | esterno | —), per ordinamento/etichetta
+  ruolo: string   // solo il ruolo GLOBALE (admin | supervisore | utente): quelli operativi sono per-postazione/mese
+  livelli: { responsabile: number; turnista: number; esterno: number }   // n° postazioni per livello di default (badge «Esterno ×2»…)
 }
 
 /** Un'appartenenza di un utente a una postazione (per la scheda Anagrafica Utenti). */
