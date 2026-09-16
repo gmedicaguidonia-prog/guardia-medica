@@ -694,17 +694,23 @@ function RestoreModal({ onChiudi }: { onChiudi: () => void }) {
   const [giorno, setGiorno] = useState<string | null>(null)
   const [items, setItems] = useState<BackupInfo[] | null>(null)
   const [busy, setBusy] = useState(false)
-  const [mesiOpen, setMesiOpen] = useState<string | null>(null)
   const [mesi, setMesi] = useState<Record<string, BackupMese[]>>({})
 
   useEffect(() => { store.getBackupGiorni().then(setGiorni).catch(() => setGiorni([])) }, [])
-  async function apriGiorno(g: string) { setGiorno(g); setItems(null); setMesiOpen(null); setItems(await store.getBackupDelGiorno(g)) }
-  async function apriMesi(b: BackupInfo) {
-    if (mesiOpen === b.id) { setMesiOpen(null); return }
-    setMesiOpen(b.id)
-    if (!mesi[b.id]) { const m = await store.getBackupMesi(b.id); setMesi(prev => ({ ...prev, [b.id]: m })) }
+  // I mesi vengono caricati e mostrati SUBITO per ogni postazione: il ripristino per-mese
+  // è l'azione principale e nasconderlo dietro un click in più portava a chiudere il modale
+  // convinti di aver ripristinato senza aver avviato nulla.
+  async function apriGiorno(g: string) {
+    setGiorno(g); setItems(null); setMesi({})
+    const lista = await store.getBackupDelGiorno(g)
+    setItems(lista)
+    for (const b of lista) {
+      void store.getBackupMesi(b.id)
+        .then(m => setMesi(prev => ({ ...prev, [b.id]: m })))
+        .catch(() => setMesi(prev => ({ ...prev, [b.id]: [] })))
+    }
   }
-  function refresh() { qc.invalidateQueries({ queryKey: ['postazioni'] }); qc.invalidateQueries({ queryKey: ['log-postazioni'] }) }
+  function refresh() { void qc.invalidateQueries() }
 
   async function ripristinaIntera(b: BackupInfo) {
     const ok = await confirm({ title: `Ripristina «${b.postazioneNome}»`, message: `Verrà ricreata l'intera postazione «${b.postazioneNome}» com'era nel backup del ${giornoLabel(giorno!)}: personale, turni, configurazioni, tutto. Procedere?`, confirmLabel: 'Ripristina tutto' })
@@ -713,11 +719,11 @@ function RestoreModal({ onChiudi }: { onChiudi: () => void }) {
     try { await store.ripristinaPostazioneIntera(b.id); refresh(); void notify({ title: 'Ripristino completato', message: `«${b.postazioneNome}» è stata ripristinata.` }); onChiudi() }
     catch (e) { void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }); setBusy(false) }
   }
-  async function ripristinaMese(b: BackupInfo, mese: string) {
-    const ok = await confirm({ title: `Ripristina ${meseLabel(mese)}`, message: `Verranno ripristinati i dati di ${meseLabel(mese)} per «${b.postazioneNome}» dal backup del ${giornoLabel(giorno!)}. I dati non finalizzati di quel mese verranno reintegrati. Procedere?`, confirmLabel: 'Ripristina il mese' })
+  async function ripristinaMese(b: BackupInfo, m: BackupMese) {
+    const ok = await confirm({ title: `Ripristina ${meseLabel(m.mese)}`, message: `${meseLabel(m.mese)} di «${b.postazioneNome}» tornerà esattamente com'era nel backup del ${giornoLabel(giorno!)}: turni (${m.nTurni}), desiderata, personale del mese e passi di configurazione. Le modifiche fatte dopo quel backup andranno perse. Procedere?`, confirmLabel: 'Ripristina il mese' })
     if (!ok) return
     setBusy(true)
-    try { await store.ripristinaPostazioneMese(b.id, mese); refresh(); void notify({ title: 'Ripristino completato', message: `${meseLabel(mese)} di «${b.postazioneNome}» ripristinato.` }); onChiudi() }
+    try { await store.ripristinaPostazioneMese(b.id, m.mese); refresh(); void notify({ title: 'Ripristino completato', message: `${meseLabel(m.mese)} di «${b.postazioneNome}» è tornato com'era il ${giornoLabel(giorno!)}: ${m.nTurni} turni, desiderata e configurazione compresi.` }); onChiudi() }
     catch (e) { void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }); setBusy(false) }
   }
 
@@ -763,21 +769,22 @@ function RestoreModal({ onChiudi }: { onChiudi: () => void }) {
                     ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#dcfce7', color: '#166534' }}>esiste</span>
                     : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#fee2e2', color: '#b91c1c' }}>eliminata</span>}
                 </div>
-                <div className="px-3 pb-2.5 flex flex-wrap gap-2 items-center">
-                  {b.esiste
-                    ? <span className="text-[11px] text-stone-400 italic">La postazione esiste ancora: puoi ripristinare un singolo mese.</span>
-                    : <button onClick={() => ripristinaIntera(b)} disabled={busy} className="btn-primary text-xs py-1 px-2.5"><RotateCcw size={12} /> Ripristina intera</button>}
-                  <button onClick={() => apriMesi(b)} disabled={busy} className="btn-secondary text-xs py-1 px-2.5"><CalendarDays size={12} /> {mesiOpen === b.id ? 'Nascondi mesi' : 'Ripristina un mese'}</button>
-                </div>
-                {mesiOpen === b.id && (
-                  <div className="px-3 pb-3 flex flex-wrap gap-1.5">
-                    {!mesi[b.id] ? <span className="text-xs text-stone-400">Caricamento…</span> :
-                     mesi[b.id].length === 0 ? <span className="text-xs text-stone-400 italic">Nessun mese con turni nel backup.</span> :
-                     mesi[b.id].map(m => (
-                       <button key={m.mese} onClick={() => ripristinaMese(b, m.mese)} disabled={busy} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium capitalize" style={{ background: '#fff', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }} title={`${m.nTurni} turni`}>
-                         <RotateCcw size={11} /> {meseLabel(m.mese)} <span className="text-[10px] text-stone-400">· {m.nTurni}t</span>
-                       </button>
-                     ))}
+                {b.esiste ? (
+                  <div className="px-3 pb-3 space-y-1.5">
+                    <p className="text-[11px] text-stone-500">Clicca il mese da ripristinare: tornerà com'era in questo backup (turni, desiderata e configurazione compresi).</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {!mesi[b.id] ? <span className="text-xs text-stone-400 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Caricamento mesi…</span> :
+                       mesi[b.id].length === 0 ? <span className="text-xs text-stone-400 italic">Nessun mese con turni in questo backup.</span> :
+                       mesi[b.id].map(m => (
+                         <button key={m.mese} onClick={() => ripristinaMese(b, m)} disabled={busy} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium capitalize disabled:opacity-50" style={{ background: '#fff', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }} title={`${m.nTurni} turni`}>
+                           <RotateCcw size={11} /> {meseLabel(m.mese)} <span className="text-[10px] text-stone-400">· {m.nTurni}t</span>
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-3 pb-2.5">
+                    <button onClick={() => ripristinaIntera(b)} disabled={busy} className="btn-primary text-xs py-1 px-2.5"><RotateCcw size={12} /> Ripristina l'intera postazione</button>
                   </div>
                 )}
               </div>

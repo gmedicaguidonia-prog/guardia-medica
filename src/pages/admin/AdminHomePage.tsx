@@ -278,14 +278,14 @@ function RipristinoBox({ postazioneId }: { postazioneId: string }) {
     if (sel === id) { setSel(null); setMesi(null); return }
     setSel(id); setMesi(null); setMesi(await store.getBackupMesi(id))
   }
-  async function ripristina(mese: string) {
+  async function ripristina(m: BackupMese) {
     const b = backups?.find(x => x.id === sel)
-    const ok = await confirm({ title: `Ripristina ${meseLabel(mese)}`, message: `Verranno reintegrati i dati di ${meseLabel(mese)} dal backup del ${b ? itDate(b.giorno) : ''}. I dati non finalizzati di quel mese verranno reintegrati. Procedere?`, confirmLabel: 'Ripristina' })
+    const ok = await confirm({ title: `Ripristina ${meseLabel(m.mese)}`, message: `${meseLabel(m.mese)} tornerà esattamente com'era nel backup del ${b ? itDate(b.giorno) : ''}: turni (${m.nTurni}), desiderata, personale del mese e passi di configurazione. Le modifiche fatte dopo quel backup andranno perse. Procedere?`, confirmLabel: 'Ripristina il mese' })
     if (!ok || !sel) return
     setBusy(true)
     try {
-      await store.ripristinaPostazioneMese(sel, mese)
-      void notify({ title: 'Ripristino completato', message: `${meseLabel(mese)} ripristinato dal backup.` })
+      await store.ripristinaPostazioneMese(sel, m.mese)
+      void notify({ title: 'Ripristino completato', message: `${meseLabel(m.mese)} è tornato com'era il ${b ? itDate(b.giorno) : 'giorno del backup'}: ${m.nTurni} turni, desiderata e configurazione compresi.` })
       await qc.invalidateQueries()
       setAperto(false); setSel(null); setMesi(null)
     } catch (e) { void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }) }
@@ -306,7 +306,7 @@ function RipristinoBox({ postazioneId }: { postazioneId: string }) {
         </button>
         {aperto && (
           <div className="mt-3 space-y-2">
-            <p className="text-xs text-stone-500">Scegli un backup, poi il mese da reintegrare. I dati attualmente presenti in quel mese vengono conservati; il backup ne reintegra i pezzi mancanti (turni, desiderata, ecc.).</p>
+            <p className="text-xs text-stone-500">Scegli un backup, poi il mese da ripristinare: quel mese tornerà esattamente com'era nel giorno del backup (turni, desiderata, personale e configurazione). Le modifiche fatte dopo andranno perse.</p>
             {backups === null ? <p className="text-sm text-stone-500 flex items-center gap-1"><Loader2 size={13} className="animate-spin" /> Caricamento…</p> :
              backups.length === 0 ? <p className="text-sm text-stone-500">Nessun backup disponibile per questa postazione.</p> : (
               <div className="space-y-1.5">
@@ -325,7 +325,7 @@ function RipristinoBox({ postazioneId }: { postazioneId: string }) {
                         {mesi === null ? <span className="text-xs text-stone-400 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Caricamento mesi…</span> :
                          mesi.length === 0 ? <span className="text-xs text-stone-400 italic">Nessun mese con turni nel backup.</span> :
                          mesi.map(m => (
-                           <button key={m.mese} onClick={() => ripristina(m.mese)} disabled={busy} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium disabled:opacity-50" style={{ background: '#fff', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }} title={`${m.nTurni} turni`}>
+                           <button key={m.mese} onClick={() => ripristina(m)} disabled={busy} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium disabled:opacity-50" style={{ background: '#fff', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }} title={`${m.nTurni} turni`}>
                              <RotateCcw size={11} /> {meseLabel(m.mese)} <span className="text-[10px] text-stone-400">· {m.nTurni}t</span>
                            </button>
                          ))}
