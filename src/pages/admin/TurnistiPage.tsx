@@ -72,15 +72,23 @@ export function TurnistiPage() {
   // Gli utenti SOSPESI non sono proponibili per i nuovi mesi (restano solo nei mesi dove già lavorano).
   const nonNelMese = useMemo(() => gruppiPerLivello(turnisti.filter(t => !staged.has(t.id) && t.attivo)), [turnisti, staged])
 
+  // Anagrafica della postazione: i SOSPESI non compaiono (si gestiscono solo dal
+  // riquadro «Utenti sospesi» del Centro di Controllo).
+  const anagrAttivi = useMemo(() => turnisti.filter(t => t.attivo), [turnisti])
+  const nSospesiNascosti = turnisti.length - anagrAttivi.length
+
   // Paginazione degli elenchi di nomi (max NOMI_PER_PAGINA per pagina, gruppi conservati)
   const [pagMese, setPagMese] = useState(0)
   const [pagAgg, setPagAgg] = useState(0)
+  const [pagAnagr, setPagAnagr] = useState(0)
   useEffect(() => { setPagMese(0); setPagAgg(0) }, [meseKey])
   const totAgg = useMemo(() => nonNelMese.reduce((s, g) => s + g.items.length, 0), [nonNelMese])
   const nPagMese = Math.max(1, Math.ceil(personaleTurnisti.length / NOMI_PER_PAGINA))
   const nPagAgg = Math.max(1, Math.ceil(totAgg / NOMI_PER_PAGINA))
+  const nPagAnagr = Math.max(1, Math.ceil(anagrAttivi.length / NOMI_PER_PAGINA))
   useEffect(() => { if (pagMese > nPagMese - 1) setPagMese(0) }, [pagMese, nPagMese])
   useEffect(() => { if (pagAgg > nPagAgg - 1) setPagAgg(0) }, [pagAgg, nPagAgg])
+  useEffect(() => { if (pagAnagr > nPagAnagr - 1) setPagAnagr(0) }, [pagAnagr, nPagAnagr])
 
   function cambiaMese(delta: number) { let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ } setMeseAnno(a, m) }
 
@@ -375,7 +383,7 @@ export function TurnistiPage() {
 
             <table className="w-full text-sm mt-1">
               <tbody className="divide-y divide-gray-100">
-                {gruppiPerLivello(turnisti).map(g => (
+                {paginaGruppi(gruppiPerLivello(anagrAttivi), pagAnagr).map(g => (
                   <Fragment key={g.liv}>
                     <tr><td colSpan={4} className="px-1 py-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: BADGE[g.liv].fg }}><span className="inline-flex items-center gap-1"><IconaLivello livello={g.liv} size={11} /> {g.label} · {g.items.length}</span></td></tr>
                     {g.items.map(t => editId === t.id ? (
@@ -401,9 +409,15 @@ export function TurnistiPage() {
                     ))}
                   </Fragment>
                 ))}
-                {turnisti.length === 0 && !isLoading && <tr><td colSpan={4} className="px-1 py-3 text-center text-stone-500 text-sm">Anagrafica vuota.</td></tr>}
+                {anagrAttivi.length === 0 && !isLoading && <tr><td colSpan={4} className="px-1 py-3 text-center text-stone-500 text-sm">Anagrafica vuota.</td></tr>}
               </tbody>
             </table>
+            <PaginaNav pagina={pagAnagr} nPagine={nPagAnagr} totale={anagrAttivi.length} onCambia={setPagAnagr} />
+            {nSospesiNascosti > 0 && (
+              <p className="text-[11px] font-medium" style={{ color: '#b45309' }}>
+                {nSospesiNascosti === 1 ? '1 utente sospeso non compare' : `${nSospesiNascosti} utenti sospesi non compaiono`} in questo elenco: {nSospesiNascosti === 1 ? 'lo trovi' : 'li trovi'} in <strong>Centro di Controllo → Utenti sospesi</strong>.
+              </p>
+            )}
             <p className="text-[11px] text-stone-400">Il <strong>livello di default</strong> dell’anagrafica viene proposto quando aggiungi una persona a un mese; poi puoi cambiarne il ruolo mese per mese qui sopra. Chi ha storico non è cancellabile (per non lasciare buchi nei mesi passati).</p>
           </div>
         )}

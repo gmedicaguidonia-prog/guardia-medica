@@ -912,11 +912,13 @@ const supaStore = {
     }).sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
   },
 
-  // Tutti gli utenti con il flag admin (per la gestione amministratori).
+  // Utenti ATTIVI con il flag admin (per i menu Amministratori/Supervisori del CdC):
+  // i sospesi non possono essere promossi e compaiono solo nel riquadro «Utenti sospesi».
   async getUtenti(): Promise<UtenteAdmin[]> {
-    const { data, error } = await supabase.from('utenti').select('id, nome, cognome, email, admin')
+    const { data, error } = await supabase.from('utenti').select('id, nome, cognome, email, admin, attivo')
     if (error) throw error
-    return (data ?? []).map(x => ({ id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin: !!x.admin }))
+    return (data ?? []).filter(x => (x.attivo as boolean) !== false)
+      .map(x => ({ id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin: !!x.admin }))
       .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
   },
   // Promuove/rimuove un amministratore. Lato DB un trigger garantisce che solo un
@@ -1932,12 +1934,13 @@ const localStore = {
   async getUtenti(): Promise<UtenteAdmin[]> {
     ensureSeed()
     const extra = new Set(read<string[]>('gm_dev_admins', []))
+    const sosp = new Set(read<string[]>('gm_utenti_sospesi', []))
     const map = new Map<string, UtenteAdmin>()
     read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
       if (!map.has(t.utente_id)) map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, admin: t.email === ADMIN_EMAIL || extra.has(t.utente_id) })
     })
     read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!map.has(u.id)) map.set(u.id, { ...u, admin: u.admin || extra.has(u.id) }) })
-    return [...map.values()].sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+    return [...map.values()].filter(u => !sosp.has(u.id)).sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
   },
   async setUtenteAdmin(utenteId: string, on: boolean): Promise<void> {
     const s = new Set(read<string[]>('gm_dev_admins', []))
