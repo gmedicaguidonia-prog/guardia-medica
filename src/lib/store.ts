@@ -39,7 +39,11 @@ function meseRange(anno: number, mese: number): { first: string; last: string } 
 function pickVersione<T extends { valido_da: string; valido_fino: string | null }>(versioni: T[], mese: string): T | null {
   // La versione che "governa" il mese = quella col valido_da più recente ≤ mese:
   // un periodo più recente SOVRASCRIVE i precedenti dal suo inizio in poi.
-  const gov = versioni.filter(v => v.valido_da <= mese).sort((a, b) => b.valido_da.localeCompare(a.valido_da))[0]
+  // A parità di valido_da (stato anomalo: versione residua sopravvissuta a un
+  // ripristino) vince quella con valido_fino CHIUSO — è la consolidata a cui
+  // puntano i dati; senza questo tie-break la scelta cambiava a ogni caricamento.
+  const gov = versioni.filter(v => v.valido_da <= mese).sort((a, b) =>
+    b.valido_da.localeCompare(a.valido_da) || (a.valido_fino ?? '9999-99').localeCompare(b.valido_fino ?? '9999-99'))[0]
   if (!gov) return null
   // Se la sua validità è già scaduta prima del mese → scoperto: NON si torna a un
   // periodo più vecchio ancora "valido" (il più recente ha la precedenza assoluta).
@@ -885,21 +889,25 @@ const supaStore = {
 
   // ── Debug "doppleganger": tutti gli utenti con livello max dalle appartenenze ──
   async getUtentiImpersonabili(): Promise<UtenteImpersonabile[]> {
-    const [u, m] = await Promise.all([
+    const [u, m, s] = await Promise.all([
       supabase.from('utenti').select('id, nome, cognome, email'),
       supabase.from('turnisti').select('utente_id, livello, postazione_id'),
+      supabase.from('supervisori').select('utente_id, tutte_postazioni'),
     ])
     if (u.error) throw u.error
     if (m.error) throw m.error
+    if (s.error) throw s.error
     const info = new Map<string, { livello: Livello; postazioneId: string }>()
     ;(m.data ?? []).forEach(r => {
       const uid = r.utente_id as string, lv = r.livello as Livello
       const cur = info.get(uid)
       if (!cur || (RANK_LIVELLO[lv] ?? 0) > (RANK_LIVELLO[cur.livello] ?? 0)) info.set(uid, { livello: lv, postazioneId: r.postazione_id as string })
     })
+    const sup = new Map<string, boolean>()
+    ;(s.data ?? []).forEach(r => sup.set(r.utente_id as string, !!r.tutte_postazioni))
     return (u.data ?? []).map(x => {
       const i = info.get(x.id as string)
-      return { id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', livello: (i?.livello ?? 'esterno') as Livello, postazioneId: i?.postazioneId ?? null }
+      return { id: x.id as string, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', livello: (i?.livello ?? 'esterno') as Livello, postazioneId: i?.postazioneId ?? null, isSupervisore: sup.has(x.id as string), tuttePostazioni: sup.get(x.id as string) ?? false }
     }).sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
   },
 
@@ -1909,7 +1917,7 @@ const localStore = {
     read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
       const cur = map.get(t.utente_id)
       if (!cur || (RANK_LIVELLO[t.livello] ?? 0) > (RANK_LIVELLO[cur.livello] ?? 0)) {
-        map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, livello: t.livello, postazioneId: t.postazione_id ?? null })
+        map.set(t.utente_id, { id: t.utente_id, nome: t.nome, cognome: t.cognome, email: t.email, livello: t.livello, postazioneId: t.postazione_id ?? null, isSupervisore: false, tuttePostazioni: false })
       }
     })
     return [...map.values()].sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))

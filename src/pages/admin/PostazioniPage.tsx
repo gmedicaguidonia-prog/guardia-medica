@@ -712,28 +712,43 @@ function RestoreModal({ onChiudi }: { onChiudi: () => void }) {
   }
   function refresh() { void qc.invalidateQueries() }
 
+  // L'esito va mostrato PRIMA di chiudere il modale (await notify): il ConfirmModal
+  // vive dentro questo componente, chiudendo subito il messaggio non si vedeva mai.
   async function ripristinaIntera(b: BackupInfo) {
     const ok = await confirm({ title: `Ripristina «${b.postazioneNome}»`, message: `Verrà ricreata l'intera postazione «${b.postazioneNome}» com'era nel backup del ${giornoLabel(giorno!)}: personale, turni, configurazioni, tutto. Procedere?`, confirmLabel: 'Ripristina tutto' })
     if (!ok) return
     setBusy(true)
-    try { await store.ripristinaPostazioneIntera(b.id); refresh(); void notify({ title: 'Ripristino completato', message: `«${b.postazioneNome}» è stata ripristinata.` }); onChiudi() }
-    catch (e) { void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }); setBusy(false) }
+    try {
+      await store.ripristinaPostazioneIntera(b.id); refresh(); setBusy(false)
+      await notify({ title: 'Ripristino completato ✓', message: `«${b.postazioneNome}» è stata ricreata com'era nel backup del ${giornoLabel(giorno!)}.` })
+      onChiudi()
+    } catch (e) { setBusy(false); void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }) }
   }
   async function ripristinaMese(b: BackupInfo, m: BackupMese) {
     const ok = await confirm({ title: `Ripristina ${meseLabel(m.mese)}`, message: `${meseLabel(m.mese)} di «${b.postazioneNome}» tornerà esattamente com'era nel backup del ${giornoLabel(giorno!)}: turni (${m.nTurni}), desiderata, personale del mese e passi di configurazione. Le modifiche fatte dopo quel backup andranno perse. Procedere?`, confirmLabel: 'Ripristina il mese' })
     if (!ok) return
     setBusy(true)
-    try { await store.ripristinaPostazioneMese(b.id, m.mese); refresh(); void notify({ title: 'Ripristino completato', message: `${meseLabel(m.mese)} di «${b.postazioneNome}» è tornato com'era il ${giornoLabel(giorno!)}: ${m.nTurni} turni, desiderata e configurazione compresi.` }); onChiudi() }
-    catch (e) { void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }); setBusy(false) }
+    try {
+      await store.ripristinaPostazioneMese(b.id, m.mese); refresh(); setBusy(false)
+      await notify({ title: 'Ripristino completato ✓', message: `${meseLabel(m.mese)} di «${b.postazioneNome}» è tornato com'era il ${giornoLabel(giorno!)}: ${m.nTurni} turni, desiderata, personale e configurazione compresi.` })
+      onChiudi()
+    } catch (e) { setBusy(false); void notify({ title: 'Ripristino non riuscito', message: (e as Error).message }) }
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={onChiudi}>
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={busy ? undefined : onChiudi}>
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
-      <div className="card w-full max-w-lg max-h-[85vh] overflow-y-auto p-5 space-y-3" onClick={e => e.stopPropagation()}>
+      <div className="card relative w-full max-w-lg max-h-[85vh] overflow-y-auto p-5 space-y-3" onClick={e => e.stopPropagation()}>
+        {busy && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3" style={{ background: 'rgba(255,255,255,0.9)' }}>
+            <Loader2 size={42} className="animate-spin" style={{ color: 'var(--t-accento)' }} />
+            <p className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>Ripristino in corso…</p>
+            <p className="text-xs text-stone-500">Attendi, non chiudere questa finestra.</p>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: 'var(--t-titolo)' }}><History size={18} style={{ color: 'var(--t-accento)' }} /> Ripristina da backup</h3>
-          <button onClick={onChiudi} className="p-1.5 rounded hover:bg-stone-100 text-stone-500"><X size={18} /></button>
+          <button onClick={onChiudi} disabled={busy} className="p-1.5 rounded hover:bg-stone-100 text-stone-500 disabled:opacity-40"><X size={18} /></button>
         </div>
 
         {/* step 1: giorni */}
@@ -792,7 +807,6 @@ function RestoreModal({ onChiudi }: { onChiudi: () => void }) {
           </div>
         )}
 
-        {busy && <p className="text-xs text-stone-500 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Operazione in corso…</p>}
       </div>
     </div>
   )

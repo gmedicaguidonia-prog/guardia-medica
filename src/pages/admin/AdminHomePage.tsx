@@ -298,7 +298,13 @@ function RipristinoBox({ postazioneId }: { postazioneId: string }) {
     <section className="space-y-2">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <h2 className="text-xs font-bold uppercase tracking-wider text-stone-500 flex items-center gap-1.5"><History size={13} /> Ripristino da backup</h2>
-      <div className="card p-4">
+      <div className="card relative p-4">
+        {busy && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2" style={{ background: 'rgba(255,255,255,0.9)' }}>
+            <Loader2 size={36} className="animate-spin" style={{ color: 'var(--t-accento)' }} />
+            <p className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>Ripristino in corso…</p>
+          </div>
+        )}
         <button onClick={toggle} className="w-full flex items-center gap-2 text-left">
           <History size={16} style={{ color: 'var(--t-accento)' }} />
           <span className="font-semibold text-sm text-stone-700">Ripristina un mese di questa postazione</span>
@@ -336,7 +342,6 @@ function RipristinoBox({ postazioneId }: { postazioneId: string }) {
                 })}
               </div>
              )}
-            {busy && <p className="text-xs text-stone-500 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Ripristino in corso…</p>}
           </div>
         )}
       </div>

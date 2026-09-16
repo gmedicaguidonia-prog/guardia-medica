@@ -83,7 +83,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
   function attivaDoppleganger() {
     const u = utenti.find(x => x.id === dgScelto)
     if (!u) return
-    setDoppleganger({ id: u.id, email: u.email, livello: u.livello, nome: u.nome, cognome: u.cognome, postazioneId: u.postazioneId, isSupervisore: false, tuttePostazioni: false })
+    setDoppleganger({ id: u.id, email: u.email, livello: u.livello, nome: u.nome, cognome: u.cognome, postazioneId: u.postazioneId, isSupervisore: u.isSupervisore, tuttePostazioni: u.tuttePostazioni })
     setDebugModal(null)
   }
 
@@ -304,7 +304,7 @@ export function NavBar({ user, onSignOut, isDev, onDevSwitch, updateAvailable, o
               <>
                 <p className="text-sm text-stone-600 mb-2">Vuoi attivare la modalità doppleganger fingendoti chi?</p>
                 <select value={dgScelto} onChange={e => setDgScelto(e.target.value)} className="input text-sm w-full mb-4">
-                  {utenti.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)} — {u.livello}{u.id === realUser?.id ? ' (io)' : ''}</option>)}
+                  {utenti.map(u => <option key={u.id} value={u.id}>{nomeCompleto(u)} — {u.livello}{u.isSupervisore ? ' · supervisore' : ''}{u.id === realUser?.id ? ' (io)' : ''}</option>)}
                 </select>
                 <div className="flex justify-end gap-2">
                   <button onClick={() => setDebugModal(null)} className="btn-secondary text-sm py-1.5 px-3">Annulla</button>
