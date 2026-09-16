@@ -10,6 +10,7 @@ import { useUnsaved } from '../../contexts/UnsavedContext'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { IconaLivello } from '../../components/IconaLivello'
+import { PaginaNav, paginaGruppi, NOMI_PER_PAGINA } from '../../components/PaginaNav'
 import { useFinalizzato } from '../../hooks/useFinalizzato'
 import type { Turnista, Livello, Utente, TurnistaMese } from '../../types'
 
@@ -68,7 +69,18 @@ export function TurnistiPage() {
 
   const personaleTurnisti = useMemo(() => [...staged].map(([id, liv]) => { const t = tById.get(id); return t ? { ...t, livello: liv } : null }).filter((t): t is Turnista => !!t), [staged, tById])
   const gruppiMese = useMemo(() => gruppiPerLivello(personaleTurnisti), [personaleTurnisti])
-  const nonNelMese = useMemo(() => gruppiPerLivello(turnisti.filter(t => !staged.has(t.id))), [turnisti, staged])
+  // Gli utenti SOSPESI non sono proponibili per i nuovi mesi (restano solo nei mesi dove già lavorano).
+  const nonNelMese = useMemo(() => gruppiPerLivello(turnisti.filter(t => !staged.has(t.id) && t.attivo)), [turnisti, staged])
+
+  // Paginazione degli elenchi di nomi (max NOMI_PER_PAGINA per pagina, gruppi conservati)
+  const [pagMese, setPagMese] = useState(0)
+  const [pagAgg, setPagAgg] = useState(0)
+  useEffect(() => { setPagMese(0); setPagAgg(0) }, [meseKey])
+  const totAgg = useMemo(() => nonNelMese.reduce((s, g) => s + g.items.length, 0), [nonNelMese])
+  const nPagMese = Math.max(1, Math.ceil(personaleTurnisti.length / NOMI_PER_PAGINA))
+  const nPagAgg = Math.max(1, Math.ceil(totAgg / NOMI_PER_PAGINA))
+  useEffect(() => { if (pagMese > nPagMese - 1) setPagMese(0) }, [pagMese, nPagMese])
+  useEffect(() => { if (pagAgg > nPagAgg - 1) setPagAgg(0) }, [pagAgg, nPagAgg])
 
   function cambiaMese(delta: number) { let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ } setMeseAnno(a, m) }
 
@@ -79,8 +91,19 @@ export function TurnistiPage() {
   async function copiaPersonale() {
     if (!meseSorgente) return
     const src = await store.getPersonaleMese(postazioneId!, meseSorgente)
-    const anagr = new Set(turnisti.map(t => t.id))
-    setStaged(prev => { const n = new Map(prev); for (const p of src) if (anagr.has(p.turnista_id)) n.set(p.turnista_id, p.livello); return n })
+    // Gli utenti SOSPESI presenti nel mese sorgente non vengono copiati: avvisa con i nomi.
+    const sospesi = src.map(p => tById.get(p.turnista_id)).filter((t): t is Turnista => !!t && !t.attivo)
+    if (sospesi.length > 0) {
+      const nomi = sospesi.map(t => nomeCompleto(t)).join(', ')
+      await notify({
+        title: sospesi.length === 1 ? 'Utente sospeso non copiato' : 'Utenti sospesi non copiati',
+        message: sospesi.length === 1
+          ? `L'utente ${nomi} risulta sospeso: le sue informazioni non verranno copiate nel nuovo mese.`
+          : `Gli utenti ${nomi} risultano sospesi: le loro informazioni non verranno copiate nel nuovo mese.`,
+      })
+    }
+    const copiabili = new Set(turnisti.filter(t => t.attivo).map(t => t.id))
+    setStaged(prev => { const n = new Map(prev); for (const p of src) if (copiabili.has(p.turnista_id)) n.set(p.turnista_id, p.livello); return n })
   }
   function annulla() { setStaged(new Map(serverMap)) }
 
@@ -239,7 +262,7 @@ export function TurnistiPage() {
 
         {staged.size === 0 ? (
           <p className="text-xs text-stone-400 italic">Nessuno in servizio questo mese. Aggiungi le persone dall’elenco qui sotto, poi premi Conferma.</p>
-        ) : gruppiMese.map(g => (
+        ) : paginaGruppi(gruppiMese, pagMese).map(g => (
           <div key={g.liv}>
             <p className="text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1" style={{ color: BADGE[g.liv].fg }}><IconaLivello livello={g.liv} size={11} /> {g.label} · {g.items.length}</p>
             <div className="space-y-1">
@@ -255,6 +278,8 @@ export function TurnistiPage() {
             </div>
           </div>
         ))}
+
+        <PaginaNav pagina={pagMese} nPagine={nPagMese} totale={personaleTurnisti.length} onCambia={setPagMese} />
 
         {(mostraSalva || dirty) && (
           <div className="flex items-center gap-2 pt-1 flex-wrap">
@@ -274,7 +299,7 @@ export function TurnistiPage() {
         <h2 className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>Aggiungi al mese</h2>
         {isLoading ? <p className="text-xs text-stone-400">Caricamento…</p>
           : nonNelMese.length === 0 ? <p className="text-xs text-stone-400 italic">Tutti gli inseriti in anagrafica sono già nel personale di questo mese.</p>
-          : nonNelMese.map(g => (
+          : paginaGruppi(nonNelMese, pagAgg).map(g => (
             <div key={g.liv}>
               <p className="text-[11px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1" style={{ color: BADGE[g.liv].fg }}><IconaLivello livello={g.liv} size={11} /> {g.label}</p>
               <div className="flex flex-wrap gap-2">
@@ -288,6 +313,7 @@ export function TurnistiPage() {
               </div>
             </div>
           ))}
+        <PaginaNav pagina={pagAgg} nPagine={nPagAgg} totale={totAgg} onCambia={setPagAgg} />
       </div>
       </>)}
 

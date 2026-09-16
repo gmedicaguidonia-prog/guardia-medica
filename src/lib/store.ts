@@ -63,6 +63,7 @@ function normMembro(r: Record<string, unknown>): Turnista {
     cognome:    (u.cognome as string) ?? '',
     email:      (u.email as string) ?? '',
     livello:    r.livello as Livello,
+    attivo:     (u.attivo as boolean) !== false,
     created_at: (r.created_at as string) ?? '',
   }
 }
@@ -179,7 +180,7 @@ const supaStore = {
   },
   // ── Personale (appartenenze) ──
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {
-    const { data, error } = await supabase.from('turnisti').select('id, utente_id, livello, created_at, utenti(nome, cognome, email)').eq('postazione_id', postazioneId)
+    const { data, error } = await supabase.from('turnisti').select('id, utente_id, livello, created_at, utenti(nome, cognome, email, attivo)').eq('postazione_id', postazioneId)
     if (error) throw error
     return (data ?? []).map(normMembro)
   },
@@ -940,14 +941,16 @@ const supaStore = {
   },
 
   // ── Anagrafica Utenti (Centro di Controllo, solo admin) ──
-  //  Elenco paginato di TUTTE le identità del sistema, con ricerca su nome/cognome/email.
-  async getUtentiAnagrafica(search: string, offset: number, limit: number): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
+  //  Elenco paginato delle identità del sistema, con ricerca su nome/cognome/email.
+  //  `sospesi=false` (default) → solo utenti ATTIVI; `sospesi=true` → solo i SOSPESI
+  //  (riquadro dedicato «Utenti sospesi», ordinati per data di sospensione).
+  async getUtentiAnagrafica(search: string, offset: number, limit: number, sospesi = false): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
     // In elenco contano solo i ruoli GLOBALI (admin/supervisore, mostrati in testa); per gli
     // altri si CONTANO le appartenenze per livello di default (badge «Esterno ×2»…): i ruoli
     // operativi veri sono per-postazione/mese. Carichiamo tutto e ordiniamo/paginiamo lato
     // client (l'anagrafica è piccola).
     const [u, m, sup] = await Promise.all([
-      supabase.from('utenti').select('id, nome, cognome, email, admin, attivo'),
+      supabase.from('utenti').select('id, nome, cognome, email, admin, attivo, sospeso_il'),
       supabase.from('turnisti').select('utente_id, livello'),
       supabase.from('supervisori').select('utente_id'),
     ])
@@ -964,10 +967,12 @@ const supaStore = {
       conta.set(id, c)
     })
     const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : 'utente'
-    let rows: UtenteAnagrafica[] = (u.data ?? []).map(x => { const id = x.id as string, admin = !!x.admin; return { id, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin, attivo: (x.attivo as boolean) !== false, ruolo: ruoloOf(id, admin), livelli: conta.get(id) ?? vuoto() } })
+    let rows: UtenteAnagrafica[] = (u.data ?? []).map(x => { const id = x.id as string, admin = !!x.admin; return { id, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin, attivo: (x.attivo as boolean) !== false, sospesoIl: (x.sospeso_il as string | null) ?? null, ruolo: ruoloOf(id, admin), livelli: conta.get(id) ?? vuoto() } })
+    rows = rows.filter(r => r.attivo !== sospesi)
     const s = search.trim().toLowerCase()
     if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
-    rows.sort((a, b) => (RANK_RUOLO[b.ruolo] - RANK_RUOLO[a.ruolo]) || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+    if (sospesi) rows.sort((a, b) => (b.sospesoIl ?? '').localeCompare(a.sospesoIl ?? '') || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+    else rows.sort((a, b) => (RANK_RUOLO[b.ruolo] - RANK_RUOLO[a.ruolo]) || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
     return { rows: rows.slice(offset, offset + limit), total: rows.length }
   },
   // Appartenenze (postazione + ruolo) di un utente, per la sua scheda.
@@ -1156,7 +1161,7 @@ function ensureSeed(): void {
   writeLs<Postazione[]>(LS_POSTAZIONI, [{ id: pid, nome: 'Guidonia - Palombara Giorno', attiva: true, created_at: now }])
   writeLs<(ConfigVersione & { postazione_id: string })[]>(LS_VERSIONI, [{ id: vid, valido_da: meseCorrente(), valido_fino: null, created_at: now, postazione_id: pid }])
   const sid = uid()
-  writeLs<(Turnista & { postazione_id: string })[]>(LS_TURNISTI, [{ id: sid, utente_id: sid, nome: 'Stefano', cognome: 'Marabelli', email: ADMIN_EMAIL, livello: 'turnista', created_at: now, postazione_id: pid }])
+  writeLs<(Turnista & { postazione_id: string })[]>(LS_TURNISTI, [{ id: sid, utente_id: sid, nome: 'Stefano', cognome: 'Marabelli', email: ADMIN_EMAIL, livello: 'turnista', attivo: true, created_at: now, postazione_id: pid }])
   writeLs<TurnoSchema[]>(LS_SCHEMA, [
     { id: uid(), versione_id: vid, nome: 'Notte',  ora_inizio: '20:00', ora_fine: '08:00', n_turnisti: 1, ricorrenza: 'tutti',   giorni_custom: [], ordine: 10, created_at: now },
     { id: uid(), versione_id: vid, nome: 'Giorno', ora_inizio: '08:00', ora_fine: '20:00', n_turnisti: 1, ricorrenza: 'festivi', giorni_custom: [], ordine: 20, created_at: now },
@@ -1253,7 +1258,8 @@ const localStore = {
 
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {
     ensureSeed()
-    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId).map(t => ({ ...t, utente_id: t.utente_id ?? t.id })).slice().sort(cmpTurnisti)
+    const sosp = new Set(read<string[]>('gm_utenti_sospesi', []))
+    return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId).map(t => ({ ...t, utente_id: t.utente_id ?? t.id, attivo: !sosp.has(t.utente_id ?? t.id) })).slice().sort(cmpTurnisti)
   },
   async searchUtenti(query: string): Promise<Utente[]> {
     const q = query.trim().toLowerCase()
@@ -1273,7 +1279,7 @@ const localStore = {
     if (input.livello === 'turnista' && list.some(t => t.email.toLowerCase() === email && t.livello === 'turnista')) throw new Error(`${input.nome} ${input.cognome} è già Turnista in un'altra postazione. Può esserlo in una sola.`)
     if (list.some(t => t.email.toLowerCase() === email && (t.postazione_id ?? DEV_POSTAZIONE) === postazioneId)) throw new Error('Questa persona è già nel personale di questa postazione.')
     const utenteId = input.utenteId ?? list.find(t => t.email.toLowerCase() === email)?.utente_id ?? uid()
-    list.push({ id: uid(), utente_id: utenteId, nome: input.nome.trim(), cognome: input.cognome.trim(), email, livello: input.livello, created_at: new Date().toISOString(), postazione_id: postazioneId })
+    list.push({ id: uid(), utente_id: utenteId, nome: input.nome.trim(), cognome: input.cognome.trim(), email, livello: input.livello, attivo: true, created_at: new Date().toISOString(), postazione_id: postazioneId })
     writeLs(LS_TURNISTI, list)
   },
   async verificaDuplicati(nome: string, cognome: string, email: string): Promise<{ perEmail: Utente | null; perNome: Utente | null }> {
@@ -1952,10 +1958,11 @@ const localStore = {
   },
 
   // ── Anagrafica Utenti (DEV) ── (sospesi in 'gm_utenti_sospesi')
-  async getUtentiAnagrafica(search: string, offset: number, limit: number): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
+  async getUtentiAnagrafica(search: string, offset: number, limit: number, sospesi = false): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
     ensureSeed()
     const adminSet = new Set(read<string[]>('gm_dev_admins', []))
     const sosp = new Set(read<string[]>('gm_utenti_sospesi', []))
+    const sospQuando = read<Record<string, string>>('gm_utenti_sospesi_quando', {})
     const supSet = new Set(read<{ utenteId: string }[]>('gm_dev_supervisori', []).map(s => s.utenteId))
     const vuoto = () => ({ responsabile: 0, turnista: 0, esterno: 0 })
     const conta = new Map<string, { responsabile: number; turnista: number; esterno: number }>()
@@ -1969,10 +1976,12 @@ const localStore = {
     })
     read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!base.has(u.id)) base.set(u.id, { id: u.id, nome: u.nome, cognome: u.cognome, email: u.email }) })
     const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : 'utente'
-    let rows: UtenteAnagrafica[] = [...base.values()].map(x => { const admin = x.email === ADMIN_EMAIL || adminSet.has(x.id); return { ...x, admin, attivo: !sosp.has(x.id), ruolo: ruoloOf(x.id, admin), livelli: conta.get(x.id) ?? vuoto() } })
+    let rows: UtenteAnagrafica[] = [...base.values()].map(x => { const admin = x.email === ADMIN_EMAIL || adminSet.has(x.id); return { ...x, admin, attivo: !sosp.has(x.id), sospesoIl: sospQuando[x.id] ?? null, ruolo: ruoloOf(x.id, admin), livelli: conta.get(x.id) ?? vuoto() } })
+    rows = rows.filter(r => r.attivo !== sospesi)
     const s = search.trim().toLowerCase()
     if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
-    rows.sort((a, b) => (RANK_RUOLO[b.ruolo] - RANK_RUOLO[a.ruolo]) || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+    if (sospesi) rows.sort((a, b) => (b.sospesoIl ?? '').localeCompare(a.sospesoIl ?? '') || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
+    else rows.sort((a, b) => (RANK_RUOLO[b.ruolo] - RANK_RUOLO[a.ruolo]) || `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`, 'it'))
     return { rows: rows.slice(offset, offset + limit), total: rows.length }
   },
   async getMembershipUtente(utenteId: string): Promise<MembershipUtente[]> {
@@ -1983,8 +1992,10 @@ const localStore = {
   },
   async setUtenteAttivo(utenteId: string, attivo: boolean): Promise<void> {
     const s = new Set(read<string[]>('gm_utenti_sospesi', []))
-    if (attivo) s.delete(utenteId); else s.add(utenteId)
-    writeLs('gm_utenti_sospesi', [...s])
+    const quando = read<Record<string, string>>('gm_utenti_sospesi_quando', {})
+    if (attivo) { s.delete(utenteId); delete quando[utenteId] }
+    else { s.add(utenteId); if (!quando[utenteId]) quando[utenteId] = new Date().toISOString() }
+    writeLs('gm_utenti_sospesi', [...s]); writeLs('gm_utenti_sospesi_quando', quando)
   },
   async eliminaUtenteDefinitivo(utenteId: string): Promise<void> {
     const memberships = read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.utente_id ?? t.id) === utenteId)

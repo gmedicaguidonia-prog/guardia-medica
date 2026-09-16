@@ -6,6 +6,7 @@ import { store } from '../../lib/store'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { IconaLivello } from '../../components/IconaLivello'
+import { PaginaNav, usePagine } from '../../components/PaginaNav'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { ADMIN_EMAIL } from '../../lib/constants'
 import { nomeCompleto } from '../../types'
@@ -158,6 +159,7 @@ export function PostazioniPage() {
 
       {/* Blocco: Anagrafica Utenti — tutte le identità del sistema (ricerca, sospensione, ecc.) */}
       <AnagraficaUtentiBox />
+      <SospesiBox />
 
       {/* Blocco: Log Postazioni — storico eventi globali (non si cancella con la postazione) */}
       <div className="card p-4 space-y-3" style={{ background: '#a78bfa1f', breakInside: 'avoid', marginBottom: 18 }}>
@@ -321,7 +323,7 @@ function AnagraficaUtentiBox() {
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       <div>
         <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><UsersRound size={15} style={{ color: 'var(--t-accento)' }} /> Anagrafica Utenti</h2>
-        <p className="text-xs text-stone-500 mt-0.5">Tutte le persone registrate nel sistema. Cerca un nominativo per vederne le postazioni, <strong>sospendere l'accesso</strong> (mantenendo lo storico), correggerne i dati o eliminarlo.</p>
+        <p className="text-xs text-stone-500 mt-0.5">Le persone <strong>attive</strong> nel sistema. Cerca un nominativo per vederne le postazioni, <strong>sospendere l'accesso</strong> (mantenendo lo storico), correggerne i dati o eliminarlo. I sospesi sono nel riquadro <strong>Utenti sospesi</strong>.</p>
       </div>
 
       {/* ricerca */}
@@ -364,16 +366,61 @@ function AnagraficaUtentiBox() {
         </div>
       )}
 
-      {/* paginazione */}
-      {total > PAGINA_UTENTI && (
-        <div className="flex items-center justify-between pt-1">
-          <span className="text-xs text-stone-500">{total} utenti · pagina {page + 1} di {nPagine}</span>
-          <div className="flex gap-1">
-            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="p-1.5 rounded border disabled:opacity-40" style={{ borderColor: '#d6d3cc', color: 'var(--t-accento)' }}><ChevronLeft size={14} /></button>
-            <button onClick={() => setPage(p => Math.min(nPagine - 1, p + 1))} disabled={page >= nPagine - 1} className="p-1.5 rounded border disabled:opacity-40" style={{ borderColor: '#d6d3cc', color: 'var(--t-accento)' }}><ChevronRight size={14} /></button>
-          </div>
+      {/* paginazione (barra ben visibile: prima passava inosservata) */}
+      <PaginaNav pagina={page} nPagine={nPagine} totale={total} unita="utenti" onCambia={setPage} />
+    </div>
+  )
+}
+
+// ─── Riquadro «Utenti sospesi»: accesso revocato (con data), da qui si può SOLO riattivare ───
+function SospesiBox() {
+  const qc = useQueryClient()
+  const { confirm, notify, confirmState } = useConfirm()
+  const { data, isFetching } = useQuery({ queryKey: ['utenti-sospesi'], queryFn: () => store.getUtentiAnagrafica('', 0, 9999, true) })
+  const rows = data?.rows ?? []
+  const { pagina, setPagina, nPagine, slice, totale } = usePagine(rows)
+  const [busy, setBusy] = useState(false)
+
+  async function riattiva(u: UtenteAnagrafica) {
+    const ok = await confirm({ title: 'Riattiva accesso', message: `${nomeCompleto(u)} potrà di nuovo accedere all'app e tornerà nell'elenco dell'Anagrafica Utenti come utente standard (i ruoli nei mesi si decidono come sempre nel Personale).`, confirmLabel: 'Riattiva' })
+    if (!ok) return
+    setBusy(true)
+    try {
+      await store.setUtenteAttivo(u.id, true)
+      qc.invalidateQueries({ queryKey: ['anagrafica-utenti'] }); qc.invalidateQueries({ queryKey: ['utenti-sospesi'] }); qc.invalidateQueries({ queryKey: ['turnisti'] })
+      void notify({ title: 'Utente riattivato', message: `${nomeCompleto(u)} è di nuovo attivo.` })
+    } catch (e) { void notify({ title: 'Operazione non riuscita', message: (e as Error).message }) }
+    finally { setBusy(false) }
+  }
+
+  const dataIt = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('it-IT') : '—'
+
+  return (
+    <div className="card p-4 space-y-3" style={{ background: '#f871711f', breakInside: 'avoid', marginBottom: 18 }}>
+      <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+      <div>
+        <h2 className="font-semibold text-stone-700 text-sm flex items-center gap-1.5"><Ban size={15} style={{ color: '#b91c1c' }} /> Utenti sospesi</h2>
+        <p className="text-xs text-stone-500 mt-0.5">Chi è sospeso non può accedere e non compare più negli elenchi del programma; lo storico resta intatto. Da qui puoi solo <strong>riattivare</strong>.</p>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-stone-500">{isFetching ? 'Caricamento…' : 'Nessun utente sospeso.'}</p>
+      ) : (
+        <div className="space-y-1.5">
+          {slice.map(u => (
+            <div key={u.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: '#f4f6f1' }}>
+              <UserRound size={15} className="shrink-0" style={{ color: '#c3c7cc' }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: '#6b7280' }}>{nomeCompleto(u)}</p>
+                <p className="text-[11px] text-stone-400 truncate">{u.email} · sospeso dal <strong>{dataIt(u.sospesoIl)}</strong></p>
+              </div>
+              <button onClick={() => riattiva(u)} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3 rounded-lg shrink-0 disabled:opacity-50" style={{ background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>
+                <RotateCcw size={13} /> Riattiva
+              </button>
+            </div>
+          ))}
         </div>
       )}
+      <PaginaNav pagina={pagina} nPagine={nPagine} totale={totale} unita="sospesi" onCambia={setPagina} />
     </div>
   )
 }
@@ -397,7 +444,7 @@ function SchedaUtente({ u, confirm, notify, onChiudi }: {
   const { data: membership = [], isLoading } = useQuery<MembershipUtente[]>({ queryKey: ['membership', u.id], queryFn: () => store.getMembershipUtente(u.id) })
 
   const modificato = nome.trim() !== u.nome || cognome.trim() !== u.cognome || email.trim().toLowerCase() !== u.email.toLowerCase()
-  function refresh() { qc.invalidateQueries({ queryKey: ['anagrafica-utenti'] }); qc.invalidateQueries({ queryKey: ['utenti'] }); qc.invalidateQueries({ queryKey: ['membership', u.id] }) }
+  function refresh() { qc.invalidateQueries({ queryKey: ['anagrafica-utenti'] }); qc.invalidateQueries({ queryKey: ['utenti-sospesi'] }); qc.invalidateQueries({ queryKey: ['utenti'] }); qc.invalidateQueries({ queryKey: ['membership', u.id] }) }
 
   async function salva() {
     if (!nome.trim() || !email.trim()) return
@@ -408,11 +455,11 @@ function SchedaUtente({ u, confirm, notify, onChiudi }: {
   }
   async function toggleAttivo() {
     if (u.attivo) {
-      const ok = await confirm({ title: 'Sospendi accesso', message: `${nomeCompleto(u)} non potrà più accedere all'app, da nessuna postazione. Tutto il suo storico (turni passati, ecc.) resta intatto e potrai riattivarlo quando vuoi.`, confirmLabel: 'Sospendi', danger: true })
+      const ok = await confirm({ title: 'Sospendi accesso', message: `${nomeCompleto(u)} non potrà più accedere all'app, da nessuna postazione, e sparirà dagli elenchi del programma (lo ritroverai nel riquadro «Utenti sospesi»). Tutto il suo storico (turni passati, ecc.) resta intatto e potrai riattivarlo quando vuoi.`, confirmLabel: 'Sospendi', danger: true })
       if (!ok) return
     }
     setBusy(true)
-    try { await store.setUtenteAttivo(u.id, !u.attivo); refresh() }
+    try { await store.setUtenteAttivo(u.id, !u.attivo); refresh(); if (u.attivo) onChiudi() }
     catch (e) { void notify({ title: 'Operazione non riuscita', message: (e as Error).message }) }
     finally { setBusy(false) }
   }
@@ -821,6 +868,7 @@ function EliminaPostazioneModal({ postazione, onChiudi, onConferma }: {
 }) {
   const { notify, confirmState } = useConfirm()
   const [orfani, setOrfani] = useState<UtenteOrfano[] | null>(null)
+  const pgOrfani = usePagine(orfani ?? [])
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
 
@@ -855,7 +903,7 @@ function EliminaPostazioneModal({ postazione, onChiudi, onConferma }: {
             <>
               <p className="text-xs text-stone-500 mb-1.5">Questi utenti non appartengono a nessun'altra postazione. Spunta quelli che vuoi <strong>eliminare</strong> dal sistema insieme alla postazione; gli altri restano come identità (senza appartenenze).</p>
               <div className="space-y-1">
-                {orfani.map(u => (
+                {pgOrfani.slice.map(u => (
                   <label key={u.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer" style={{ background: sel.has(u.id) ? '#fee2e2' : '#f4f6f1' }}>
                     <input type="checkbox" checked={sel.has(u.id)} onChange={() => toggle(u.id)} />
                     {u.livello && <IconaLivello livello={u.livello} size={14} />}
@@ -866,6 +914,7 @@ function EliminaPostazioneModal({ postazione, onChiudi, onConferma }: {
                   </label>
                 ))}
               </div>
+              <div className="mt-2"><PaginaNav pagina={pgOrfani.pagina} nPagine={pgOrfani.nPagine} totale={pgOrfani.totale} onCambia={pgOrfani.setPagina} /></div>
             </>
            )}
         </div>

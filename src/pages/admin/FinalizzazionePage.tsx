@@ -12,6 +12,7 @@ import { usePassiCompleti } from '../../hooks/usePassiCompleti'
 import { PrerequisitiPassi } from '../../components/PrerequisitiPassi'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
+import { PaginaNav, usePagine } from '../../components/PaginaNav'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import type { TurnoSchema, Turnista, TurnistaMese, ConfigVersione, Turno, Livello, AuthUser } from '../../types'
 
@@ -76,6 +77,7 @@ export function FinalizzazionePage() {
     }
     return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
   }, [turni, turnoById, turnisti, ruoloMese, festivoSet, superSet, superTurniByData])   // eslint-disable-line react-hooks/exhaustive-deps
+  const pgConteggi = usePagine(conteggi)
 
 
   async function finalizza() {
@@ -195,7 +197,7 @@ export function FinalizzazionePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {conteggi.map(({ t, T, Ore, N, F, PF, SF }) => (
+                  {pgConteggi.slice.map(({ t, T, Ore, N, F, PF, SF }) => (
                     <tr key={t.id} style={{ borderBottom: '1px solid var(--t-riga)' }}>
                       <td style={{ padding: '3px 6px' }}>
                         <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: ROLE_DOT[t.livello], marginRight: 5, verticalAlign: 'middle' }} />{nomeCompleto(t)}
@@ -211,6 +213,7 @@ export function FinalizzazionePage() {
                 </tbody>
               </table>
             </div>
+            <div className="mt-2"><PaginaNav pagina={pgConteggi.pagina} nPagine={pgConteggi.nPagine} totale={pgConteggi.totale} onCambia={pgConteggi.setPagina} /></div>
             <p className="text-[10px] leading-snug text-stone-400 mt-1.5"><strong>T</strong>=turni · <strong>Ore</strong>=ore totali · <strong>N</strong>=notti · <strong>F</strong>=festivi · <strong>PF</strong>=prefestivi · <strong>SF</strong>=superfestivi (solo turni abbinati nel passo ⑤)</p>
           </>
         )}
