@@ -16,7 +16,7 @@ import { IconaLivello } from '../../components/IconaLivello'
 import { useConfirm } from '../../hooks/useConfirm'
 import { ConfirmModal } from '../../components/ConfirmModal'
 import { useDragAutoScroll } from '../../hooks/useDragAutoScroll'
-import type { TurnoSchema, Turnista, Livello, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista } from '../../types'
+import type { TurnoSchema, Turnista, TurnistaMese, Livello, ConfigVersione, RegolaVersione, RegolaTurno, RegolaTurnista, TipoRegolaTurnista } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 const mesePrec = (k: string) => { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
@@ -46,6 +46,7 @@ export function RegoleTurniPage() {
   const { data: regole = [] } = useQuery<RegolaTurno[]>({ queryKey: ['regole', regoleVer?.id], queryFn: () => store.getRegole(regoleVer!.id), enabled: !!regoleVer })
   const { data: regoleSpeciali = [] } = useQuery<RegolaTurnista[]>({ queryKey: ['regole-turnista', regoleVer?.id], queryFn: () => store.getRegoleTurnista(regoleVer!.id), enabled: !!regoleVer })
   const { data: turnisti = [] } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
+  const { data: personaleMese = [] } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })
   const { data: tutteVer = [] } = useQuery<RegolaVersione[]>({ queryKey: ['regole-versioni-all', postazioneId], queryFn: () => store.getRegoleVersioni(postazioneId!), enabled: !!postazioneId })
   // Procedura sequenziale: passo 2 (regole). Richiede passo 1 (config attivato+valido).
   const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
@@ -104,9 +105,19 @@ export function RegoleTurniPage() {
   useEffect(() => { speEditing.current = false; setBozze([]) }, [regoleVer?.id])   // cambio mese/versione: scarta bozze, riallinea
 
   const tById = useMemo(() => new Map(turnisti.map(t => [t.id, t])), [turnisti])
-  // palette dei trascinabili SENZA gli utenti sospesi (non assegnabili a nulla);
-  // tById resta completo per continuare a mostrare i nomi nelle celle già assegnate
-  const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => t.attivo)), [turnisti])
+  // ruolo CONGELATO del mese (turnisti_mese.livello): come in Desiderata e Turni del Mese
+  // è LUI a governare gruppi, colori e avvisi qui — il livello di default dell'anagrafica
+  // è solo il fallback per chi non è nel personale del mese.
+  const importati = useMemo(() => new Set(personaleMese.map(p => p.turnista_id)), [personaleMese])
+  const ruoloMese = useMemo(() => new Map(personaleMese.map(p => [p.turnista_id, p.livello] as const)), [personaleMese])
+  const livMese = (id: string): Livello => ruoloMese.get(id) ?? tById.get(id)?.livello ?? 'turnista'
+  // palette dei trascinabili SENZA gli utenti sospesi (non assegnabili a nulla), col ruolo
+  // del mese; se il personale del mese (①) è definito si mostra SOLO quello. tById resta
+  // completo per continuare a mostrare i nomi nelle celle già assegnate.
+  const paletteGruppi = useMemo(() => {
+    const base = turnisti.filter(t => t.attivo && (importati.size === 0 || importati.has(t.id)))
+    return gruppiPerLivello(base.map(t => ({ ...t, livello: livMese(t.id) })))
+  }, [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
   // ordine dei turnisti come nella palette di sinistra (ruolo + alfabetico): per ordinare le regole speciali
   const ordineTid = useMemo(() => { const m = new Map<string, number>(); let i = 0; paletteGruppi.forEach(g => g.items.forEach(t => m.set(t.id, i++))); return m }, [paletteGruppi])
@@ -115,7 +126,7 @@ export function RegoleTurniPage() {
     if (oa !== ob) return oa - ob
     return TIPI_REGOLA_TURNISTA.findIndex(t => t.value === a.tipo) - TIPI_REGOLA_TURNISTA.findIndex(t => t.value === b.tipo)
   }), [speLocal, ordineTid])
-  const coloreTurnista = (id: string) => ROLE_COLOR[tById.get(id)?.livello ?? 'turnista']
+  const coloreTurnista = (id: string) => ROLE_COLOR[livMese(id)]
 
   // drag&drop
   const dragSource = useRef<string | null>(null)
@@ -179,7 +190,7 @@ export function RegoleTurniPage() {
       set(`${giorno}|${turno.id}|${vietatoQui.slot}`, null)   // forzatura: tolgo il divieto
     }
     set(`${giorno}|${turno.id}|${free}`, tid)
-    if (tById.get(tid)?.livello === 'esterno') setAvvisoEsterno(nomeTurnista(tid))   // avviso non bloccante
+    if (livMese(tid) === 'esterno') setAvvisoEsterno(nomeTurnista(tid))   // avviso non bloccante (ruolo del MESE)
   }
   // insieme dei "mai" attuali (per evidenziare le celle durante il trascinamento)
   const vietatoLocal = useMemo(() => {
