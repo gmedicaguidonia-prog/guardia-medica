@@ -34,6 +34,9 @@ const GHOST_PFX = 'ghost:'
 const isGhostVal = (v: string | null | undefined): v is string => typeof v === 'string' && v.startsWith(GHOST_PFX)
 const ghostNome = (v: string) => v.slice(GHOST_PFX.length)
 const fmtDT = (iso: string) => new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+import { calcolaConteggi } from '../../lib/conteggi'
+import type { AssegnazioneConteggio } from '../../lib/conteggi'
+
 const REP_SLOT = -1   // slot speciale per il reperibile
 const ROLE_COLOR: Record<Livello, { bg: string; fg: string }> = {
   admin:        { bg: '#fee2e2', fg: '#b91c1c' },
@@ -160,25 +163,20 @@ export function GestioneTurniPage() {
   // palette = solo il personale di questo mese, diviso per ruolo-del-mese, SENZA i sospesi
   // (non assegnabili a turni/reperibilità; i turni già loro restano visibili via tById)
   const paletteGruppi = useMemo(() => gruppiPerLivello(turnisti.filter(t => importati.has(t.id) && t.attivo).map(t => ({ ...t, livello: livMese(t.id) }))), [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
-  // riepilogo auto-aggiornante (in base a ciò che è in tabella): T turni, N notti, F festivi, PF prefestivi
+  // riepilogo auto-aggiornante (in base a ciò che è in tabella): T turni, N notti, F festivi,
+  // PF prefestivi, SF superfestivi e R reperibilità (contata a parte, non entra in T)
   const riepilogo = useMemo(() => {
-    const stat = new Map<string, { T: number; N: number; F: number; PF: number; SF: number }>()
+    const turnoById = new Map(schema.map(s => [s.id, s]))
+    const assegnazioni: AssegnazioneConteggio[] = []
     for (const [key, tid] of local) {
       if (isGhostVal(tid)) continue   // i fantasmi non entrano nei conteggi
       const [ds, turnoId, slotStr] = key.split('|')
-      if (+slotStr < 0) continue   // esclude il reperibile
-      const turno = schema.find(s => s.id === turnoId); if (!turno) continue
-      const s = stat.get(tid) ?? { T: 0, N: 0, F: 0, PF: 0, SF: 0 }
-      s.T++
-      if (turno.ora_fine <= turno.ora_inizio) s.N++   // notte = attraversa la mezzanotte
-      const [y, m, d] = ds.split('-').map(Number); const date = new Date(y, m - 1, d)
-      if (isFestivo(date, festivoSet)) s.F++; else if (isPrefestivo(date, festivoSet)) s.PF++
-      // superfestivo: solo se il giorno è super E questo turno vi è abbinato
-      if (isSuperfestivo(date, superSet) && superTurniByData.get(ds)?.includes(turnoId)) s.SF++
-      stat.set(tid, s)
+      assegnazioni.push({ ds, turnoId, slot: +slotStr, tid })
     }
+    const stat = calcolaConteggi(assegnazioni, turnoById, festivoSet, superSet, superTurniByData)
     return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
   }, [local, schema, turnisti, ruoloMese, festivoSet, superSet, superTurniByData])   // eslint-disable-line react-hooks/exhaustive-deps
+  const riepilogoHaRep = useMemo(() => riepilogo.some(r => r.R > 0), [riepilogo])
   // chi non è più in anagrafica (mesi archiviati) vale col nome congelato nel turno
   const nomeCongelato = useMemo(() => { const m = new Map<string, string>(); turni.forEach(t => { if (t.turnista_id && t.nome_congelato) m.set(t.turnista_id, t.nome_congelato) }); return m }, [turni])
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : (nomeCongelato.get(id) ?? '—') }
@@ -839,25 +837,27 @@ export function GestioneTurniPage() {
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#b91c1c', fontWeight: 800 }} title="Festivi">F</th>
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#b45309', fontWeight: 800 }} title="Prefestivi">PF</th>
                     <th style={{ padding: '1px 2px', textAlign: 'center', color: '#a16207', fontWeight: 800 }} title="Superfestivi">SF</th>
+                    {riepilogoHaRep && <th style={{ padding: '1px 2px', textAlign: 'center', color: '#0f766e', fontWeight: 800 }} title="Reperibilità">R</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {riepilogo.map(({ t, T, N, F, PF, SF }) => (
+                  {riepilogo.map(({ t, T, N, F, PF, SF, R }) => (
                     <tr key={t.id} style={{ borderBottom: '1px solid #f4f5f1' }}>
                       <td style={{ padding: '2px 2px', lineHeight: 1.15 }} title={nomeCompleto(t)}>
                         <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: ROLE_COLOR[t.livello].fg, marginRight: 3, verticalAlign: 'middle' }} />{nomeCompleto(t)}
                       </td>
-                      <td style={{ padding: '2px', textAlign: 'center', fontWeight: 800, color: 'var(--t-titolo)' }}>{T}</td>
+                      <td style={{ padding: '2px', textAlign: 'center', fontWeight: 800, color: 'var(--t-titolo)' }}>{T || ''}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#475569' }}>{N || ''}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#b91c1c' }}>{F || ''}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#b45309' }}>{PF || ''}</td>
                       <td style={{ padding: '2px', textAlign: 'center', color: '#a16207', fontWeight: 700 }}>{SF || ''}</td>
+                      {riepilogoHaRep && <td style={{ padding: '2px', textAlign: 'center', color: '#0f766e', fontWeight: 700 }}>{R || ''}</td>}
                     </tr>
                   ))}
                 </tbody>
               </table>
               <p className="text-[9px] leading-snug text-stone-400 mt-1.5 px-1">
-                <strong>T</strong>=turni · <strong>N</strong>=notti · <strong>F</strong>=festivi · <strong>PF</strong>=prefestivi · <strong>SF</strong>=superfestivi
+                <strong>T</strong>=turni · <strong>N</strong>=notti · <strong>F</strong>=festivi · <strong>PF</strong>=prefestivi · <strong>SF</strong>=superfestivi{riepilogoHaRep && <> · <strong>R</strong>=reperibilità</>}
               </p>
             </div>
           )}

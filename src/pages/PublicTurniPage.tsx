@@ -10,6 +10,7 @@ import { useFestivita } from '../hooks/useFestivita'
 import { useFinalizzato } from '../hooks/useFinalizzato'
 import { nomeCompleto, cmpTurnisti } from '../types'
 import { SpinnerMese } from '../components/SpinnerMese'
+import { calcolaConteggi, fmtOre } from '../lib/conteggi'
 import type { TurnoPersona, Utente } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
@@ -654,6 +655,11 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
             )
           )}
 
+          {/* Specchietto personale: SOLO i turni dell'utente collegato nel mese (turni + reperibilità) */}
+          {vista === 'turni' && calendarioVisibile && turniConfigurati && mia && (
+            <RiepilogoMio turni={turni} schema={schema} tid={mia.membershipId} festivoSet={festivoSet} superSet={superSet} superTurniByData={superTurniByData} titolo={`I tuoi turni di ${MESI[mese - 1]} ${anno}`} />
+          )}
+
           {/* Popover "clicca qui": scelta della preferenza (Vorrei / Non posso) nelle desiderata pubbliche */}
           {desPicker && (
             <>
@@ -749,6 +755,50 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ─── Specchietto personale (stesse colonne del riepilogo di ⑦ Turni del Mese, + R) ──────
+//  Una sola riga (l'utente collegato) e, in fondo, totale ore e totale reperibilità.
+function RiepilogoMio({ turni, schema, tid, festivoSet, superSet, superTurniByData, titolo }: {
+  turni: Turno[]; schema: TurnoSchema[]; tid: string
+  festivoSet: Set<string>; superSet: Set<string>; superTurniByData: Map<string, string[]>; titolo: string
+}) {
+  const c = useMemo(() => {
+    const turnoById = new Map(schema.map(s => [s.id, s]))
+    const miei = turni.filter(t => t.turnista_id === tid).map(t => ({ ds: t.data, turnoId: t.turno_schema_id, slot: t.slot, tid }))
+    return calcolaConteggi(miei, turnoById, festivoSet, superSet, superTurniByData).get(tid) ?? null
+  }, [turni, schema, tid, festivoSet, superSet, superTurniByData])
+  if (!c || (c.T === 0 && c.R === 0)) return null
+  const th = (label: string, title: string, color: string) => <th style={{ padding: '3px 6px', textAlign: 'center', color, fontWeight: 800 }} title={title}>{label}</th>
+  const td = (v: number | string, color: string, bold = false) => <td style={{ padding: '4px 6px', textAlign: 'center', color, fontWeight: bold ? 800 : 500 }}>{v}</td>
+  return (
+    <div className="card p-4 space-y-2" style={{ maxWidth: 560 }}>
+      <h3 className="text-sm font-bold" style={{ color: 'var(--t-titolo)' }}>{titolo}</h3>
+      <div className="overflow-auto">
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #d6d3cc' }}>
+              <th style={{ textAlign: 'left', padding: '3px 6px' }} />
+              {th('T', 'Turni', 'var(--t-titolo)')}{th('Ore', 'Ore totali', '#0f766e')}{th('N', 'Notti', '#64748b')}{th('F', 'Festivi', '#b91c1c')}{th('PF', 'Prefestivi', '#b45309')}{th('SF', 'Superfestivi', '#a16207')}
+              {c.R > 0 && th('R', 'Reperibilità', '#0f766e')}
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ borderBottom: '1px solid var(--t-riga)' }}>
+              <td style={{ padding: '4px 6px', fontWeight: 600, color: 'var(--t-testo)' }}>Tu</td>
+              {td(c.T || '', 'var(--t-titolo)', true)}{td(fmtOre(c.Ore), '#0f766e', true)}{td(c.N || '', '#475569')}{td(c.F || '', '#b91c1c')}{td(c.PF || '', '#b45309')}{td(c.SF || '', '#a16207')}
+              {c.R > 0 && td(c.R, '#0f766e', true)}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-sm">
+        <span><strong>Totale ore:</strong> {fmtOre(c.Ore)}</span>
+        {c.R > 0 && <span><strong>Reperibilità:</strong> {c.R} {c.R === 1 ? 'turno' : 'turni'}</span>}
+      </div>
+      <p className="text-[10px] leading-snug text-stone-400"><strong>T</strong>=turni · <strong>Ore</strong>=ore totali · <strong>N</strong>=notti · <strong>F</strong>=festivi · <strong>PF</strong>=prefestivi · <strong>SF</strong>=superfestivi{c.R > 0 && <> · <strong>R</strong>=reperibilità</>}</p>
     </div>
   )
 }
