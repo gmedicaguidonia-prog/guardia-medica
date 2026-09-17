@@ -1,0 +1,16 @@
+{
+  "name": "Sistema Turnazione Guardia Medica",
+  "short_name": "Guardia Medica",
+  "description": "Gestione dei turni della guardia medica",
+  "start_url": "/guardia-medica/",
+  "scope": "/guardia-medica/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#2a4426",
+  "theme_color": "#374f30",
+  "icons": [
+    { "src": "/guardia-medica/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/guardia-medica/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/guardia-medica/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
