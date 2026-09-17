@@ -179,7 +179,9 @@ export function GestioneTurniPage() {
     }
     return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
   }, [local, schema, turnisti, ruoloMese, festivoSet, superSet, superTurniByData])   // eslint-disable-line react-hooks/exhaustive-deps
-  const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
+  // chi non è più in anagrafica (mesi archiviati) vale col nome congelato nel turno
+  const nomeCongelato = useMemo(() => { const m = new Map<string, string>(); turni.forEach(t => { if (t.turnista_id && t.nome_congelato) m.set(t.turnista_id, t.nome_congelato) }); return m }, [turni])
+  const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : (nomeCongelato.get(id) ?? '—') }
   const coloreTurnista = (id: string) => ROLE_COLOR[livMese(id)]
   // Ore assegnate per turnista nel mese (esclude il reperibile = slot -1)
   const durataById = useMemo(() => { const m = new Map<string, number>(); schema.forEach(c => m.set(c.id, oreTurno(c.ora_inizio, c.ora_fine))); return m }, [schema])

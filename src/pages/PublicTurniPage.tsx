@@ -9,6 +9,7 @@ import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holiday
 import { useFestivita } from '../hooks/useFestivita'
 import { useFinalizzato } from '../hooks/useFinalizzato'
 import { nomeCompleto, cmpTurnisti } from '../types'
+import { SpinnerMese } from '../components/SpinnerMese'
 import type { TurnoPersona, Utente } from '../types'
 import { useImpaginazione } from '../hooks/useImpaginazione'
 import { useMeseSelezionato } from '../hooks/useMeseSelezionato'
@@ -76,10 +77,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   // vince se pubblicato/pianificazione o finalizzato; altrimenti, se la raccolta desiderata è aperta o
   // programmata, si mostra quella; se non c'è nessuna delle due si resta sul calendario (che avvisa «non pubblicato»).
   const desiderataAttiva = !!finestra?.aperta_a && finestra.aperta_a >= oggiStr
-  const vista: 'turni' | 'desiderata' = (finalizzato || statoCal === 'pubblicato' || statoCal === 'pianificazione') ? 'turni' : (desiderataAttiva ? 'desiderata' : 'turni')
+  // Il calendario si mostra se pubblicato o in pianificazione. Per un mese CHIUSO vale lo stato
+  // che aveva alla chiusura (letto dall'archivio): chiuso ma «non pubblicato» ⇒ nessun calendario.
+  const calendarioVisibile = statoCal === 'pubblicato' || statoCal === 'pianificazione'
+  const vista: 'turni' | 'desiderata' = calendarioVisibile ? 'turni' : (desiderataAttiva ? 'desiderata' : 'turni')
   const pianificazione = vista === 'turni' && statoCal === 'pianificazione' && !finalizzato   // niente candidature su un mese chiuso
-  // un mese finalizzato mostra COMUNQUE il calendario (letto dal JSON), anche se lo stato archiviato non fosse 'pubblicato'
-  const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && vista === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) })
+  const { data: turni = [] } = useQuery<Turno[]>({ queryKey: ['turni', postazioneId, anno, mese], queryFn: () => store.getTurniMese(postazioneId!, anno, mese), enabled: !!postazioneId && vista === 'turni' && calendarioVisibile })
   const { data: desiderata = [] } = useQuery<Desiderata[]>({ queryKey: ['desiderata', postazioneId, anno, mese], queryFn: () => store.getDesiderataMese(postazioneId!, anno, mese), enabled: !!postazioneId && vista === 'desiderata' })
   const { data: personaleMese = [], isLoading: loadingPersMese } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId })   // serve anche al tab Turni (cambio turno: personale autorizzato del mese)
   const { data: richieste = [] } = useQuery<RichiestaTurno[]>({ queryKey: ['richieste', postazioneId, anno, mese], queryFn: () => store.getRichiesteMese(postazioneId!, anno, mese), enabled: !!postazioneId && pianificazione })
@@ -119,7 +122,12 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   const { data: superTurni = [] } = useQuery<{ data: string; turnoSchemaId: string }[]>({ queryKey: ['superfestivo-turni', postazioneId, meseKey], queryFn: () => store.getSuperfestivoTurni(postazioneId!, meseKey), enabled: !!postazioneId })
   const superTurniByData = useMemo(() => { const m = new Map<string, string[]>(); superTurni.forEach(t => { const a = m.get(t.data); if (a) a.push(t.turnoSchemaId); else m.set(t.data, [t.turnoSchemaId]) }); return m }, [superTurni])
 
-  const nomeById = useMemo(() => new Map(personale.map(p => [p.id, nomeCompleto(p)])), [personale])
+  const nomeById = useMemo(() => {
+    const m = new Map(personale.map(p => [p.id, nomeCompleto(p)]))
+    // chi non è più in anagrafica (mesi archiviati) vale col nome congelato nel turno
+    turni.forEach(t => { if (t.turnista_id && !m.has(t.turnista_id) && t.nome_congelato) m.set(t.turnista_id, t.nome_congelato) })
+    return m
+  }, [personale, turni])
   const giorni = useMemo(() => giorniDelMese(anno, mese), [anno, mese])
   // Una griglia per foglio (passo ③ Impaginazione): righe = (giorno, turno) di quel foglio
   const righePerFoglio = useMemo(() => fogliConTurni.map(fc => {
@@ -311,7 +319,8 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   )
 
   return (
-    <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 space-y-4">
+    <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 space-y-4 relative">
+      <SpinnerMese meseKey={meseKey} etichetta={`Carico ${MESI[mese - 1]} ${anno}…`} />
       <div className="flex items-center gap-2">
         <CalendarDays size={22} style={{ color: 'var(--t-accento)' }} />
         <h1 className="text-2xl font-bold" style={{ color: 'var(--t-titolo)' }}>I miei turni</h1>
@@ -361,7 +370,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               </div>
             ) : <span />}
             <div className="flex items-center gap-2 flex-wrap">
-              {vista === 'turni' && (statoCal !== 'non_pubblicato' || finalizzato) && mia && (
+              {vista === 'turni' && calendarioVisibile && mia && (
                 <button onClick={() => setSyncOpen(true)}
                   className="btn-secondary px-3 py-1.5 text-sm flex items-center gap-1.5"
                   title="Sincronizza i tuoi turni di questo mese con il tuo Google Calendar">
@@ -370,7 +379,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
               )}
               {/* PDF del calendario: solo a calendario PUBBLICATO (o mese finalizzato). Scarica SUBITO
                   il file (nessuna pagina intermedia), generato dai dati correnti ⇒ sempre aggiornato. */}
-              {vista === 'turni' && (statoCal === 'pubblicato' || finalizzato) && turniConfigurati && (
+              {vista === 'turni' && (statoCal === 'pubblicato' || (finalizzato && calendarioVisibile)) && turniConfigurati && (
                 <>
                   {pdfErr && <span className="text-xs font-semibold" style={{ color: '#b91c1c' }}>{pdfErr}</span>}
                   <button onClick={scaricaPdfCalendarioPubblico} disabled={pdfBusy}
@@ -386,8 +395,10 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
 
           {/* ───── CALENDARIO TURNI ───── */}
           {vista === 'turni' && (
-            statoCal === 'non_pubblicato' && !finalizzato ? (
-              <Avviso>Il <strong>calendario turni</strong> di {MESI[mese - 1]} {anno} non è ancora stato pubblicato per questa postazione.</Avviso>
+            !calendarioVisibile ? (
+              finalizzato
+                ? <Avviso>{MESI[mese - 1]} {anno} è <strong>chiuso</strong> e il suo calendario turni non era stato pubblicato: non c'è nulla da mostrare.</Avviso>
+                : <Avviso>Il <strong>calendario turni</strong> di {MESI[mese - 1]} {anno} non è ancora stato pubblicato per questa postazione.</Avviso>
             ) : !autorizzatoMese && !finalizzato && !loadingPersMese ? (
               <Avviso>Non fai parte del <strong>personale</strong> di {MESI[mese - 1]} {anno} per questa postazione: non ci sono turni da mostrarti. Se pensi che sia un errore, chiedi al responsabile.</Avviso>
             ) : !turniConfigurati ? (

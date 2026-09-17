@@ -258,8 +258,11 @@ const supaStore = {
 
   // ── Versioni di configurazione ──
   async getVersioneMese(postazioneId: string, mese: string): Promise<ConfigVersione | null> {
+    // Mese archiviato: la configurazione sta nel JSON. Gli archivi più vecchi (fatti quando
+    // la versione non iniziava proprio in quel mese) ne sono privi: in quel caso si ricade
+    // sulla versione VIVA che governa il mese — le versioni non vengono svuotate dall'archiviazione.
     const arch = await _archSupa(postazioneId, mese)
-    if (arch) return (arch.config_versione as ConfigVersione) ?? null
+    if (arch && arch.config_versione) return arch.config_versione as ConfigVersione
     const { data, error } = await supabase.from('schema_versioni').select('*').eq('postazione_id', postazioneId)
     if (error) throw error
     return pickVersione((data ?? []) as ConfigVersione[], mese)
@@ -756,8 +759,10 @@ const supaStore = {
 
   // ── Stato calendario turni (non_pubblicato | pubblicato | pianificazione) ──
   async getStatoCalendario(postazioneId: string, mese: string): Promise<StatoCalendario> {
+    // Mese archiviato: vale lo stato che aveva alla chiusura (senza riga = mai pubblicato).
+    // Un mese chiuso ma «non pubblicato» NON si mostra ai turnisti.
     const arch = await _archSupa(postazioneId, mese)
-    if (arch) return ((arch.turni_stato as { stato?: string } | null)?.stato as StatoCalendario) ?? 'pubblicato'
+    if (arch) return ((arch.turni_stato as { stato?: string } | null)?.stato as StatoCalendario) ?? 'non_pubblicato'
     const { data, error } = await supabase.from('turni_stato').select('stato').eq('postazione_id', postazioneId).eq('mese', mese).maybeSingle()
     if (error) throw error
     return (data?.stato as StatoCalendario) ?? 'non_pubblicato'
@@ -797,22 +802,20 @@ const supaStore = {
 
   // ── Intervallo di mesi con "qualcosa da vedere" (per limitare la navigazione pubblica) ──
   async getMesiConContenuto(postazioneId: string): Promise<{ min: string | null; max: string | null }> {
-    const [ts, df] = await Promise.all([
-      supabase.from('turni_stato').select('mese').eq('postazione_id', postazioneId).neq('stato', 'non_pubblicato'),
-      supabase.from('desiderata_finestra').select('mese').eq('postazione_id', postazioneId).not('aperta_a', 'is', null),
-    ])
-    if (ts.error) throw ts.error
-    if (df.error) throw df.error
-    const mesi = [...(ts.data ?? []), ...(df.data ?? [])].map(r => r.mese as string)
+    // RPC: calendari pubblicati/in pianificazione e raccolte desiderata VIVI + mesi ARCHIVIATI
+    // il cui calendario non era «non pubblicato» alla chiusura (l'archiviazione svuota
+    // turni_stato/desiderata_finestra: senza la RPC i mesi chiusi sparivano dalla navigazione)
+    const { data, error } = await supabase.rpc('mesi_pubblici', { p_postazione: postazioneId })
+    if (error) throw error
+    const mesi = ((data ?? []) as { mese: string }[]).map(r => r.mese).sort()
     if (!mesi.length) return { min: null, max: null }
-    mesi.sort()
     return { min: mesi[0], max: mesi[mesi.length - 1] }
   },
 
   // ── Impaginazione (versioni + fogli + turni dei fogli) ──
   async getImpaginazioneVersioneMese(postazioneId: string, mese: string): Promise<ImpaginazioneVersione | null> {
     const arch = await _archSupa(postazioneId, mese)
-    if (arch) return (arch.impag_versione as ImpaginazioneVersione) ?? null
+    if (arch && arch.impag_versione) return arch.impag_versione as ImpaginazioneVersione   // archivio senza impaginazione → versione viva (vedi getVersioneMese)
     const { data, error } = await supabase.from('impaginazione_versioni').select('*').eq('postazione_id', postazioneId)
     if (error) throw error
     return pickVersione((data ?? []) as ImpaginazioneVersione[], mese)
@@ -1314,7 +1317,7 @@ const localStore = {
 
   async getVersioneMese(postazioneId: string, mese: string): Promise<ConfigVersione | null> {
     ensureSeed()
-    const arch = _archDev(postazioneId, mese); if (arch) return (arch.config_versione as ConfigVersione) ?? null
+    const arch = _archDev(postazioneId, mese); if (arch && arch.config_versione) return arch.config_versione as ConfigVersione
     return pickVersione(read<WithPost<ConfigVersione>[]>(LS_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId), mese)
   },
   async getVersioni(postazioneId: string): Promise<ConfigVersione[]> {
@@ -1822,7 +1825,7 @@ const localStore = {
   },
 
   async getStatoCalendario(postazioneId: string, mese: string): Promise<StatoCalendario> {
-    const arch = _archDev(postazioneId, mese); if (arch) return ((arch.turni_stato as { stato?: string } | null)?.stato as StatoCalendario) ?? 'pubblicato'
+    const arch = _archDev(postazioneId, mese); if (arch) return ((arch.turni_stato as { stato?: string } | null)?.stato as StatoCalendario) ?? 'non_pubblicato'
     return read<{ postazione_id: string; mese: string; stato: StatoCalendario }[]>(LS_TURNI_STATO, []).find(s => s.mese === mese && (s.postazione_id ?? DEV_POSTAZIONE) === postazioneId)?.stato ?? 'non_pubblicato'
   },
   async setStatoCalendario(postazioneId: string, mese: string, stato: StatoCalendario): Promise<void> {
@@ -1856,14 +1859,19 @@ const localStore = {
   async getMesiConContenuto(postazioneId: string): Promise<{ min: string | null; max: string | null }> {
     const ts = read<{ postazione_id?: string; mese: string; stato: StatoCalendario }[]>(LS_TURNI_STATO, []).filter(s => (s.postazione_id ?? DEV_POSTAZIONE) === postazioneId && s.stato !== 'non_pubblicato').map(s => s.mese)
     const df = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).filter(f => (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId && !!f.aperta_a).map(f => f.mese)
-    const mesi = [...ts, ...df]
+    // mesi archiviati con calendario non «non pubblicato» alla chiusura (come la RPC mesi_pubblici)
+    const arch = read<{ postazioneId?: string; mese: string; archiviato?: boolean }[]>(LS_FINALIZZAZIONI, [])
+      .filter(f => (f.postazioneId ?? DEV_POSTAZIONE) === postazioneId && f.archiviato)
+      .filter(f => { const s = _archDev(postazioneId, f.mese); return ((s?.turni_stato as { stato?: string } | null)?.stato ?? 'non_pubblicato') !== 'non_pubblicato' })
+      .map(f => f.mese)
+    const mesi = [...ts, ...df, ...arch]
     if (!mesi.length) return { min: null, max: null }
     mesi.sort()
     return { min: mesi[0], max: mesi[mesi.length - 1] }
   },
 
   async getImpaginazioneVersioneMese(postazioneId: string, mese: string): Promise<ImpaginazioneVersione | null> {
-    const arch = _archDev(postazioneId, mese); if (arch) return (arch.impag_versione as ImpaginazioneVersione) ?? null
+    const arch = _archDev(postazioneId, mese); if (arch && arch.impag_versione) return arch.impag_versione as ImpaginazioneVersione
     return pickVersione(read<WithPost<ImpaginazioneVersione>[]>(LS_IMPAG_VERSIONI, []).filter(v => (v.postazione_id ?? DEV_POSTAZIONE) === postazioneId), mese)
   },
   async getImpaginazioneVersioni(postazioneId: string): Promise<ImpaginazioneVersione[]> {

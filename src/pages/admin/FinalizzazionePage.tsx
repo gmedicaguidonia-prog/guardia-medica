@@ -75,8 +75,11 @@ export function FinalizzazionePage() {
       if (isSuperfestivo(date, superSet) && superTurniByData.get(t.data)?.includes(t.turno_schema_id)) s.SF++
       stat.set(t.turnista_id, s)
     }
-    return gruppiPerLivello(turnisti.filter(t => stat.has(t.id)).map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
-  }, [turni, turnoById, turnisti, ruoloMese, festivoSet, superSet, superTurniByData])   // eslint-disable-line react-hooks/exhaustive-deps
+    // chi ha lavorato nel mese ma non è più in anagrafica (mesi archiviati): riga col nome congelato
+    const congelati = new Map<string, string>(); turni.forEach(t => { if (t.turnista_id && t.nome_congelato) congelati.set(t.turnista_id, t.nome_congelato) })
+    const fantasmi: Turnista[] = [...stat.keys()].filter(id => !tById.has(id)).map(id => ({ id, utente_id: '', nome: congelati.get(id) ?? '—', cognome: '', email: '', livello: livMese(id), attivo: false, created_at: '' }))
+    return gruppiPerLivello([...turnisti.filter(t => stat.has(t.id)), ...fantasmi].map(t => ({ ...t, livello: livMese(t.id) }))).flatMap(g => g.items).map(t => ({ t, ...stat.get(t.id)! }))
+  }, [turni, turnoById, turnisti, tById, ruoloMese, festivoSet, superSet, superTurniByData])   // eslint-disable-line react-hooks/exhaustive-deps
   const pgConteggi = usePagine(conteggi)
 
 

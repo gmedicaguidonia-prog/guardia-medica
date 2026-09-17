@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
+import { SpinnerMese } from '../../components/SpinnerMese'
 import { useQuery } from '@tanstack/react-query'
 import { Home, Users, CalendarClock, CalendarDays, ListChecks, CalendarHeart, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, LayoutGrid, MapPin, ChevronLeft, ChevronRight, PartyPopper, ClipboardCheck, Lock, ArrowRightLeft } from 'lucide-react'
 import type { AuthUser, CambioTurno } from '../../types'
@@ -169,7 +170,7 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
       )}
       {/* Sidebar */}
       <aside className="shrink-0 flex flex-col py-4 overflow-y-auto overflow-x-hidden"
-        style={{ width: collapsed ? 56 : 208, background: 'var(--t-notte)', color: 'var(--t-side-testo)', transition: 'width 160ms ease' }}>
+        style={{ width: collapsed ? 56 : 232, background: 'var(--t-notte)', color: 'var(--t-side-testo)', transition: 'width 160ms ease' }}>
 
         {/* Intestazione + tasto collassa/espandi */}
         <div className={`flex items-center mb-3 ${collapsed ? 'justify-center' : 'justify-between px-4'}`}>
@@ -228,10 +229,11 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
                 <MapPin size={16} className="shrink-0" style={{ color: 'var(--t-soft)' }} />
                 <span className="text-sm font-semibold truncate" style={{ color: 'var(--t-side-forte)' }}>{postNome ?? '—'}</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <CalendarDays size={16} className="shrink-0" style={{ color: 'var(--t-soft)' }} />
-                <button onClick={apriPicker} title="Scegli mese e anno" className="text-base font-bold whitespace-nowrap rounded px-1 -mx-1 hover:bg-white/10 transition-colors" style={{ color: '#fff' }}>{meseLabel(meseKey)}</button>
-                <div className="flex items-center gap-0.5 ml-auto">
+                {/* il nome del mese si restringe (…) se non c'è spazio: le frecce restano SEMPRE visibili */}
+                <button onClick={apriPicker} title={`Scegli mese e anno (${meseLabel(meseKey)})`} className="text-sm font-bold truncate min-w-0 flex-1 text-left rounded px-1 -mx-1 hover:bg-white/10 transition-colors" style={{ color: '#fff' }}>{meseLabel(meseKey)}</button>
+                <div className="flex items-center gap-0.5 shrink-0">
                   <button onClick={() => cambiaMeseSidebar(-1)} disabled={!canPrev} title={canPrev ? 'Mese precedente' : 'Niente da gestire prima'} className="rounded p-1 hover:bg-white/10 transition-colors" style={{ color: 'var(--t-soft)', opacity: canPrev ? 1 : 0.3, cursor: canPrev ? 'pointer' : 'not-allowed' }}>
                     <ChevronLeft size={18} />
                   </button>
@@ -291,7 +293,10 @@ export function AdminLayout({ user }: { user: AuthUser | null }) {
               </div>
             </div>
           )}
-          <div className="flex-1 min-w-0"><Outlet context={{ user }} /></div>
+          <div className="flex-1 min-w-0 relative">
+            <SpinnerMese meseKey={meseKey} etichetta={`Carico ${meseLabel(meseKey)}…`} />
+            <Outlet context={{ user }} />
+          </div>
           {ROTTE_NUMERATE.has(location.pathname) && postazioneAttiva && (
             <div className="px-4 sm:px-6 pt-4 pb-6 mt-4">
               <div className="max-w-3xl mx-auto border-t mb-4" style={{ borderColor: '#d6d3cc' }} />
