@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Save, X, Users, Search, ChevronLeft, ChevronRight, Check, UserPlus, Pencil, Copy, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, Save, X, Users, Search, ChevronLeft, ChevronRight, Check, UserPlus, UserMinus, Pencil, Copy, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react'
 import { store } from '../../lib/store'
 import { LIVELLI_PERSONALE, nomeCompleto, gruppiPerLivello } from '../../types'
 import { ATTIVAZIONE_DA } from '../../lib/constants'
@@ -12,7 +12,7 @@ import { ConfirmModal } from '../../components/ConfirmModal'
 import { IconaLivello } from '../../components/IconaLivello'
 import { PaginaNav, paginaGruppi, NOMI_PER_PAGINA } from '../../components/PaginaNav'
 import { useFinalizzato } from '../../hooks/useFinalizzato'
-import type { Turnista, Livello, Utente, TurnistaMese } from '../../types'
+import type { Turnista, Livello, Utente, TurnistaMese, Turno } from '../../types'
 
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 
@@ -95,7 +95,41 @@ export function TurnistiPage() {
   // ── operazioni STAGED sul personale del mese (in memoria) ──
   function aggiungiAlMese(t: Turnista) { setStaged(prev => new Map(prev).set(t.id, t.livello)) }
   function cambiaRuoloMese(id: string, livello: Livello) { setStaged(prev => new Map(prev).set(id, livello)) }
-  function togliDalMese(id: string) { setStaged(prev => { const n = new Map(prev); n.delete(id); return n }) }
+  // Turni (normali e reperibilità) del mese assegnati alle persone indicate: chi ne ha
+  // non si può togliere dal personale del mese (resterebbero turni di chi «non c'è»).
+  async function turniDi(ids: string[]): Promise<Map<string, Turno[]>> {
+    const cerca = new Set(ids)
+    const m = new Map<string, Turno[]>()
+    for (const t of await store.getTurniMese(postazioneId!, anno, mese)) {
+      if (t.turnista_id && cerca.has(t.turnista_id)) m.set(t.turnista_id, [...(m.get(t.turnista_id) ?? []), t])
+    }
+    return m
+  }
+  function messaggioBlocco(conTurni: Map<string, Turno[]>): string {
+    const gm = (ds: string) => `${+ds.slice(8, 10)}/${+ds.slice(5, 7)}`
+    const righe = [...conTurni].map(([id, ts]) => {
+      const t = tById.get(id)
+      const norm = ts.filter(x => x.slot >= 0).map(x => x.data).sort()
+      const rep = ts.filter(x => x.slot < 0).map(x => x.data).sort()
+      const parti: string[] = []
+      if (norm.length) parti.push(`${norm.length} turn${norm.length === 1 ? 'o' : 'i'} (${norm.map(gm).join(', ')})`)
+      if (rep.length) parti.push(`${rep.length} reperibilità (${rep.map(gm).join(', ')})`)
+      return `${t ? nomeCompleto(t) : '—'}: ${parti.join(' e ')}`
+    })
+    return `Non si può togliere dal personale di ${MESI[mese - 1]} ${anno} chi ha turni assegnati in questo mese. ${righe.join(' · ')}. Togli o riassegna prima quei turni in ⑦ Turni del Mese, poi riprova.`
+  }
+  const [verificoId, setVerificoId] = useState<string | null>(null)
+  async function togliDalMese(id: string) {
+    setVerificoId(id)
+    try {
+      const conTurni = await turniDi([id])
+      if (conTurni.size) { await notify({ title: 'Non si può togliere dal mese', message: messaggioBlocco(conTurni) }); return }
+    } catch (e) {
+      console.error('[Personale] verifica turni fallita:', e)
+      void notify({ title: 'Verifica non riuscita', message: 'Non riesco a controllare i turni del mese: riprova tra poco.' }); return
+    } finally { setVerificoId(null) }
+    setStaged(prev => { const n = new Map(prev); n.delete(id); return n })
+  }
   async function copiaPersonale() {
     if (!meseSorgente) return
     const src = await store.getPersonaleMese(postazioneId!, meseSorgente)
@@ -122,6 +156,11 @@ export function TurnistiPage() {
     if (finalizzato) { await notify({ title: 'Mese finalizzato', message: `${MESI[mese - 1]} ${anno} è bloccato: per modificare il personale sbloccalo dalla pagina ⑧ Finalizzazione.` }); return }
     setSalvando(true)
     try {
+      const daTogliere = [...serverMap.keys()].filter(id => !staged.has(id))
+      if (daTogliere.length) {
+        const conTurni = await turniDi(daTogliere)
+        if (conTurni.size) { await notify({ title: 'Personale non confermato', message: messaggioBlocco(conTurni) }); return }
+      }
       for (const [id, liv] of staged) { const srv = serverMap.get(id); if (srv === undefined) await store.addTurnistaMese(postazioneId!, meseKey, id, liv); else if (srv !== liv) await store.setLivelloMese(postazioneId!, meseKey, id, liv) }
       for (const id of serverMap.keys()) if (!staged.has(id)) await store.removeTurnistaMese(meseKey, id)
       if (nuovaProcedura) await store.attivaPasso(postazioneId!, meseKey, 0)
@@ -288,7 +327,11 @@ export function TurnistiPage() {
                   <select value={staged.get(t.id) ?? 'turnista'} onChange={e => cambiaRuoloMese(t.id, e.target.value as Livello)} className="input text-xs py-1" style={{ width: 'auto' }} title="Ruolo per questo mese">
                     {LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
-                  <button onClick={() => togliDalMese(t.id)} title="Togli dal mese" className="p-1.5 rounded text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"><X size={14} /></button>
+                  <button onClick={() => togliDalMese(t.id)} disabled={verificoId !== null} title={`Togli ${nomeCompleto(t)} dal personale di ${MESI[mese - 1]} ${anno} (non si può se ha turni assegnati nel mese)`}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg shrink-0 transition-colors disabled:opacity-50"
+                    style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}>
+                    {verificoId === t.id ? <Loader2 size={12} className="animate-spin" /> : <UserMinus size={12} />}<span className="hidden sm:inline">Rimuovi dal mese</span>
+                  </button>
                 </div>
               ))}
             </div>
