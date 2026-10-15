@@ -139,11 +139,19 @@ export function TurnistiPage() {
   const [livello, setLivello] = useState<Livello>('turnista')
   const [errore, setErrore] = useState(''); const [saving, setSaving] = useState(false)
   const [sugg, setSugg] = useState<Utente[]>([])
+  const [turnistaAltrove, setTurnistaAltrove] = useState<string | null>(null)   // postazione in cui l'utente scelto è già turnista
   const inEdit = !!picked
   // suggerimenti SOLO se non stiamo già modificando un utente scelto (in modifica i campi si editano)
   async function cerca(term: string) { if (picked) return; if (term.trim().length < 3) { setSugg([]); return } try { setSugg(await store.searchUtenti(term)) } catch { setSugg([]) } }
-  function scegli(u: Utente) { setNome(u.nome); setCognome(u.cognome); setEmail(u.email); setPicked(u); setSugg([]); setErrore('') }
-  function resetForm() { setNome(''); setCognome(''); setEmail(''); setPicked(null); setLivello('turnista'); setSugg([]); setErrore('') }
+  function scegli(u: Utente) {
+    setNome(u.nome); setCognome(u.cognome); setEmail(u.email); setPicked(u); setSugg([]); setErrore(''); setTurnistaAltrove(null)
+    // una persona è turnista in UNA sola postazione: se lo è già altrove, qui può entrare solo come esterno/responsabile
+    store.getMembershipUtente(u.id).then(ms => {
+      const altrove = ms.find(m => m.livello === 'turnista' && m.postazioneId !== postazioneId)
+      if (altrove) { setTurnistaAltrove(altrove.postazioneNome); setLivello(l => l === 'turnista' ? 'esterno' : l) }
+    }).catch(() => {})
+  }
+  function resetForm() { setNome(''); setCognome(''); setEmail(''); setPicked(null); setLivello('turnista'); setSugg([]); setErrore(''); setTurnistaAltrove(null) }
 
   // NUOVO utente: prima di crearlo, avvisa se esiste già stessa email o stesso nome+cognome (anti-doppione)
   async function creaNuovo() {
@@ -177,7 +185,9 @@ export function TurnistiPage() {
     try {
       await store.aggiornaUtente(picked.id, { nome: nome.trim(), cognome: cognome.trim(), email: email.trim().toLowerCase() })
       store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Anagrafica aggiornata: ${cognome} ${nome}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
-      resetForm(); await qc.invalidateQueries()   // il nome cambia ovunque ⇒ invalida tutte le query
+      // il nome cambia ovunque ⇒ invalida tutte le query, TRANNE il personale del mese: un suo
+      // refetch riallinea la bozza al server e butterebbe via la copia non ancora confermata
+      resetForm(); await qc.invalidateQueries({ predicate: q => q.queryKey[0] !== 'personale-mese' })
     } catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
   }
@@ -238,8 +248,6 @@ export function TurnistiPage() {
     <div className="max-w-3xl mx-auto p-6 space-y-5">
       <ConfirmModal {...confirmState.opts} open={confirmState.open} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
       {Header}
-      {errore && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errore}</div>}
-
       {mostraGate ? (
         /* ── Gate iniziale: copia dal mese precedente o parti da zero ── */
         <div className="card p-8 text-center space-y-4">
@@ -339,9 +347,10 @@ export function TurnistiPage() {
             {inEdit && (
               <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af' }}>
                 <Pencil size={13} className="shrink-0 mt-0.5" />
-                <span>Stai <strong>modificando {picked!.cognome} {picked!.nome}</strong>: le modifiche valgono in <strong>tutto il programma</strong> (ogni mese e postazione). Per creare invece una persona nuova, premi «Svuota form».</span>
+                <span>Stai <strong>modificando {picked!.cognome} {picked!.nome}</strong>: «Salva modifiche» corregge i suoi dati in <strong>tutto il programma</strong> (ogni mese e postazione). Per inserirlo in <strong>questa postazione</strong> premi «Aggiungi a questa postazione». Per creare invece una persona nuova, premi «Svuota form».</span>
               </div>
             )}
+            {errore && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errore}</div>}
             <div className="relative">
               <div className="grid sm:grid-cols-3 gap-3">
                 <div><label className="label text-xs flex items-center gap-1">{!inEdit && <Search size={11} />} Nome *</label>
@@ -365,8 +374,10 @@ export function TurnistiPage() {
             <div className="flex items-end gap-3 flex-wrap">
               <div><label className="label text-xs">Livello di default</label>
                 <select value={livello} onChange={e => setLivello(e.target.value as Livello)} className="input text-sm w-48">
-                  {LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                </select></div>
+                  {LIVELLI_PERSONALE.filter(l => !(turnistaAltrove && l.value === 'turnista')).map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                </select>
+                {inEdit && turnistaAltrove && <p className="text-[11px] mt-1" style={{ color: '#b45309' }}>È già <strong>turnista</strong> a {turnistaAltrove} (si può esserlo in una sola postazione): qui può entrare come esterno o responsabile; il ruolo del mese resta libero.</p>}
+              </div>
               {inEdit ? (
                 <div className="flex items-center gap-2 ml-auto flex-wrap">
                   <button onClick={salvaModifiche} disabled={saving} className="btn-primary text-sm"><Save size={15} /> Salva modifiche</button>
