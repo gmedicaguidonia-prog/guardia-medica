@@ -61,7 +61,8 @@ export function DesiderataPage() {
   const { data: finestra, isLoading: loadingFin } = useQuery<DesiderataFinestra | null>({ queryKey: ['desiderata-finestra', postazioneId, meseKey], queryFn: () => store.getDesiderataFinestra(postazioneId!, meseKey), enabled: !!postazioneId })
   // Finestra RIAPERTA come eccezione: la sua chiusura cade DENTRO/oltre il mese (cosa che la regola
   // normale non consente). Solo per queste allentiamo il vincolo di data, sempre con avviso.
-  const finestraRiaperta = !!finestra?.aperta_a && finestra.aperta_a >= `${meseKey}-01`
+  const chiusuraPrevista = finestra?.riapri_a ?? finestra?.aperta_a   // chiusa in anticipo: vale la chiusura originale
+  const finestraRiaperta = !!chiusuraPrevista && chiusuraPrevista >= `${meseKey}-01`
   // Stato del calendario del mese: se è già pubblicato o in pianificazione, le desiderata (che si
   // raccolgono PRIMA di generare il calendario) non si attivano né si mostrano più.
   const { data: statoCal = 'non_pubblicato' } = useQuery<StatoCalendario>({ queryKey: ['turni-stato', postazioneId, meseKey], queryFn: () => store.getStatoCalendario(postazioneId!, meseKey), enabled: !!postazioneId })
@@ -184,7 +185,8 @@ export function DesiderataPage() {
   const [finDa, setFinDa] = useState(''); const [finA, setFinA] = useState('')
   const [finMsg, setFinMsg] = useState<string | null>(null)
   const [pubMsg, setPubMsg] = useState<string | null>(null)   // conferma "salvato" del toggle singole/pubbliche
-  useEffect(() => { setFinDa(finestra?.aperta_da ?? ''); setFinA(finestra?.aperta_a ?? '') }, [finestra])
+  // chiusa in anticipo: i campi ripropongono le date originali, così «Pubblica» la riapre così com'era
+  useEffect(() => { setFinDa(finestra?.riapri_da ?? finestra?.aperta_da ?? ''); setFinA(finestra?.riapri_a ?? finestra?.aperta_a ?? '') }, [finestra])
   async function salvaFinestra() {
     if (importati.size === 0) { showWarn('Definisci prima il personale del mese (passo ① Personale): senza non c\'è chi possa esprimere le desiderata.'); return }
     if (!finDa || !finA) { showWarn('Imposta sia la data di apertura sia quella di chiusura prima di pubblicare.'); return }
@@ -230,13 +232,32 @@ export function DesiderataPage() {
   const readonly = chiusa   // raccolta chiusa → griglia statica (sola lettura)
   const aperta = attiva && !chiusa && !!finestra?.aperta_da && !!finestra?.aperta_a && finestra.aperta_da <= oggiStr && oggiStr <= finestra.aperta_a
   const programmata = attiva && !chiusa && !aperta && !!finestra?.aperta_da && oggiStr < finestra.aperta_da
+  const chiusaInAnticipo = chiusa && !!finestra?.riapri_a
   const stato = chiusa
-    ? { label: 'Chiusa', bg: '#fee2e2', fg: '#b91c1c', br: '#fca5a5' }
+    ? { label: chiusaInAnticipo ? 'Chiusa in anticipo' : 'Chiusa', bg: '#fee2e2', fg: '#b91c1c', br: '#fca5a5' }
     : aperta
       ? { label: 'Aperta · in raccolta', bg: '#dcfce7', fg: '#166534', br: '#86efac' }
       : programmata
         ? { label: `Programmata · apre il ${finestra?.aperta_da ? itDate(finestra.aperta_da) : ''}`, bg: '#fef3c7', fg: '#92400e', br: '#fbbf24' }
         : { label: 'Attiva · da pubblicare', bg: '#e5e7eb', fg: '#374151', br: '#d1d5db' }
+
+  // «Chiudi desiderata»: chiude la raccolta pubblicata PRIMA della scadenza; «Pubblica» la riapre
+  async function chiudiRaccolta() {
+    if (!finestra) return
+    const ok = await confirm({
+      title: 'Chiudere la raccolta adesso?',
+      message: `La raccolta desiderata di ${MESI[mese - 1]} ${anno} verrà chiusa subito${finestra.aperta_a ? `, prima della scadenza del ${itDate(finestra.aperta_a)}` : ''}: i turnisti non potranno più inserire o modificare le loro scelte (quelle già inserite restano). Per riaprirla con le stesse date basterà premere «Pubblica».`,
+      confirmLabel: 'Chiudi desiderata',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      await store.chiudiDesiderata(postazioneId!, meseKey, finestra)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'desiderata_chiusa', messaggio: `Raccolta desiderata di ${MESI[mese - 1]} ${anno} chiusa in anticipo.`, target: '/admin/desiderata', perAdmin: true, autore: nomeAutore }).catch(() => {})
+      await qc.invalidateQueries({ queryKey: ['desiderata-finestra', postazioneId, meseKey] })
+      setFinMsg('Chiusa'); setTimeout(() => setFinMsg(null), 2500)
+    } catch (e) { console.error('[Desiderata] chiusura fallita:', e); void notify({ title: 'Errore', message: 'Errore nella chiusura della raccolta.' }) }
+  }
 
   async function attivaRaccolta() {
     if (!versione || schema.length === 0) { showWarn(`Non ci sono turni configurati per ${MESI[mese - 1]} ${anno}: impostali prima in Configurazione Turni (passo ②), poi potrai attivare la raccolta.`); return }
@@ -419,18 +440,24 @@ export function DesiderataPage() {
             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: stato.bg, color: stato.fg, border: `1px solid ${stato.br}` }}>{stato.label}</span>
           )}
         </div>
-        {chiusa ? (
+        {chiusa && !chiusaInAnticipo ? (
           <p className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
             <Lock size={13} /> Raccolta chiusa{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''}. Puoi riaprirla dal badge «Chiusa» qui sopra (anche per un mese passato, come eccezione). La griglia è in sola lettura.
             {finestra?.aperta_da && finestra?.aperta_a && <span className="text-stone-400">· periodo {itDate(finestra.aperta_da)} → {itDate(finestra.aperta_a)}</span>}
           </p>
         ) : (
           <div className="flex items-center gap-3 flex-wrap">
+            {chiusaInAnticipo && <p className="w-full text-xs flex items-center gap-1.5" style={{ color: '#b91c1c' }}><Lock size={13} /> Raccolta chiusa in anticipo{finestra?.aperta_a ? ` il ${itDate(finestra.aperta_a)}` : ''}: la griglia è in sola lettura. Per riaprirla con queste date premi «Pubblica».</p>}
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>apertura
               <input type="date" value={finDa} max={finestraRiaperta ? undefined : ultimoMesePrec} onChange={e => setFinDa(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <label className="text-xs flex items-center gap-1" style={{ color: '#475569' }}>chiusura
               <input type="date" value={finA} max={finestraRiaperta ? undefined : ultimoMesePrec} onChange={e => setFinA(e.target.value)} className="border rounded px-2 py-1 text-xs" style={{ borderColor: '#d6d3cc' }} /></label>
             <button onClick={salvaFinestra} disabled={!finDa || !finA || importati.size === 0} className="btn-primary text-xs py-1 px-3 disabled:opacity-40 disabled:cursor-not-allowed" title={importati.size === 0 ? 'Definisci prima il personale del mese' : !finDa || !finA ? 'Imposta apertura e chiusura' : 'Pubblica il periodo di raccolta'}>Pubblica</button>
+            {(aperta || programmata) && (
+              <button onClick={chiudiRaccolta} className="text-xs font-semibold py-1 px-3 rounded-lg inline-flex items-center gap-1" style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }} title="Chiude subito la raccolta, prima della scadenza (poi «Pubblica» la riapre con le stesse date)">
+                <Lock size={12} /> Chiudi desiderata
+              </button>
+            )}
             {finMsg && <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}><Check size={13} /> {finMsg}</span>}
             {importati.size === 0 && <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: '#b45309' }}><AlertTriangle size={13} /> Definisci prima il personale del mese (passo ① Personale).</span>}
           </div>

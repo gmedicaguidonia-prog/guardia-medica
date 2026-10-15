@@ -768,10 +768,22 @@ const supaStore = {
     if (arch) { const df = arch.desiderata_finestra as { mese: string; aperta_da: string | null; aperta_a: string | null; pubbliche: boolean } | null; return df ? { mese: df.mese, aperta_da: df.aperta_da, aperta_a: df.aperta_a, pubbliche: !!df.pubbliche } : null }
     const { data, error } = await supabase.from('desiderata_finestra').select('*').eq('postazione_id', postazioneId).eq('mese', mese).maybeSingle()
     if (error) throw error
-    return data ? { mese: data.mese as string, aperta_da: data.aperta_da as string | null, aperta_a: data.aperta_a as string | null, pubbliche: !!data.pubbliche } : null
+    return data ? { mese: data.mese as string, aperta_da: data.aperta_da as string | null, aperta_a: data.aperta_a as string | null, pubbliche: !!data.pubbliche, riapri_da: (data.riapri_da as string | null) ?? null, riapri_a: (data.riapri_a as string | null) ?? null } : null
   },
+  // «Pubblica»: fissa il periodo di raccolta (e dimentica le date di un'eventuale chiusura in anticipo)
   async setDesiderataFinestra(postazioneId: string, mese: string, da: string | null, a: string | null): Promise<void> {
-    const { error } = await supabase.from('desiderata_finestra').upsert({ mese, aperta_da: da, aperta_a: a, postazione_id: postazioneId }, { onConflict: 'postazione_id,mese' })
+    const { error } = await supabase.from('desiderata_finestra').upsert({ mese, aperta_da: da, aperta_a: a, riapri_da: null, riapri_a: null, postazione_id: postazioneId }, { onConflict: 'postazione_id,mese' })
+    if (error) throw error
+  },
+  // «Chiudi desiderata»: chiude subito (chiusura = ieri) e ricorda le date originali, che «Pubblica» ripropone
+  async chiudiDesiderata(postazioneId: string, mese: string, attuale: DesiderataFinestra): Promise<void> {
+    const ieri = isoIeri()
+    const { error } = await supabase.from('desiderata_finestra').update({
+      aperta_da: attuale.aperta_da && attuale.aperta_da > ieri ? ieri : attuale.aperta_da,
+      aperta_a: ieri,
+      riapri_da: attuale.riapri_da ?? attuale.aperta_da,
+      riapri_a: attuale.riapri_a ?? attuale.aperta_a,
+    }).eq('postazione_id', postazioneId).eq('mese', mese)
     if (error) throw error
   },
   async setDesiderataPubbliche(postazioneId: string, mese: string, pubbliche: boolean): Promise<void> {
@@ -1181,6 +1193,7 @@ const DEV_POSTAZIONE      = 'dev-postazione-1'
 function uid(): string { try { return crypto.randomUUID() } catch { return 'id-' + Math.random().toString(36).slice(2) } }
 function read<T>(key: string, fallback: T): T { try { const raw = localStorage.getItem(key); return raw ? (JSON.parse(raw) as T) : fallback } catch { return fallback } }
 function writeLs<T>(key: string, val: T): void { try { localStorage.setItem(key, JSON.stringify(val)) } catch {} }
+function isoIeri(): string { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function meseCorrente(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 
 function ensureSeed(): void {
@@ -1859,20 +1872,26 @@ const localStore = {
   async getDesiderataFinestra(postazioneId: string, mese: string): Promise<DesiderataFinestra | null> {
     const arch = _archDev(postazioneId, mese); if (arch) { const df = arch.desiderata_finestra as DesiderataFinestra | null; return df ? { mese: df.mese, aperta_da: df.aperta_da, aperta_a: df.aperta_a, pubbliche: !!df.pubbliche } : null }
     const f = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
-    return f ? { mese: f.mese, aperta_da: f.aperta_da, aperta_a: f.aperta_a, pubbliche: !!f.pubbliche } : null
+    return f ? { mese: f.mese, aperta_da: f.aperta_da, aperta_a: f.aperta_a, pubbliche: !!f.pubbliche, riapri_da: f.riapri_da ?? null, riapri_a: f.riapri_a ?? null } : null
   },
   async setDesiderataFinestra(postazioneId: string, mese: string, da: string | null, a: string | null): Promise<void> {
     const all = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, [])
     const prev = all.find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
     const list = all.filter(f => !(f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId))
-    list.push({ mese, aperta_da: da, aperta_a: a, pubbliche: prev?.pubbliche ?? false, postazione_id: postazioneId })
+    list.push({ mese, aperta_da: da, aperta_a: a, pubbliche: prev?.pubbliche ?? false, riapri_da: null, riapri_a: null, postazione_id: postazioneId })
     writeLs(LS_DESIDERATA_FIN, list)
+  },
+  async chiudiDesiderata(postazioneId: string, mese: string, attuale: DesiderataFinestra): Promise<void> {
+    const ieri = isoIeri()
+    writeLs(LS_DESIDERATA_FIN, read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, []).map(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId
+      ? { ...f, aperta_da: attuale.aperta_da && attuale.aperta_da > ieri ? ieri : attuale.aperta_da, aperta_a: ieri, riapri_da: attuale.riapri_da ?? attuale.aperta_da, riapri_a: attuale.riapri_a ?? attuale.aperta_a }
+      : f))
   },
   async setDesiderataPubbliche(postazioneId: string, mese: string, pubbliche: boolean): Promise<void> {
     const all = read<WithPost<DesiderataFinestra>[]>(LS_DESIDERATA_FIN, [])
     const prev = all.find(f => f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId)
     const list = all.filter(f => !(f.mese === mese && (f.postazione_id ?? DEV_POSTAZIONE) === postazioneId))
-    list.push({ mese, aperta_da: prev?.aperta_da ?? null, aperta_a: prev?.aperta_a ?? null, pubbliche, postazione_id: postazioneId })
+    list.push({ mese, aperta_da: prev?.aperta_da ?? null, aperta_a: prev?.aperta_a ?? null, pubbliche, riapri_da: prev?.riapri_da ?? null, riapri_a: prev?.riapri_a ?? null, postazione_id: postazioneId })
     writeLs(LS_DESIDERATA_FIN, list)
   },
   async attivaDesiderata(postazioneId: string, mese: string): Promise<void> {

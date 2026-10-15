@@ -259,6 +259,8 @@ export interface DesiderataFinestra {
   aperta_da: string | null // 'YYYY-MM-DD'
   aperta_a: string | null  // 'YYYY-MM-DD'
   pubbliche: boolean        // true = desiderata visibili a tutti i turnisti (vista a colonne)
+  riapri_da?: string | null // chiusa IN ANTICIPO: date originali, ripubblicate da «Pubblica»
+  riapri_a?: string | null
 }
 
 // ─── Festività / Superfestivi ───────────────────────────────────────
