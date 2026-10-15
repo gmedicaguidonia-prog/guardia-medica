@@ -719,6 +719,15 @@ const supaStore = {
     const { error } = await supabase.from('turnisti_mese').delete().match({ mese, turnista_id: turnistaId })
     if (error) throw error
   },
+  // In un mese si può essere TURNISTA in una sola postazione: tra le persone indicate, quelle che nel
+  // mese sono già Turniste in un'ALTRA postazione (utente_id → nome di quella postazione). RPC perché
+  // i gestori non vedono il personale delle altre postazioni.
+  async getTurnistiAltroveNelMese(postazioneId: string, mese: string, utenteIds: string[]): Promise<Map<string, string>> {
+    if (!utenteIds.length) return new Map()
+    const { data, error } = await supabase.rpc('turnisti_altrove_nel_mese', { p_postazione: postazioneId, p_mese: mese, p_utenti: utenteIds })
+    if (error) throw error
+    return new Map(((data ?? []) as { utente_id: string; postazione_nome: string }[]).map(r => [r.utente_id, r.postazione_nome]))
+  },
   // Turni (reperibilità comprese) di una persona da un mese in poi: chi ne ha non può uscire dalla postazione
   async getTurniTurnistaDal(turnistaId: string, dalMese: string): Promise<{ data: string; slot: number }[]> {
     const { data, error } = await supabase.from('turni').select('data, slot').eq('turnista_id', turnistaId).gte('data', `${dalMese}-01`).order('data')
@@ -1804,6 +1813,19 @@ const localStore = {
   },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.mese === mese && x.turnista_id === turnistaId)))
+  },
+  async getTurnistiAltroveNelMese(postazioneId: string, mese: string, utenteIds: string[]): Promise<Map<string, string>> {
+    const cerca = new Set(utenteIds)
+    const tur = read<WithPost<Turnista>[]>(LS_TURNISTI, [])
+    const posts = read<Postazione[]>(LS_POSTAZIONI, [])
+    const m = new Map<string, string>()
+    read<{ mese: string; turnista_id: string; postazione_id?: string; livello?: Livello }[]>(LS_TURNISTI_MESE, []).forEach(x => {
+      const pid = x.postazione_id ?? DEV_POSTAZIONE
+      if (x.mese !== mese || x.livello !== 'turnista' || pid === postazioneId) return
+      const t = tur.find(y => y.id === x.turnista_id); const uid = t ? (t.utente_id ?? t.id) : null
+      if (uid && cerca.has(uid)) m.set(uid, posts.find(p => p.id === pid)?.nome ?? '—')
+    })
+    return m
   },
   async getTurniTurnistaDal(turnistaId: string, dalMese: string): Promise<{ data: string; slot: number }[]> {
     return read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => t.turnista_id === turnistaId && t.data >= `${dalMese}-01`).map(t => ({ data: t.data, slot: t.slot })).sort((a, b) => a.data.localeCompare(b.data))

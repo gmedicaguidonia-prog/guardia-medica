@@ -37,6 +37,10 @@ export function TurnistiPage() {
   const nuovaProcedura = meseKey >= ATTIVAZIONE_DA
 
   const { data: turnisti = [], isLoading } = useQuery<Turnista[]>({ queryKey: ['turnisti', postazioneId], queryFn: () => store.getTurnisti(postazioneId!), enabled: !!postazioneId })
+  // In un mese si può essere TURNISTA in una sola postazione: chi lo è già altrove in questo mese
+  // (utente_id → nome dell'altra postazione)
+  const utentiQui = useMemo(() => [...new Set(turnisti.map(t => t.utente_id))].sort(), [turnisti])
+  const { data: altrove = new Map<string, string>() } = useQuery<Map<string, string>>({ queryKey: ['turnisti-altrove', postazioneId, meseKey, utentiQui.join(',')], queryFn: () => store.getTurnistiAltroveNelMese(postazioneId!, meseKey, utentiQui), enabled: !!postazioneId && utentiQui.length > 0 })
   const { data: personale = [], dataUpdatedAt } = useQuery<TurnistaMese[]>({ queryKey: ['personale-mese', postazioneId, meseKey], queryFn: () => store.getPersonaleMese(postazioneId!, meseKey), enabled: !!postazioneId, refetchOnWindowFocus: false })
   const { data: attivazioni = [] } = useQuery<number[]>({ queryKey: ['attivazioni', postazioneId, meseKey], queryFn: () => store.getAttivazioni(postazioneId!, meseKey), enabled: !!postazioneId })
   const confermato = attivazioni.includes(0)
@@ -95,8 +99,23 @@ export function TurnistiPage() {
   function cambiaMese(delta: number) { let m = mese + delta, a = anno; if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ } setMeseAnno(a, m) }
 
   // ── operazioni STAGED sul personale del mese (in memoria) ──
-  function aggiungiAlMese(t: Turnista) { setStaged(prev => new Map(prev).set(t.id, t.livello)) }
-  function cambiaRuoloMese(id: string, livello: Livello) { setStaged(prev => new Map(prev).set(id, livello)) }
+  async function aggiungiAlMese(t: Turnista) {
+    const alt = t.livello === 'turnista' ? altrove.get(t.utente_id) : undefined
+    if (alt) {
+      const ok = await confirm({ title: 'Non può essere turnista qui', message: `${nomeCompleto(t)} a ${MESI[mese - 1]} ${anno} è già Turnista a ${alt}: in un mese si può essere turnista in una sola postazione. Vuoi aggiungerlo qui come Esterno?`, confirmLabel: 'Aggiungi come esterno' })
+      if (ok) setStaged(prev => new Map(prev).set(t.id, 'esterno'))
+      return
+    }
+    setStaged(prev => new Map(prev).set(t.id, t.livello))
+  }
+  function cambiaRuoloMese(id: string, livello: Livello) {
+    if (livello === 'turnista') {
+      const t = tById.get(id)
+      const alt = t ? altrove.get(t.utente_id) : undefined
+      if (t && alt) { void notify({ title: 'Non può essere turnista qui', message: `${nomeCompleto(t)} a ${MESI[mese - 1]} ${anno} è già Turnista a ${alt}: in un mese si può essere turnista in una sola postazione. Qui può essere Esterno o Responsabile.` }); return }
+    }
+    setStaged(prev => new Map(prev).set(id, livello))
+  }
   // Turni (normali e reperibilità) del mese assegnati alle persone indicate: chi ne ha
   // non si può togliere dal personale del mese (resterebbero turni di chi «non c'è»).
   async function turniDi(ids: string[]): Promise<Map<string, Turno[]>> {
@@ -191,7 +210,17 @@ export function TurnistiPage() {
       })
     }
     const copiabili = new Set(turnisti.filter(t => t.attivo && presenteNelMese(t, meseKey)).map(t => t.id))
-    setStaged(prev => { const n = new Map(prev); for (const p of src) if (copiabili.has(p.turnista_id)) n.set(p.turnista_id, p.livello); return n })
+    // chi nel nuovo mese è già TURNISTA in un'altra postazione viene copiato qui come Esterno
+    const turnistiDaCopiare = src.filter(p => copiabili.has(p.turnista_id) && p.livello === 'turnista').map(p => tById.get(p.turnista_id)).filter((t): t is Turnista => !!t)
+    let altroveOra = new Map<string, string>()
+    if (turnistiDaCopiare.length) { try { altroveOra = await store.getTurnistiAltroveNelMese(postazioneId!, meseKey, turnistiDaCopiare.map(t => t.utente_id)) } catch { /* la conferma ricontrolla comunque */ } }
+    const declassati = turnistiDaCopiare.filter(t => altroveOra.has(t.utente_id))
+    if (declassati.length) {
+      const uno = declassati.length === 1
+      await notify({ title: uno ? 'Copiato come esterno' : 'Copiati come esterni', message: `A ${MESI[mese - 1]} ${anno} ${uno ? 'è' : 'sono'} già Turnist${uno ? 'a' : 'i'} in un'altra postazione, quindi qui ${uno ? 'viene copiato' : 'vengono copiati'} come Esterno: ${declassati.map(t => `${nomeCompleto(t)} (${altroveOra.get(t.utente_id)})`).join(', ')}.` })
+    }
+    const decl = new Set(declassati.map(t => t.id))
+    setStaged(prev => { const n = new Map(prev); for (const p of src) if (copiabili.has(p.turnista_id)) n.set(p.turnista_id, decl.has(p.turnista_id) ? 'esterno' : p.livello); return n })
   }
   function annulla() { setStaged(new Map(serverMap)) }
 
@@ -206,6 +235,17 @@ export function TurnistiPage() {
       if (daTogliere.length) {
         const conTurni = await turniDi(daTogliere)
         if (conTurni.size) { await notify({ title: 'Personale non confermato', message: messaggioBlocco(conTurni) }); return }
+      }
+      // in un mese si può essere TURNISTA in una sola postazione: controllo finale, dati freschi
+      const turnistiQui = [...staged].filter(([, liv]) => liv === 'turnista').map(([id]) => tById.get(id)).filter((t): t is Turnista => !!t)
+      if (turnistiQui.length) {
+        const alt = await store.getTurnistiAltroveNelMese(postazioneId!, meseKey, turnistiQui.map(t => t.utente_id))
+        const doppi = turnistiQui.filter(t => alt.has(t.utente_id))
+        if (doppi.length) {
+          const uno = doppi.length === 1
+          await notify({ title: 'Personale non confermato', message: `In un mese si può essere Turnista in una sola postazione. A ${MESI[mese - 1]} ${anno} ${uno ? 'risulta' : 'risultano'} già Turnist${uno ? 'a' : 'i'} altrove: ${doppi.map(t => `${nomeCompleto(t)} (${alt.get(t.utente_id)})`).join(', ')}. Qui ${uno ? 'mettilo' : 'mettili'} come Esterno, oppure cambia il ruolo nell'altra postazione, poi conferma.` })
+          return
+        }
       }
       for (const [id, liv] of staged) { const srv = serverMap.get(id); if (srv === undefined) await store.addTurnistaMese(postazioneId!, meseKey, id, liv); else if (srv !== liv) await store.setLivelloMese(postazioneId!, meseKey, id, liv) }
       for (const id of serverMap.keys()) if (!staged.has(id)) await store.removeTurnistaMese(meseKey, id)
@@ -224,13 +264,14 @@ export function TurnistiPage() {
   const [livello, setLivello] = useState<Livello>('turnista')
   const [errore, setErrore] = useState(''); const [saving, setSaving] = useState(false)
   const [sugg, setSugg] = useState<Utente[]>([])
-  const [turnistaAltrove, setTurnistaAltrove] = useState<string | null>(null)   // postazione in cui l'utente scelto è già turnista
+  const [turnistaAltrove, setTurnistaAltrove] = useState<string | null>(null)   // postazione in cui l'utente scelto è già turnista (livello di default)
+  const [altroveMese, setAltroveMese] = useState<string | null>(null)   // postazione in cui l'utente scelto è già TURNISTA in questo mese
   const inEdit = !!picked
   // suggerimenti SOLO se non stiamo già modificando un utente scelto (in modifica i campi si editano)
   async function cerca(term: string) { if (picked) return; if (term.trim().length < 3) { setSugg([]); return } try { setSugg(await store.searchUtenti(term)) } catch { setSugg([]) } }
   const [esito, setEsito] = useState<string | null>(null)   // esito dell'ultimo «Salva modifiche» (il modulo resta sulla persona)
   function scegli(u: Utente) {
-    setNome(u.nome); setCognome(u.cognome); setEmail(u.email); setPicked(u); setSugg([]); setErrore(''); setEsito(null); setTurnistaAltrove(null)
+    setNome(u.nome); setCognome(u.cognome); setEmail(u.email); setPicked(u); setSugg([]); setErrore(''); setEsito(null); setTurnistaAltrove(null); setAltroveMese(null)
     // in modifica il menu è il RUOLO DEL MESE in questa postazione: si parte da quello della
     // bozza del mese, altrimenti dal livello di default qui, altrimenti turnista
     const membro = turnisti.find(t => t.utente_id === u.id)
@@ -241,8 +282,13 @@ export function TurnistiPage() {
       const altrove = ms.find(m => m.livello === 'turnista' && m.postazioneId !== postazioneId)
       if (altrove) setTurnistaAltrove(altrove.postazioneNome)
     }).catch(() => {})
+    // in un mese si può essere turnista in una sola postazione: se lo è già altrove, qui no
+    store.getTurnistiAltroveNelMese(postazioneId!, meseKey, [u.id]).then(m => {
+      const a = m.get(u.id)
+      if (a) { setAltroveMese(a); setLivello(l => l === 'turnista' ? 'esterno' : l) }
+    }).catch(() => {})
   }
-  function resetForm() { setNome(''); setCognome(''); setEmail(''); setPicked(null); setLivello('turnista'); setSugg([]); setErrore(''); setEsito(null); setTurnistaAltrove(null) }
+  function resetForm() { setNome(''); setCognome(''); setEmail(''); setPicked(null); setLivello('turnista'); setSugg([]); setErrore(''); setEsito(null); setTurnistaAltrove(null); setAltroveMese(null) }
 
   // NUOVO utente: prima di crearlo, avvisa se esiste già stessa email o stesso nome+cognome (anti-doppione)
   async function creaNuovo() {
@@ -278,6 +324,14 @@ export function TurnistiPage() {
     if (!nome.trim() || !cognome.trim() || !email.trim()) { setErrore('Nome, cognome ed email obbligatori.'); return }
     const nuovi = { nome: nome.trim(), cognome: cognome.trim(), email: email.trim().toLowerCase() }
     const anagraficaCambiata = nuovi.nome !== picked.nome || nuovi.cognome !== picked.cognome || nuovi.email !== picked.email.toLowerCase()
+    // ruolo del mese TURNISTA: non se lo è già in un'altra postazione in questo mese
+    const membroQui = turnisti.find(t => t.utente_id === picked.id) ?? null
+    const giaTurnistaQui = !!membroQui && staged.get(membroQui.id) === 'turnista'
+    if (livello === 'turnista' && !giaTurnistaQui && picked.attivo !== false) {
+      let alt: string | undefined
+      try { alt = (await store.getTurnistiAltroveNelMese(postazioneId!, meseKey, [picked.id])).get(picked.id) } catch { alt = undefined }
+      if (alt) { await notify({ title: 'Non può essere turnista qui', message: `${picked.cognome} ${picked.nome} a ${MESI[mese - 1]} ${anno} è già Turnista a ${alt}: in un mese si può essere turnista in una sola postazione. Scegli Esterno o Responsabile come ruolo del mese.` }); return }
+    }
     if (anagraficaCambiata && !(await confirm({ title: 'Modifica anagrafica', message: `Stai modificando l'anagrafica di ${picked.cognome} ${picked.nome}. Nome, cognome ed email valgono in TUTTO il programma: ogni mese, ogni postazione e i turni già assegnati. Continuare?`, confirmLabel: 'Salva ovunque' }))) return
     setSaving(true); setErrore(''); setEsito(null)
     const meseTxt = `${MESI[mese - 1]} ${anno}`
@@ -331,10 +385,10 @@ export function TurnistiPage() {
   const [eNome, setENome] = useState(''); const [eCognome, setECognome] = useState(''); const [eEmail, setEEmail] = useState(''); const [eUtente, setEUtente] = useState(''); const [eLiv, setELiv] = useState<Livello>('turnista')
   function startEdit(t: Turnista) { setEditId(t.id); setENome(t.nome); setECognome(t.cognome); setEEmail(t.email); setEUtente(t.utente_id); setELiv(t.livello); setErrore('') }
   async function salvaEdit() {
-    if (!eNome.trim() || !eCognome.trim() || !eEmail.trim()) { setErrore('Nome, cognome ed email obbligatori.'); return }
+    if (!eNome.trim() || !eCognome.trim() || !eEmail.trim()) { void notify({ title: 'Dati mancanti', message: 'Nome, cognome ed email sono obbligatori.' }); return }
     setSaving(true); setErrore('')
     try { await store.updateMembro(editId!, eUtente, { nome: eNome, cognome: eCognome, email: eEmail, livello: eLiv }); setEditId(null); await qc.invalidateQueries({ queryKey: ['turnisti'] }) }
-    catch (e) { setErrore((e as Error).message) }
+    catch (e) { void notify({ title: 'Modifica non salvata', message: (e as Error).message }) }
     finally { setSaving(false) }
   }
   async function rimuoviAnagrafica(t: Turnista) {
@@ -503,9 +557,10 @@ export function TurnistiPage() {
             <div className="flex items-end gap-3 flex-wrap">
               <div><label className="label text-xs">{inEdit ? `Ruolo a ${MESI[mese - 1]} ${anno}` : 'Livello di default'}</label>
                 <select value={livello} onChange={e => setLivello(e.target.value as Livello)} className="input text-sm w-48">
-                  {LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                  {LIVELLI_PERSONALE.filter(l => !(inEdit && altroveMese && l.value === 'turnista')).map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                 </select>
-                {inEdit && turnistaAltrove && <p className="text-[11px] mt-1" style={{ color: '#b45309' }}>È già <strong>turnista</strong> a {turnistaAltrove} (si può esserlo in una sola postazione): se entra in questa postazione ci risulterà esterno, ma il ruolo del mese può essere Turnista.</p>}
+                {inEdit && altroveMese && <p className="text-[11px] mt-1" style={{ color: '#b45309' }}>A {MESI[mese - 1]} {anno} è già <strong>Turnista</strong> a {altroveMese}: in un mese si può essere turnista in una sola postazione, quindi qui può essere solo Esterno o Responsabile.</p>}
+                {inEdit && !altroveMese && turnistaAltrove && <p className="text-[11px] mt-1" style={{ color: '#b45309' }}>In anagrafica è già <strong>turnista</strong> a {turnistaAltrove} (lo si può essere in una sola postazione): se entra in questa postazione ci risulterà esterno.</p>}
                 {inEdit && picked?.attivo === false && <p className="text-[11px] mt-1" style={{ color: '#b91c1c' }}>Utente <strong>sospeso</strong>: puoi correggerne i dati, ma non aggiungerlo ai mesi.</p>}
               </div>
               {inEdit ? (
