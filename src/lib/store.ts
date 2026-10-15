@@ -726,9 +726,10 @@ const supaStore = {
     return (data ?? []) as { data: string; slot: number }[]
   },
   // Esce dalla postazione da un mese in poi (RPC: ricontrolla i turni, chiude l'iscrizione, la toglie dai mesi ≥)
-  async rimuoviDallaPostazione(turnistaId: string, dalMese: string): Promise<void> {
-    const { error } = await supabase.rpc('rimuovi_dalla_postazione', { p_turnista: turnistaId, p_dal: dalMese })
+  async rimuoviDallaPostazione(turnistaId: string, dalMese: string): Promise<'eliminata' | 'chiusa'> {
+    const { data, error } = await supabase.rpc('rimuovi_dalla_postazione', { p_turnista: turnistaId, p_dal: dalMese })
     if (error) throw new Error(error.message)
+    return data === 'eliminata' ? 'eliminata' : 'chiusa'
   },
   async riammettiNellaPostazione(turnistaId: string): Promise<void> {
     const { error } = await supabase.rpc('riammetti_nella_postazione', { p_turnista: turnistaId })
@@ -966,29 +967,28 @@ const supaStore = {
   //  `sospesi=false` (default) → solo utenti ATTIVI; `sospesi=true` → solo i SOSPESI
   //  (riquadro dedicato «Utenti sospesi», ordinati per data di sospensione).
   async getUtentiAnagrafica(search: string, offset: number, limit: number, sospesi = false): Promise<{ rows: UtenteAnagrafica[]; total: number }> {
-    // In elenco contano solo i ruoli GLOBALI (admin/supervisore, mostrati in testa); per gli
-    // altri si CONTANO le appartenenze per livello di default (badge «Esterno ×2»…): i ruoli
-    // operativi veri sono per-postazione/mese. Carichiamo tutto e ordiniamo/paginiamo lato
-    // client (l'anagrafica è piccola).
+    // In elenco contano solo i ruoli GLOBALI (admin/supervisore, mostrati in testa); per il
+    // resto si mostra soltanto IN QUALI POSTAZIONI la persona è presente oggi (iscrizione aperta,
+    // con qualsiasi titolo): i ruoli veri sono per-mese, e un'iscrizione chiusa (rimasta per lo
+    // storico) non conta. Carichiamo tutto e ordiniamo/paginiamo lato client (anagrafica piccola).
     const [u, m, sup] = await Promise.all([
       supabase.from('utenti').select('id, nome, cognome, email, admin, attivo, sospeso_il'),
-      supabase.from('turnisti').select('utente_id, livello'),
+      supabase.from('turnisti').select('utente_id, fuori_dal, postazioni(nome)'),
       supabase.from('supervisori').select('utente_id'),
     ])
     if (u.error) throw u.error
     if (m.error) throw m.error
     if (sup.error) throw sup.error
     const supSet = new Set((sup.data ?? []).map(s => s.utente_id as string))
-    const vuoto = () => ({ responsabile: 0, turnista: 0, esterno: 0 })
-    const conta = new Map<string, { responsabile: number; turnista: number; esterno: number }>()
+    const presenze = new Map<string, string[]>()
     ;(m.data ?? []).forEach(r => {
-      const id = r.utente_id as string, lv = r.livello as string
-      const c = conta.get(id) ?? vuoto()
-      if (lv === 'responsabile' || lv === 'turnista' || lv === 'esterno') c[lv]++
-      conta.set(id, c)
+      const fd = r.fuori_dal as string | null
+      if (fd && meseCorrente() >= fd) return   // iscrizione già chiusa: non è presente
+      const id = r.utente_id as string
+      presenze.set(id, [...(presenze.get(id) ?? []), ((r.postazioni as { nome?: string } | null)?.nome) ?? '—'])
     })
     const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : 'utente'
-    let rows: UtenteAnagrafica[] = (u.data ?? []).map(x => { const id = x.id as string, admin = !!x.admin; return { id, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin, attivo: (x.attivo as boolean) !== false, sospesoIl: (x.sospeso_il as string | null) ?? null, ruolo: ruoloOf(id, admin), livelli: conta.get(id) ?? vuoto() } })
+    let rows: UtenteAnagrafica[] = (u.data ?? []).map(x => { const id = x.id as string, admin = !!x.admin; return { id, nome: (x.nome as string) ?? '', cognome: (x.cognome as string) ?? '', email: (x.email as string) ?? '', admin, attivo: (x.attivo as boolean) !== false, sospesoIl: (x.sospeso_il as string | null) ?? null, ruolo: ruoloOf(id, admin), postazioni: (presenze.get(id) ?? []).sort((a, b) => a.localeCompare(b, 'it')) } })
     rows = rows.filter(r => r.attivo !== sospesi)
     const s = search.trim().toLowerCase()
     if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
@@ -998,9 +998,9 @@ const supaStore = {
   },
   // Appartenenze (postazione + ruolo) di un utente, per la sua scheda.
   async getMembershipUtente(utenteId: string): Promise<MembershipUtente[]> {
-    const { data, error } = await supabase.from('turnisti').select('id, livello, postazione_id, postazioni(nome)').eq('utente_id', utenteId)
+    const { data, error } = await supabase.from('turnisti').select('id, livello, postazione_id, fuori_dal, postazioni(nome)').eq('utente_id', utenteId)
     if (error) throw error
-    return (data ?? []).map(x => ({ membershipId: x.id as string, postazioneId: x.postazione_id as string, postazioneNome: ((x.postazioni as { nome?: string } | null)?.nome) ?? '—', livello: x.livello as Livello }))
+    return (data ?? []).map(x => ({ membershipId: x.id as string, postazioneId: x.postazione_id as string, postazioneNome: ((x.postazioni as { nome?: string } | null)?.nome) ?? '—', livello: x.livello as Livello, fuoriDal: (x.fuori_dal as string | null) ?? null }))
       .sort((a, b) => a.postazioneNome.localeCompare(b.postazioneNome, 'it'))
   },
   // Sospende / riattiva un utente (RPC admin: protegge se stessi e gli altri admin).
@@ -1808,10 +1808,17 @@ const localStore = {
   async getTurniTurnistaDal(turnistaId: string, dalMese: string): Promise<{ data: string; slot: number }[]> {
     return read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => t.turnista_id === turnistaId && t.data >= `${dalMese}-01`).map(t => ({ data: t.data, slot: t.slot })).sort((a, b) => a.data.localeCompare(b.data))
   },
-  async rimuoviDallaPostazione(turnistaId: string, dalMese: string): Promise<void> {
+  async rimuoviDallaPostazione(turnistaId: string, dalMese: string): Promise<'eliminata' | 'chiusa'> {
     if ((await localStore.getTurniTurnistaDal(turnistaId, dalMese)).length) throw new Error('Ha ancora turni assegnati dal mese scelto in poi: toglili o riassegnali prima in Turni del Mese.')
-    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).map(t => t.id === turnistaId ? { ...t, fuori_dal: dalMese } : t))
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.turnista_id === turnistaId && x.mese >= dalMese)))
+    // nessuno storico prima del mese ⇒ l'iscrizione si elimina; altrimenti si chiude (come la RPC)
+    const storico = read<WithPost<Turno>[]>(LS_TURNI, []).some(x => x.turnista_id === turnistaId)
+      || read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).some(x => x.turnista_id === turnistaId)
+      || read<WithPost<Desiderata>[]>(LS_DESIDERATA, []).some(d => d.turnista_id === turnistaId && d.data < `${dalMese}-01`)
+      || JSON.stringify(read<unknown[]>('gm_setup_backup', [])).includes(turnistaId)
+    if (!storico) { writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(x => x.id !== turnistaId)); return 'eliminata' }
+    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).map(x => x.id === turnistaId ? { ...x, fuori_dal: dalMese } : x))
+    return 'chiusa'
   },
   async riammettiNellaPostazione(turnistaId: string): Promise<void> {
     writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).map(t => t.id === turnistaId ? { ...t, fuori_dal: null } : t))
@@ -2003,19 +2010,17 @@ const localStore = {
     const sosp = new Set(read<string[]>('gm_utenti_sospesi', []))
     const sospQuando = read<Record<string, string>>('gm_utenti_sospesi_quando', {})
     const supSet = new Set(read<{ utenteId: string }[]>('gm_dev_supervisori', []).map(s => s.utenteId))
-    const vuoto = () => ({ responsabile: 0, turnista: 0, esterno: 0 })
-    const conta = new Map<string, { responsabile: number; turnista: number; esterno: number }>()
+    const posts = read<Postazione[]>(LS_POSTAZIONI, [])
+    const presenze = new Map<string, string[]>()
     const base = new Map<string, { id: string; nome: string; cognome: string; email: string }>()
     read<WithPost<Turnista>[]>(LS_TURNISTI, []).forEach(t => {
       const id = t.utente_id ?? t.id
-      const c = conta.get(id) ?? vuoto()
-      if (t.livello === 'responsabile' || t.livello === 'turnista' || t.livello === 'esterno') c[t.livello]++
-      conta.set(id, c)
+      if (!(t.fuori_dal && meseCorrente() >= t.fuori_dal)) { const pid = t.postazione_id ?? DEV_POSTAZIONE; presenze.set(id, [...(presenze.get(id) ?? []), posts.find(p => p.id === pid)?.nome ?? '—']) }
       if (!base.has(id)) base.set(id, { id, nome: t.nome, cognome: t.cognome, email: t.email })
     })
     read<UtenteAdmin[]>('gm_dev_extra_utenti', []).forEach(u => { if (!base.has(u.id)) base.set(u.id, { id: u.id, nome: u.nome, cognome: u.cognome, email: u.email }) })
     const ruoloOf = (id: string, admin: boolean) => admin ? 'admin' : supSet.has(id) ? 'supervisore' : 'utente'
-    let rows: UtenteAnagrafica[] = [...base.values()].map(x => { const admin = x.email === ADMIN_EMAIL || adminSet.has(x.id); return { ...x, admin, attivo: !sosp.has(x.id), sospesoIl: sospQuando[x.id] ?? null, ruolo: ruoloOf(x.id, admin), livelli: conta.get(x.id) ?? vuoto() } })
+    let rows: UtenteAnagrafica[] = [...base.values()].map(x => { const admin = x.email === ADMIN_EMAIL || adminSet.has(x.id); return { ...x, admin, attivo: !sosp.has(x.id), sospesoIl: sospQuando[x.id] ?? null, ruolo: ruoloOf(x.id, admin), postazioni: (presenze.get(x.id) ?? []).sort((a, b) => a.localeCompare(b, 'it')) } })
     rows = rows.filter(r => r.attivo !== sospesi)
     const s = search.trim().toLowerCase()
     if (s) rows = rows.filter(r => `${r.cognome} ${r.nome} ${r.email}`.toLowerCase().includes(s))
@@ -2026,7 +2031,7 @@ const localStore = {
   async getMembershipUtente(utenteId: string): Promise<MembershipUtente[]> {
     const posts = read<Postazione[]>(LS_POSTAZIONI, [])
     return read<WithPost<Turnista>[]>(LS_TURNISTI, []).filter(t => (t.utente_id ?? t.id) === utenteId)
-      .map(t => { const pid = t.postazione_id ?? DEV_POSTAZIONE; return { membershipId: t.id, postazioneId: pid, postazioneNome: posts.find(p => p.id === pid)?.nome ?? '—', livello: t.livello } })
+      .map(t => { const pid = t.postazione_id ?? DEV_POSTAZIONE; return { membershipId: t.id, postazioneId: pid, postazioneNome: posts.find(p => p.id === pid)?.nome ?? '—', livello: t.livello, fuoriDal: t.fuori_dal ?? null } })
       .sort((a, b) => a.postazioneNome.localeCompare(b.postazioneNome, 'it'))
   },
   async setUtenteAttivo(utenteId: string, attivo: boolean): Promise<void> {

@@ -154,8 +154,8 @@ export function TurnistiPage() {
     const bozzaPulita = !dirty
     setVerificoId(t.id)
     try {
-      await store.rimuoviDallaPostazione(t.id, meseKey)
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${nomeCompleto(t)} non fa più parte di ${post} da ${meseTxt}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+      const esitoRim = await store.rimuoviDallaPostazione(t.id, meseKey)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: esitoRim === 'eliminata' ? `${nomeCompleto(t)} tolto da ${post} (non ci aveva mai lavorato).` : `${nomeCompleto(t)} non fa più parte di ${post} da ${meseTxt}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
       setStaged(prev => { const n = new Map(prev); n.delete(t.id); return n })
       await qc.invalidateQueries({ queryKey: ['turnisti'] })
       // a bozza pulita si rilegge il personale del mese (ora senza di lui); con modifiche in sospeso

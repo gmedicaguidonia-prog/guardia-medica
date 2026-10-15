@@ -15,6 +15,8 @@ import type { AuthUser, Postazione, UtenteAdmin, UtenteAnagrafica, MembershipUte
 function fmtDT(iso: string) {
   return new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
+function meseOraKey(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+function mesePrima(k: string): string { let [a, m] = k.split('-').map(Number); m--; if (m < 1) { m = 12; a-- } return `${a}-${String(m).padStart(2, '0')}` }
 function meseLabel(mese: string) {
   const [a, m] = mese.split('-').map(Number)
   return new Date(a, m - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })
@@ -285,16 +287,11 @@ function AmministratoriBox({ user }: { user: AuthUser | null }) {
 //  sospensione reversibile dell'accesso e l'eliminazione definitiva.
 const PAGINA_UTENTI = 20
 // In elenco compaiono SOLO i ruoli GLOBALI (admin/supervisore): gli altri sono semplici
-// "utenti" (icona neutra, ordine alfabetico) con i badge delle appartenenze per livello
-// di default («Esterno ×2»…); il dettaglio per postazione è nella scheda espansa.
+// "utenti" (icona neutra, ordine alfabetico). Per tutti si vede soltanto IN QUALI POSTAZIONI
+// sono presenti oggi, senza ruolo (il ruolo vero è quello del mese, si decide nel Personale).
 const RUOLO_META: Record<string, { label: string; color: string }> = {
   admin:       { label: 'Admin',       color: '#a16207' },
   supervisore: { label: 'Supervisore', color: '#0369a1' },
-}
-const LIVELLO_META: Record<'responsabile' | 'turnista' | 'esterno', { label: string; color: string }> = {
-  responsabile: { label: 'Responsabile', color: '#ca8a04' },
-  turnista:     { label: 'Turnista',     color: '#1e40af' },
-  esterno:      { label: 'Esterno',      color: '#166534' },
 }
 function AnagraficaUtentiBox() {
   const { confirm, notify, confirmState } = useConfirm()
@@ -349,10 +346,8 @@ function AnagraficaUtentiBox() {
                     : <UserRound size={15} className="shrink-0" style={{ color: u.attivo ? '#6b7280' : '#c3c7cc' }} />}
                 <span className="text-sm font-semibold" style={{ color: u.attivo ? 'var(--t-titolo)' : '#9ca3af', textDecoration: u.attivo ? 'none' : 'line-through' }}>{nomeCompleto(u)}</span>
                 {meta && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: meta.color + '22', color: meta.color }}>{meta.label}</span>}
-                {!meta && (['responsabile', 'turnista', 'esterno'] as const).filter(l => u.livelli[l] > 0).map(l => (
-                  <span key={l} className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: LIVELLO_META[l].color + '22', color: LIVELLO_META[l].color }}>
-                    {LIVELLO_META[l].label}{u.livelli[l] > 1 ? ` ×${u.livelli[l]}` : ''}
-                  </span>
+                {u.postazioni.map(p => (
+                  <span key={p} className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ background: '#e7ebe2', color: '#3f4a37' }} title={`Presente in ${p}`}><MapPin size={9} />{p}</span>
                 ))}
                 {!u.attivo && <span className="text-[9px] font-bold px-1 py-0.5 rounded shrink-0" style={{ background: '#fee2e2', color: '#b91c1c' }}>SOSPESO</span>}
                 <span className="text-xs text-stone-400 hidden sm:inline truncate">{u.email}</span>
@@ -486,19 +481,26 @@ function SchedaUtente({ u, confirm, notify, onChiudi }: {
       {/* postazioni */}
       <div>
         <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1">Postazioni</p>
-        {isLoading ? <p className="text-xs text-stone-400">Caricamento…</p> : membership.length === 0 ? (
-          <p className="text-xs text-stone-400 italic">Non è inserito in nessuna postazione.</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {membership.map(m => (
-              <button key={m.membershipId} onClick={() => vai(m)} title="Vai al Personale di questa postazione" className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-transform hover:scale-105" style={{ background: '#f4f6f1', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }}>
-                <IconaLivello livello={m.livello} size={12} />
-                {m.postazioneNome}
-                <span className="text-[10px] text-stone-400">· {m.livello}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        {isLoading ? <p className="text-xs text-stone-400">Caricamento…</p> : (() => {
+          // presente = iscrizione aperta oggi (qualsiasi titolo); quelle chiuse restano solo come storico
+          const ora = meseOraKey()
+          const presenti = membership.filter(m => !m.fuoriDal || ora < m.fuoriDal)
+          const lasciate = membership.filter(m => m.fuoriDal && ora >= m.fuoriDal)
+          return (<>
+            {presenti.length === 0 ? <p className="text-xs text-stone-400 italic">Non è presente in nessuna postazione.</p> : (
+              <div className="flex flex-wrap gap-1.5">
+                {presenti.map(m => (
+                  <button key={m.membershipId} onClick={() => vai(m)} title="Vai al Personale di questa postazione" className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-transform hover:scale-105" style={{ background: '#f4f6f1', border: '1px solid var(--t-riga)', color: 'var(--t-testo)' }}>
+                    <MapPin size={12} style={{ color: 'var(--t-accento)' }} />
+                    {m.postazioneNome}
+                    {m.fuoriDal && <span className="text-[10px] font-semibold" style={{ color: '#b45309' }}>· fino a {meseLabel(mesePrima(m.fuoriDal))}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {lasciate.length > 0 && <p className="text-[11px] text-stone-400 mt-1.5">In passato anche: {lasciate.map(m => `${m.postazioneNome} (fino a ${meseLabel(mesePrima(m.fuoriDal!))})`).join(', ')}</p>}
+          </>)
+        })()}
       </div>
 
       {/* azioni */}
