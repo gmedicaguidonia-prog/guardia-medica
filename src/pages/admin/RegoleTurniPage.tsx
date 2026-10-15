@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, ListChecks, AlertCircle, AlertTriangle, Plus, X, Trash2, Save, RotateCcw, Moon, Sun, Copy, Check } from 'lucide-react'
 import { store } from '../../lib/store'
-import { nomeCompleto, gruppiPerLivello, TIPI_REGOLA_TURNISTA } from '../../types'
+import { nomeCompleto, gruppiPerLivello, TIPI_REGOLA_TURNISTA, presenteNelMese } from '../../types'
 import { turnoApplicabileGiorno, prossimoInizio, fineEffettiva, casoAttivazione } from '../../lib/turniLogic'
 import { GIORNI_SETTIMANA, ATTIVAZIONE_DA } from '../../lib/constants'
 import { useStagedAssignments } from '../../hooks/useStagedAssignments'
@@ -115,7 +115,7 @@ export function RegoleTurniPage() {
   // del mese; se il personale del mese (①) è definito si mostra SOLO quello. tById resta
   // completo per continuare a mostrare i nomi nelle celle già assegnate.
   const paletteGruppi = useMemo(() => {
-    const base = turnisti.filter(t => t.attivo && (importati.size === 0 || importati.has(t.id)))
+    const base = turnisti.filter(t => t.attivo && (importati.size ? importati.has(t.id) : presenteNelMese(t, meseKey)))
     return gruppiPerLivello(base.map(t => ({ ...t, livello: livMese(t.id) })))
   }, [turnisti, importati, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   const nomeTurnista = (id: string) => { const t = tById.get(id); return t ? nomeCompleto(t) : '—' }
@@ -259,12 +259,14 @@ export function RegoleTurniPage() {
       const srcNome = new Map(srcTurni.map(t => [t.id, norm(t.nome)]))
       const curPerNome = new Map(schema.map(t => [norm(t.nome), t.id]))
       const curIds = new Set(schema.map(s => s.id))
-      // gli utenti SOSPESI non vengono copiati (né turni fissi né regole speciali): avvisa con i nomi
-      const sospesoDi = (tid: string) => { const t = tById.get(tid); return t && !t.attivo ? t : null }
+      // chi è SOSPESO o non fa più parte della postazione in questo mese non viene copiato
+      // (né turni fissi né regole speciali): avvisa con i nomi
+      const sospesoDi = (tid: string) => { const t = tById.get(tid); return t && (!t.attivo || !presenteNelMese(t, meseKey)) ? t : null }
       const saltati = new Map<string, string>()
+      const etichetta = (t: Turnista) => `${nomeCompleto(t)}${t.attivo ? ' (non fa più parte della postazione)' : ' (sospeso)'}`
       for (const r of src) {
         const sosp = r.turnista_id ? sospesoDi(r.turnista_id) : null
-        if (sosp) { saltati.set(sosp.id, nomeCompleto(sosp)); continue }
+        if (sosp) { saltati.set(sosp.id, etichetta(sosp)); continue }
         const nome = srcNome.get(r.turno_schema_id)
         let curTurnoId = nome ? curPerNome.get(nome) : undefined
         if (!curTurnoId && curIds.has(r.turno_schema_id)) curTurnoId = r.turno_schema_id
@@ -276,20 +278,20 @@ export function RegoleTurniPage() {
       if (versionePrec.ore_max_consecutive != null) await store.setOreMaxConsecutive(nuova.id, versionePrec.ore_max_consecutive)
       await store.setCambioAuto(nuova.id, versionePrec.cambio_auto ?? true)
       // regole speciali per turnista: si copiano per turnista_id (stabile tra i mesi), solo per chi è ancora nel personale (e non sospeso)
-      const turnistiIds = new Set(turnisti.filter(t => t.attivo).map(t => t.id))
+      const turnistiIds = new Set(turnisti.filter(t => t.attivo && presenteNelMese(t, meseKey)).map(t => t.id))
       const srcSpe = await store.getRegoleTurnista(versionePrec.id)
       for (const rs of srcSpe) {
         const sosp = sospesoDi(rs.turnista_id)
-        if (sosp) { saltati.set(sosp.id, nomeCompleto(sosp)); continue }
+        if (sosp) { saltati.set(sosp.id, etichetta(sosp)); continue }
         if (turnistiIds.has(rs.turnista_id)) await store.setRegolaTurnista(nuova.id, rs.turnista_id, rs.tipo, rs.valore)
       }
       if (saltati.size > 0) {
         const nomi = [...saltati.values()].join(', ')
         await notify({
-          title: saltati.size === 1 ? 'Utente sospeso non copiato' : 'Utenti sospesi non copiati',
+          title: saltati.size === 1 ? 'Utente non copiato' : 'Utenti non copiati',
           message: saltati.size === 1
-            ? `L'utente ${nomi} risulta sospeso: i suoi turni fissi e le sue regole non sono stati copiati nel nuovo mese.`
-            : `Gli utenti ${nomi} risultano sospesi: i loro turni fissi e le loro regole non sono stati copiati nel nuovo mese.`,
+            ? `L'utente ${nomi} non è più disponibile: i suoi turni fissi e le sue regole non sono stati copiati nel nuovo mese.`
+            : `Gli utenti ${nomi} non sono più disponibili: i loro turni fissi e le loro regole non sono stati copiati nel nuovo mese.`,
         })
       }
     }

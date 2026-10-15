@@ -8,7 +8,7 @@ import { costruisciFogliPdf, scaricaPdfCalendario } from '../lib/pdfCalendario'
 import { isFestivo, isPrefestivo, isSuperfestivo, isoDate } from '../lib/holidays'
 import { useFestivita } from '../hooks/useFestivita'
 import { useFinalizzato } from '../hooks/useFinalizzato'
-import { nomeCompleto, cmpTurnisti } from '../types'
+import { nomeCompleto, cmpTurnisti, presenteNelMese } from '../types'
 import { SpinnerMese } from '../components/SpinnerMese'
 import { calcolaConteggi, fmtOre } from '../lib/conteggi'
 import type { TurnoPersona, Utente } from '../types'
@@ -221,7 +221,7 @@ export function PublicTurniPage({ user }: { user: AuthUser | null }) {
   // colonne = personale del mese con ruolo-del-mese turnista/responsabile (gli esterni-del-mese non compaiono)
   const colonne = useMemo(() => personale.filter(t => importatiMese.has(t.id) && livMese(t.id) !== 'esterno').sort(cmpTurnisti), [personale, importatiMese, ruoloMese])   // eslint-disable-line react-hooks/exhaustive-deps
   // responsabili della postazione (mostrati nel div postazione)
-  const responsabili = useMemo(() => personale.filter(t => t.livello === 'responsabile').sort(cmpTurnisti), [personale])
+  const responsabili = useMemo(() => personale.filter(t => t.livello === 'responsabile' && presenteNelMese(t, meseKey)).sort(cmpTurnisti), [personale, meseKey])
 
   async function setPref(ds: string, turnoId: string, tipo: TipoDesiderata | null) {
     if (!mia) return
@@ -838,7 +838,7 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
   // Candidati = SOLO il personale AUTORIZZATO per questo mese (turnisti_mese) + eventuali
   // aggiunti al volo. Chi non è autorizzato non compare: lo si aggiunge con «Aggiungilo».
   // Gli utenti SOSPESI non possono ricevere turni: mai proposti.
-  const candidati = useMemo(() => { const ex = new Set(extra.map(e => e.id)); return tutti.filter(p => p.id !== da && p.attivo !== false && (autorizzatiMese.has(p.id) || ex.has(p.id))) }, [tutti, da, autorizzatiMese, extra])
+  const candidati = useMemo(() => { const ex = new Set(extra.map(e => e.id)); return tutti.filter(p => p.id !== da && p.attivo !== false && presenteNelMese(p, ds.slice(0, 7)) && (autorizzatiMese.has(p.id) || ex.has(p.id))) }, [tutti, da, autorizzatiMese, extra])
   const gTurnisti = useMemo(() => candidati.filter(p => livMese(p.id) !== 'esterno').sort(cmpTurnisti), [candidati, livMese])
   const gEsterni = useMemo(() => candidati.filter(p => livMese(p.id) === 'esterno').sort(cmpTurnisti), [candidati, livMese])
   const dest = tutti.find(p => p.id === destId) ?? null
@@ -865,6 +865,7 @@ function CambioTurnoWizard({ postazioneId, postazioneNome, ds, turno, slot, da, 
     const giaMembro = tutti.find(t => t.utente_id === s.id)
     if (giaMembro) {
       if (!giaMembro.attivo) { setErr(`${nomeCompleto(giaMembro)} risulta sospeso e non può ricevere turni.`); setSugg([]); return }
+      if (!presenteNelMese(giaMembro, ds.slice(0, 7))) { setErr(`${nomeCompleto(giaMembro)} non fa più parte di questa postazione e non può ricevere turni.`); setSugg([]); return }
       setExtra(x => [...x.filter(e => e.id !== giaMembro.id), giaMembro]); setDestId(giaMembro.id); setNuovo(false); setCerca(''); setSugg([]); return
     }
     setBusy(true); setErr(null)

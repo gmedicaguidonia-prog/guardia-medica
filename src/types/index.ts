@@ -91,11 +91,17 @@ export interface Turnista {
   email: string      // dall'utente
   livello: Livello   // ruolo IN QUESTA postazione (responsabile|turnista|esterno)
   attivo: boolean    // false = utente SOSPESO: non proponibile nel personale dei nuovi mesi
+  fuori_dal?: string | null   // iscrizione chiusa: da questo mese (YYYY-MM) non fa più parte della postazione
   created_at: string
 }
 
 /** Livelli assegnabili nel personale di una postazione (admin è globale, non qui). */
 export const LIVELLI_PERSONALE = LIVELLI.filter(l => l.value !== 'admin')
+
+/** La persona fa parte della postazione nel mese indicato? (iscrizione aperta, o chiusa dopo quel mese) */
+export function presenteNelMese(t: { fuori_dal?: string | null }, meseKey: string): boolean {
+  return !t.fuori_dal || meseKey < t.fuori_dal
+}
 
 /** Una postazione a cui l'utente appartiene (per la pagina pubblica). */
 // Personale "del mese": chi è in servizio in un dato mese e con quale ruolo (congelato per quel mese).

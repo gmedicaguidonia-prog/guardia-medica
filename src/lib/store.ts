@@ -64,6 +64,7 @@ function normMembro(r: Record<string, unknown>): Turnista {
     email:      (u.email as string) ?? '',
     livello:    r.livello as Livello,
     attivo:     (u.attivo as boolean) !== false,
+    fuori_dal:  (r.fuori_dal as string | null) ?? null,
     created_at: (r.created_at as string) ?? '',
   }
 }
@@ -180,7 +181,7 @@ const supaStore = {
   },
   // ── Personale (appartenenze) ──
   async getTurnisti(postazioneId: string): Promise<Turnista[]> {
-    const { data, error } = await supabase.from('turnisti').select('id, utente_id, livello, created_at, utenti(nome, cognome, email, attivo)').eq('postazione_id', postazioneId)
+    const { data, error } = await supabase.from('turnisti').select('id, utente_id, livello, created_at, fuori_dal, utenti(nome, cognome, email, attivo)').eq('postazione_id', postazioneId)
     if (error) throw error
     return (data ?? []).map(normMembro)
   },
@@ -717,6 +718,21 @@ const supaStore = {
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
     const { error } = await supabase.from('turnisti_mese').delete().match({ mese, turnista_id: turnistaId })
     if (error) throw error
+  },
+  // Turni (reperibilità comprese) di una persona da un mese in poi: chi ne ha non può uscire dalla postazione
+  async getTurniTurnistaDal(turnistaId: string, dalMese: string): Promise<{ data: string; slot: number }[]> {
+    const { data, error } = await supabase.from('turni').select('data, slot').eq('turnista_id', turnistaId).gte('data', `${dalMese}-01`).order('data')
+    if (error) throw error
+    return (data ?? []) as { data: string; slot: number }[]
+  },
+  // Esce dalla postazione da un mese in poi (RPC: ricontrolla i turni, chiude l'iscrizione, la toglie dai mesi ≥)
+  async rimuoviDallaPostazione(turnistaId: string, dalMese: string): Promise<void> {
+    const { error } = await supabase.rpc('rimuovi_dalla_postazione', { p_turnista: turnistaId, p_dal: dalMese })
+    if (error) throw new Error(error.message)
+  },
+  async riammettiNellaPostazione(turnistaId: string): Promise<void> {
+    const { error } = await supabase.rpc('riammetti_nella_postazione', { p_turnista: turnistaId })
+    if (error) throw new Error(error.message)
   },
 
   // ── Desiderata / Indisponibilità ──
@@ -1788,6 +1804,17 @@ const localStore = {
   },
   async removeTurnistaMese(mese: string, turnistaId: string): Promise<void> {
     writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.mese === mese && x.turnista_id === turnistaId)))
+  },
+  async getTurniTurnistaDal(turnistaId: string, dalMese: string): Promise<{ data: string; slot: number }[]> {
+    return read<WithPost<Turno>[]>(LS_TURNI, []).filter(t => t.turnista_id === turnistaId && t.data >= `${dalMese}-01`).map(t => ({ data: t.data, slot: t.slot })).sort((a, b) => a.data.localeCompare(b.data))
+  },
+  async rimuoviDallaPostazione(turnistaId: string, dalMese: string): Promise<void> {
+    if ((await localStore.getTurniTurnistaDal(turnistaId, dalMese)).length) throw new Error('Ha ancora turni assegnati dal mese scelto in poi: toglili o riassegnali prima in Turni del Mese.')
+    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).map(t => t.id === turnistaId ? { ...t, fuori_dal: dalMese } : t))
+    writeLs(LS_TURNISTI_MESE, read<{ mese: string; turnista_id: string }[]>(LS_TURNISTI_MESE, []).filter(x => !(x.turnista_id === turnistaId && x.mese >= dalMese)))
+  },
+  async riammettiNellaPostazione(turnistaId: string): Promise<void> {
+    writeLs(LS_TURNISTI, read<WithPost<Turnista>[]>(LS_TURNISTI, []).map(t => t.id === turnistaId ? { ...t, fuori_dal: null } : t))
   },
 
   async getDesiderataMese(postazioneId: string, anno: number, mese: number): Promise<Desiderata[]> {

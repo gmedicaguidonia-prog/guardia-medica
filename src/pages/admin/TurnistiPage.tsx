@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Save, X, Users, Search, ChevronLeft, ChevronRight, Check, UserPlus, UserMinus, Pencil, Copy, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react'
 import { store } from '../../lib/store'
-import { LIVELLI_PERSONALE, nomeCompleto, gruppiPerLivello } from '../../types'
+import { LIVELLI_PERSONALE, nomeCompleto, gruppiPerLivello, presenteNelMese } from '../../types'
 import { ATTIVAZIONE_DA } from '../../lib/constants'
 import { usePostazione } from '../../contexts/PostazioneContext'
 import { useMeseSelezionato } from '../../hooks/useMeseSelezionato'
@@ -70,12 +70,14 @@ export function TurnistiPage() {
   const personaleTurnisti = useMemo(() => [...staged].map(([id, liv]) => { const t = tById.get(id); return t ? { ...t, livello: liv } : null }).filter((t): t is Turnista => !!t), [staged, tById])
   const gruppiMese = useMemo(() => gruppiPerLivello(personaleTurnisti), [personaleTurnisti])
   // Gli utenti SOSPESI non sono proponibili per i nuovi mesi (restano solo nei mesi dove già lavorano).
-  const nonNelMese = useMemo(() => gruppiPerLivello(turnisti.filter(t => !staged.has(t.id) && t.attivo)), [turnisti, staged])
+  const nonNelMese = useMemo(() => gruppiPerLivello(turnisti.filter(t => !staged.has(t.id) && t.attivo && presenteNelMese(t, meseKey))), [turnisti, staged, meseKey])
 
   // Anagrafica della postazione: i SOSPESI non compaiono (si gestiscono solo dal
   // riquadro «Utenti sospesi» del Centro di Controllo).
-  const anagrAttivi = useMemo(() => turnisti.filter(t => t.attivo), [turnisti])
-  const nSospesiNascosti = turnisti.length - anagrAttivi.length
+  const anagrAttivi = useMemo(() => turnisti.filter(t => t.attivo && presenteNelMese(t, meseKey)), [turnisti, meseKey])
+  const nSospesiNascosti = turnisti.filter(t => !t.attivo).length
+  // chi è uscito dalla postazione da questo mese (o prima) non compare: si riaggiunge cercandolo nel modulo
+  const nUscitiNascosti = turnisti.filter(t => t.attivo && !presenteNelMese(t, meseKey)).length
 
   // Paginazione degli elenchi di nomi (max NOMI_PER_PAGINA per pagina, gruppi conservati)
   const [pagMese, setPagMese] = useState(0)
@@ -130,6 +132,38 @@ export function TurnistiPage() {
     } finally { setVerificoId(null) }
     setStaged(prev => { const n = new Map(prev); n.delete(id); return n })
   }
+  // Esce dalla postazione DA QUESTO MESE IN POI: l'iscrizione si chiude ma non si cancella (i mesi
+  // precedenti restano invariati). Rifiutato se ha turni da questo mese in poi.
+  async function rimuoviDallaPostazione(t: Turnista) {
+    const post = postazioneAttiva?.nome ?? 'questa postazione'
+    const meseTxt = `${MESI[mese - 1]} ${anno}`
+    setVerificoId(t.id)
+    let futuri: { data: string; slot: number }[]
+    try { futuri = await store.getTurniTurnistaDal(t.id, meseKey) }
+    catch (e) { console.error('[Personale] verifica turni fallita:', e); setVerificoId(null); void notify({ title: 'Verifica non riuscita', message: 'Non riesco a controllare i turni: riprova tra poco.' }); return }
+    setVerificoId(null)
+    if (futuri.length) {
+      const perMese = new Map<string, string[]>()
+      futuri.forEach(x => { const k = x.data.slice(0, 7); perMese.set(k, [...(perMese.get(k) ?? []), `${+x.data.slice(8, 10)}${x.slot < 0 ? ' (rep.)' : ''}`]) })
+      const elenco = [...perMese].map(([k, gg]) => `${meseLabel(k)}: ${gg.join(', ')}`).join(' · ')
+      await notify({ title: 'Non si può rimuovere', message: `${nomeCompleto(t)} ha ancora turni assegnati da ${meseTxt} in poi — ${elenco}. Toglili o riassegnali prima in ⑦ Turni del Mese, poi riprova.` })
+      return
+    }
+    const ok = await confirm({ title: `Rimuovere da ${post}?`, message: `${nomeCompleto(t)} non farà più parte di ${post} da ${meseTxt} in poi: sparisce dal personale e da «Aggiungi al mese» di questo mese e dei successivi. I mesi precedenti restano invariati. Se servirà di nuovo, lo riaggiungi cercandolo in Gestione anagrafica.`, confirmLabel: 'Rimuovi', danger: true })
+    if (!ok) return
+    const bozzaPulita = !dirty
+    setVerificoId(t.id)
+    try {
+      await store.rimuoviDallaPostazione(t.id, meseKey)
+      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${nomeCompleto(t)} non fa più parte di ${post} da ${meseTxt}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+      setStaged(prev => { const n = new Map(prev); n.delete(t.id); return n })
+      await qc.invalidateQueries({ queryKey: ['turnisti'] })
+      // a bozza pulita si rilegge il personale del mese (ora senza di lui); con modifiche in sospeso
+      // no: il refetch riallineerebbe la bozza al server e le butterebbe via
+      if (bozzaPulita) await qc.invalidateQueries({ queryKey: ['personale-mese', postazioneId] })
+    } catch (e) { void notify({ title: 'Rimozione non riuscita', message: (e as Error).message }) }
+    finally { setVerificoId(null) }
+  }
   async function copiaPersonale() {
     if (!meseSorgente) return
     const src = await store.getPersonaleMese(postazioneId!, meseSorgente)
@@ -144,7 +178,19 @@ export function TurnistiPage() {
           : `Gli utenti ${nomi} risultano sospesi: le loro informazioni non verranno copiate nel nuovo mese.`,
       })
     }
-    const copiabili = new Set(turnisti.filter(t => t.attivo).map(t => t.id))
+    // Chi non fa più parte della postazione in questo mese non viene copiato: avvisa con i nomi.
+    const usciti = src.map(p => tById.get(p.turnista_id)).filter((t): t is Turnista => !!t && t.attivo && !presenteNelMese(t, meseKey))
+    if (usciti.length > 0) {
+      const nomi = usciti.map(t => nomeCompleto(t)).join(', ')
+      const post = postazioneAttiva?.nome ?? 'questa postazione'
+      await notify({
+        title: usciti.length === 1 ? 'Non copiato' : 'Non copiati',
+        message: usciti.length === 1
+          ? `${nomi} non fa più parte di ${post}: non viene copiato nel nuovo mese.`
+          : `${nomi} non fanno più parte di ${post}: non vengono copiati nel nuovo mese.`,
+      })
+    }
+    const copiabili = new Set(turnisti.filter(t => t.attivo && presenteNelMese(t, meseKey)).map(t => t.id))
     setStaged(prev => { const n = new Map(prev); for (const p of src) if (copiabili.has(p.turnista_id)) n.set(p.turnista_id, p.livello); return n })
   }
   function annulla() { setStaged(new Map(serverMap)) }
@@ -182,15 +228,21 @@ export function TurnistiPage() {
   const inEdit = !!picked
   // suggerimenti SOLO se non stiamo già modificando un utente scelto (in modifica i campi si editano)
   async function cerca(term: string) { if (picked) return; if (term.trim().length < 3) { setSugg([]); return } try { setSugg(await store.searchUtenti(term)) } catch { setSugg([]) } }
+  const [esito, setEsito] = useState<string | null>(null)   // esito dell'ultimo «Salva modifiche» (il modulo resta sulla persona)
   function scegli(u: Utente) {
-    setNome(u.nome); setCognome(u.cognome); setEmail(u.email); setPicked(u); setSugg([]); setErrore(''); setTurnistaAltrove(null)
-    // una persona è turnista in UNA sola postazione: se lo è già altrove, qui può entrare solo come esterno/responsabile
+    setNome(u.nome); setCognome(u.cognome); setEmail(u.email); setPicked(u); setSugg([]); setErrore(''); setEsito(null); setTurnistaAltrove(null)
+    // in modifica il menu è il RUOLO DEL MESE in questa postazione: si parte da quello della
+    // bozza del mese, altrimenti dal livello di default qui, altrimenti turnista
+    const membro = turnisti.find(t => t.utente_id === u.id)
+    setLivello(membro ? (staged.get(membro.id) ?? membro.livello) : 'turnista')
+    // una persona è turnista in UNA sola postazione: se lo è già altrove, nell'anagrafica di
+    // questa postazione entrerà come esterno (il ruolo del mese resta libero)
     store.getMembershipUtente(u.id).then(ms => {
       const altrove = ms.find(m => m.livello === 'turnista' && m.postazioneId !== postazioneId)
-      if (altrove) { setTurnistaAltrove(altrove.postazioneNome); setLivello(l => l === 'turnista' ? 'esterno' : l) }
+      if (altrove) setTurnistaAltrove(altrove.postazioneNome)
     }).catch(() => {})
   }
-  function resetForm() { setNome(''); setCognome(''); setEmail(''); setPicked(null); setLivello('turnista'); setSugg([]); setErrore(''); setTurnistaAltrove(null) }
+  function resetForm() { setNome(''); setCognome(''); setEmail(''); setPicked(null); setLivello('turnista'); setSugg([]); setErrore(''); setEsito(null); setTurnistaAltrove(null) }
 
   // NUOVO utente: prima di crearlo, avvisa se esiste già stessa email o stesso nome+cognome (anti-doppione)
   async function creaNuovo() {
@@ -216,29 +268,62 @@ export function TurnistiPage() {
   }
 
   // MODIFICA anagrafica di un utente esistente: una sola riga `utenti` (referenziata per id) ⇒ cambia OVUNQUE
+  // «Salva modifiche» (persona scelta): aggiorna i dati anagrafici (validi ovunque: conferma solo
+  // se cambiati) e il RUOLO DEL MESE in questa postazione; se la persona non è nel personale del
+  // mese chiede se aggiungerla (anche alla postazione, se serve). Il modulo resta sulla persona.
+  // Tutto ciò che riguarda il mese va nella BOZZA: diventa effettivo con «Conferma personale del mese».
+  const labelLiv = (l: Livello) => LIVELLI_PERSONALE.find(x => x.value === l)?.label ?? l
   async function salvaModifiche() {
     if (!picked) return
     if (!nome.trim() || !cognome.trim() || !email.trim()) { setErrore('Nome, cognome ed email obbligatori.'); return }
-    if (!(await confirm({ title: 'Modifica anagrafica', message: `Stai modificando l'anagrafica di ${picked.cognome} ${picked.nome}. La modifica vale in TUTTO il programma: ogni mese, ogni postazione e i turni già assegnati. Continuare?`, confirmLabel: 'Salva ovunque' }))) return
-    setSaving(true); setErrore('')
+    const nuovi = { nome: nome.trim(), cognome: cognome.trim(), email: email.trim().toLowerCase() }
+    const anagraficaCambiata = nuovi.nome !== picked.nome || nuovi.cognome !== picked.cognome || nuovi.email !== picked.email.toLowerCase()
+    if (anagraficaCambiata && !(await confirm({ title: 'Modifica anagrafica', message: `Stai modificando l'anagrafica di ${picked.cognome} ${picked.nome}. Nome, cognome ed email valgono in TUTTO il programma: ogni mese, ogni postazione e i turni già assegnati. Continuare?`, confirmLabel: 'Salva ovunque' }))) return
+    setSaving(true); setErrore(''); setEsito(null)
+    const meseTxt = `${MESI[mese - 1]} ${anno}`
+    const fatto: string[] = []
+    let bozzaToccata = false
     try {
-      await store.aggiornaUtente(picked.id, { nome: nome.trim(), cognome: cognome.trim(), email: email.trim().toLowerCase() })
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Anagrafica aggiornata: ${cognome} ${nome}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
-      // il nome cambia ovunque ⇒ invalida tutte le query, TRANNE il personale del mese: un suo
-      // refetch riallinea la bozza al server e butterebbe via la copia non ancora confermata
-      resetForm(); await qc.invalidateQueries({ predicate: q => q.queryKey[0] !== 'personale-mese' })
-    } catch (e) { setErrore((e as Error).message) }
-    finally { setSaving(false) }
-  }
-
-  // Aggiunge l'utente scelto (esistente) al personale della postazione corrente, senza ricrearlo
-  async function aggiungiEsistenteQui() {
-    if (!picked) return
-    setSaving(true); setErrore('')
-    try {
-      await store.addMembro(postazioneId!, { nome, cognome, email, livello, utenteId: picked.id })
-      store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${picked.cognome} ${picked.nome} aggiunto in anagrafica (${livello}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
-      resetForm(); await qc.invalidateQueries({ queryKey: ['turnisti'] })
+      if (anagraficaCambiata) {
+        await store.aggiornaUtente(picked.id, nuovi)
+        store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `Anagrafica aggiornata: ${nuovi.cognome} ${nuovi.nome}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+        // il nome cambia ovunque ⇒ invalida tutte le query, TRANNE il personale del mese: un suo
+        // refetch riallinea la bozza al server e butterebbe via le modifiche non ancora confermate
+        await qc.invalidateQueries({ predicate: q => q.queryKey[0] !== 'personale-mese' })
+        setPicked({ ...picked, ...nuovi })
+        fatto.push('dati anagrafici aggiornati')
+      }
+      const membro = turnisti.find(t => t.utente_id === picked.id) ?? null
+      const uscito = !!membro && !presenteNelMese(membro, meseKey)   // iscrizione chiusa da questo mese o prima
+      if (membro && !uscito && staged.has(membro.id)) {
+        if (staged.get(membro.id) !== livello) { cambiaRuoloMese(membro.id, livello); bozzaToccata = true; fatto.push(`ruolo a ${meseTxt}: ${labelLiv(livello)}`) }
+      } else if (picked.attivo === false || membro?.attivo === false) {
+        fatto.push('utente sospeso: non può essere aggiunto ai mesi')
+      } else {
+        const chi = `${nuovi.cognome} ${nuovi.nome}`
+        const domanda = membro && !uscito
+          ? `Vuoi aggiungere ${chi} al personale di ${meseTxt} come ${labelLiv(livello)}?`
+          : membro && uscito
+            ? `${chi} non fa più parte di ${postazioneAttiva?.nome ?? 'questa postazione'} da ${meseLabel(membro.fuori_dal!)}. Vuoi riaggiungerlo alla postazione e al personale di ${meseTxt} come ${labelLiv(livello)}?`
+            : `${chi} non fa ancora parte di ${postazioneAttiva?.nome ?? 'questa postazione'}. Vuoi aggiungerlo alla postazione e al personale di ${meseTxt} come ${labelLiv(livello)}?${livello === 'turnista' && turnistaAltrove ? ` Nell'anagrafica della postazione risulterà esterno, perché è già turnista a ${turnistaAltrove}; a ${meseTxt} avrà il ruolo di Turnista.` : ''}`
+        if (await confirm({ title: `Aggiungere a ${meseTxt}?`, message: domanda, confirmLabel: 'Sì, aggiungi' })) {
+          let id = membro?.id
+          if (membro && uscito) {
+            await store.riammettiNellaPostazione(membro.id)
+            store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${chi} riaggiunto a ${postazioneAttiva?.nome ?? 'postazione'} da ${meseTxt}.`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+            await qc.invalidateQueries({ queryKey: ['turnisti'] })
+          } else if (!id) {
+            const livelloPostazione: Livello = livello === 'turnista' && turnistaAltrove ? 'esterno' : livello
+            await store.addMembro(postazioneId!, { ...nuovi, livello: livelloPostazione, utenteId: picked.id })
+            store.addNotifica({ postazioneId: postazioneId!, mese: meseKey, tipo: 'personale', messaggio: `${chi} aggiunto in anagrafica (${livelloPostazione}).`, target: '/admin/turnisti', perAdmin: true }).catch(() => {})
+            id = (await store.getTurnisti(postazioneId!)).find(t => t.utente_id === picked.id)?.id
+            await qc.invalidateQueries({ queryKey: ['turnisti'] })
+          }
+          if (id) { const nid = id; setStaged(prev => new Map(prev).set(nid, livello)); bozzaToccata = true; fatto.push(`aggiunto al personale di ${meseTxt} come ${labelLiv(livello)}`) }
+        }
+      }
+      if (bozzaToccata) fatto.push('premi «Conferma personale del mese» per renderlo effettivo')
+      setEsito(fatto.length ? fatto.join(' · ') : 'Nessuna modifica da salvare.')
     } catch (e) { setErrore((e as Error).message) }
     finally { setSaving(false) }
   }
@@ -253,12 +338,11 @@ export function TurnistiPage() {
     finally { setSaving(false) }
   }
   async function rimuoviAnagrafica(t: Turnista) {
-    if (await store.turnistaHaStorico(t.id)) {
-      await notify({ title: 'Non eliminabile', message: `${nomeCompleto(t)} ha già turni/desiderata o fa parte del personale di uno o più mesi: non può essere cancellato dall'anagrafica (si creerebbero buchi nei mesi passati). Se non serve più, toglilo dal personale dei mesi futuri.` })
-      return
-    }
+    // con storico non si cancella (buchi nei mesi passati): esce dalla postazione da questo mese in poi
+    if (await store.turnistaHaStorico(t.id)) { await rimuoviDallaPostazione(t); return }
     if (!(await confirm({ title: 'Elimina dall’anagrafica', message: `Eliminare definitivamente ${nomeCompleto(t)} dall’anagrafica? Non ha storico, quindi è sicuro.`, confirmLabel: 'Elimina', danger: true }))) return
     await store.removeMembro(t.id)
+    setStaged(prev => { if (!prev.has(t.id)) return prev; const n = new Map(prev); n.delete(t.id); return n })
     await qc.invalidateQueries({ queryKey: ['turnisti'] })
   }
 
@@ -327,10 +411,12 @@ export function TurnistiPage() {
                   <select value={staged.get(t.id) ?? 'turnista'} onChange={e => cambiaRuoloMese(t.id, e.target.value as Livello)} className="input text-xs py-1" style={{ width: 'auto' }} title="Ruolo per questo mese">
                     {LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
-                  <button onClick={() => togliDalMese(t.id)} disabled={verificoId !== null} title={`Togli ${nomeCompleto(t)} dal personale di ${MESI[mese - 1]} ${anno} (non si può se ha turni assegnati nel mese)`}
+                  <button onClick={() => togliDalMese(t.id)} disabled={verificoId !== null} title={`Togli ${nomeCompleto(t)} solo da ${MESI[mese - 1]} ${anno}: resta nella postazione e tra gli aggiungibili`}
+                    className="p-1.5 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors shrink-0 disabled:opacity-50"><X size={14} /></button>
+                  <button onClick={() => rimuoviDallaPostazione(t)} disabled={verificoId !== null} title={`Togli ${nomeCompleto(t)} dalla postazione da ${MESI[mese - 1]} ${anno} in poi: non comparirà più neanche tra gli aggiungibili`}
                     className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg shrink-0 transition-colors disabled:opacity-50"
                     style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}>
-                    {verificoId === t.id ? <Loader2 size={12} className="animate-spin" /> : <UserMinus size={12} />}<span className="hidden sm:inline">Rimuovi dal mese</span>
+                    {verificoId === t.id ? <Loader2 size={12} className="animate-spin" /> : <UserMinus size={12} />}<span className="hidden sm:inline">Rimuovi dalla postazione</span>
                   </button>
                 </div>
               ))}
@@ -390,7 +476,7 @@ export function TurnistiPage() {
             {inEdit && (
               <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af' }}>
                 <Pencil size={13} className="shrink-0 mt-0.5" />
-                <span>Stai <strong>modificando {picked!.cognome} {picked!.nome}</strong>: «Salva modifiche» corregge i suoi dati in <strong>tutto il programma</strong> (ogni mese e postazione). Per inserirlo in <strong>questa postazione</strong> premi «Aggiungi a questa postazione». Per creare invece una persona nuova, premi «Svuota form».</span>
+                <span>Stai <strong>modificando {picked!.cognome} {picked!.nome}</strong>. «Salva modifiche» aggiorna nome, cognome ed email (validi in <strong>tutto il programma</strong>) e il suo <strong>ruolo a {MESI[mese - 1]} {anno}</strong> in questa postazione; se non è ancora nel personale del mese ti chiede se aggiungerlo. Per creare una persona nuova, premi «Svuota form».</span>
               </div>
             )}
             {errore && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errore}</div>}
@@ -415,16 +501,16 @@ export function TurnistiPage() {
               )}
             </div>
             <div className="flex items-end gap-3 flex-wrap">
-              <div><label className="label text-xs">Livello di default</label>
+              <div><label className="label text-xs">{inEdit ? `Ruolo a ${MESI[mese - 1]} ${anno}` : 'Livello di default'}</label>
                 <select value={livello} onChange={e => setLivello(e.target.value as Livello)} className="input text-sm w-48">
-                  {LIVELLI_PERSONALE.filter(l => !(turnistaAltrove && l.value === 'turnista')).map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                  {LIVELLI_PERSONALE.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                 </select>
-                {inEdit && turnistaAltrove && <p className="text-[11px] mt-1" style={{ color: '#b45309' }}>È già <strong>turnista</strong> a {turnistaAltrove} (si può esserlo in una sola postazione): qui può entrare come esterno o responsabile; il ruolo del mese resta libero.</p>}
+                {inEdit && turnistaAltrove && <p className="text-[11px] mt-1" style={{ color: '#b45309' }}>È già <strong>turnista</strong> a {turnistaAltrove} (si può esserlo in una sola postazione): se entra in questa postazione ci risulterà esterno, ma il ruolo del mese può essere Turnista.</p>}
+                {inEdit && picked?.attivo === false && <p className="text-[11px] mt-1" style={{ color: '#b91c1c' }}>Utente <strong>sospeso</strong>: puoi correggerne i dati, ma non aggiungerlo ai mesi.</p>}
               </div>
               {inEdit ? (
                 <div className="flex items-center gap-2 ml-auto flex-wrap">
                   <button onClick={salvaModifiche} disabled={saving} className="btn-primary text-sm"><Save size={15} /> Salva modifiche</button>
-                  <button onClick={aggiungiEsistenteQui} disabled={saving} className="btn-secondary text-sm" title="Aggiungi questa persona esistente al personale di questa postazione"><Plus size={15} /> Aggiungi a questa postazione</button>
                   <button onClick={resetForm} className="btn-secondary text-sm"><RotateCcw size={14} /> Svuota form</button>
                 </div>
               ) : (
@@ -435,6 +521,7 @@ export function TurnistiPage() {
               )}
             </div>
 
+            {inEdit && esito && <p className="text-xs font-medium flex items-start gap-1.5 rounded-lg px-3 py-2" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534' }}><Check size={13} className="shrink-0 mt-0.5" /> <span>{esito}</span></p>}
             <table className="w-full text-sm mt-1">
               <tbody className="divide-y divide-gray-100">
                 {paginaGruppi(gruppiPerLivello(anagrAttivi), pagAnagr).map(g => (
@@ -457,7 +544,7 @@ export function TurnistiPage() {
                         <td className="px-1 py-2"><LivelloBadge livello={t.livello} /></td>
                         <td className="px-1 py-2"><div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => startEdit(t)} className="p-1.5 rounded text-stone-500 hover:text-blue-600 hover:bg-blue-50" title="Modifica"><Pencil size={13} /></button>
-                          <button onClick={() => rimuoviAnagrafica(t)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Elimina dall’anagrafica"><Trash2 size={13} /></button>
+                          <button onClick={() => rimuoviAnagrafica(t)} className="p-1.5 rounded text-stone-500 hover:text-red-600 hover:bg-red-50" title="Rimuovi dalla postazione (da questo mese in poi; chi non ci ha mai lavorato viene eliminato)"><Trash2 size={13} /></button>
                         </div></td>
                       </tr>
                     ))}
@@ -467,6 +554,11 @@ export function TurnistiPage() {
               </tbody>
             </table>
             <PaginaNav pagina={pagAnagr} nPagine={nPagAnagr} totale={anagrAttivi.length} onCambia={setPagAnagr} />
+            {nUscitiNascosti > 0 && (
+              <p className="text-[11px] font-medium" style={{ color: '#b45309' }}>
+                {nUscitiNascosti === 1 ? '1 persona non fa' : `${nUscitiNascosti} persone non fanno`} più parte di questa postazione a {MESI[mese - 1]} {anno} e non {nUscitiNascosti === 1 ? 'compare' : 'compaiono'} in questo elenco: per riaggiungerla cercala nel modulo qui sopra.
+              </p>
+            )}
             {nSospesiNascosti > 0 && (
               <p className="text-[11px] font-medium" style={{ color: '#b45309' }}>
                 {nSospesiNascosti === 1 ? '1 utente sospeso non compare' : `${nSospesiNascosti} utenti sospesi non compaiono`} in questo elenco: {nSospesiNascosti === 1 ? 'lo trovi' : 'li trovi'} in <strong>Centro di Controllo → Utenti sospesi</strong>.
