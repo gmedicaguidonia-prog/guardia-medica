@@ -67,7 +67,10 @@
       var NUOVO = 'https://turni-ca.torsadestech.com/', BASE = '/guardia-medica/';
       var p = location.pathname, resto = p.indexOf(BASE) === 0 ? p.slice(BASE.length) : '';
       if (resto === 'index.html' || resto === '404.html') resto = '';
-      document.getElementById('vai').href = NUOVO + resto + location.search + location.hash;
+      var dove = NUOVO + resto + location.search + location.hash;
+      document.getElementById('vai').href = dove;
+      // Rinvio automatico solo dove Stefano l'ha chiesto (genera.js --automatico); il pulsante resta di riserva.
+      if (true) location.replace(dove);
     })();
   </script>
 </body>
